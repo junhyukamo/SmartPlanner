@@ -70,7 +70,6 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 export default function App() {
-  // 1. 앱 전역 상태 관리 (다크모드 제거)
   const [user, setUser] = useState(null);
   const [view, setView] = useState('LOADING');
   const [role, setRole] = useState('');
@@ -125,7 +124,8 @@ export default function App() {
     status: {}, 
     textbooks: {}, 
     subjects: [], 
-    topNotes: {} 
+    topNotes: {},
+    checks: {} 
   });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [colorRules, setColorRules] = useState([]);
@@ -138,7 +138,6 @@ export default function App() {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiFeedback, setAiFeedback] = useState('');
 
-  // 헬퍼: 자동 높이 조절 핸들러
   const autoResize = (e) => {
     e.target.style.height = 'auto';
     e.target.style.height = e.target.scrollHeight + 'px';
@@ -199,7 +198,7 @@ export default function App() {
           if (data.yearlyPlan) setYearlyPlan(data.yearlyPlan);
           if (data.monthlyMemo) setMonthlyMemo(data.monthlyMemo);
           if (data.termScheduler) setTermScheduler({
-            subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {},
+            subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {},
             ...data.termScheduler
           });
           if (data.colorRules) setColorRules(data.colorRules);
@@ -317,7 +316,7 @@ export default function App() {
         return newRow;
       }));
     } else if (activeTab === 'MONTHLY') {
-      setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {} });
+      setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
     }
     setSelection({ day: null, startId: null, endId: null });
     setShowResetConfirm(false); 
@@ -353,7 +352,8 @@ export default function App() {
         full: `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`,
         label: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
         day: dayLabels[dateObj.getDay()],
-        isWeekend: dateObj.getDay() === 0 || dateObj.getDay() === 6
+        isWeekend: dateObj.getDay() === 0 || dateObj.getDay() === 6,
+        isSat: dateObj.getDay() === 6
       });
     }
     return days;
@@ -363,6 +363,14 @@ export default function App() {
     setTermScheduler(prev => ({
       ...prev,
       cells: { ...prev.cells, [`${subject}-${dateKey}`]: value }
+    }));
+  };
+
+  const handleTermCheckToggle = (subject, dateKey) => {
+    const key = `${subject}-${dateKey}`;
+    setTermScheduler(prev => ({
+      ...prev,
+      checks: { ...prev.checks, [key]: !prev.checks[key] }
     }));
   };
 
@@ -420,8 +428,6 @@ export default function App() {
     if (!aiPrompt.trim()) return;
     setIsAiProcessing(true);
     setAiFeedback('AI 조교가 요청을 처리 중입니다...');
-    const curYear = currentDate.getFullYear();
-    const curMonth = currentDate.getMonth() + 1;
     const schedulerDates = getSchedulerDates().map(d => d.full);
 
     const systemPrompts = {
@@ -606,7 +612,7 @@ export default function App() {
             </div>
           </header>
 
-          <main className="max-w-[1600px] mx-auto p-4 md:p-6 pb-24 h-full relative">
+          <main className="max-w-[1800px] mx-auto p-4 md:p-6 pb-24 h-full relative">
             {activeTab === 'WEEKLY' && (
               <div className="animate-fade-in h-full flex flex-col">
                 <div className="space-y-4 flex-1 flex flex-col">
@@ -688,7 +694,7 @@ export default function App() {
 
             {activeTab === 'MONTHLY' && (
               <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto">
-                <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[1400px]">
+                <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[1600px]">
                   <div className="flex items-center justify-between mb-6">
                     <div className="flex gap-2">
                       <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors"><ChevronLeft size={20}/></button>
@@ -712,15 +718,21 @@ export default function App() {
                         <thead>
                           <tr className="bg-slate-50">
                             <th className="border border-slate-300 w-24 py-2 text-center font-black" rowSpan={2}>과목</th>
-                            {chunk.map((d, i) => <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${d.isWeekend ? 'text-red-500' : ''}`}>{d.day}</th>)}
+                            {chunk.map((d, i) => {
+                              let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : '';
+                              return <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${textColor}`}>{d.day}</th>;
+                            })}
                           </tr>
                           <tr className="bg-slate-50">
-                            {chunk.map((d, i) => <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${d.isWeekend ? 'text-red-500' : ''}`}>{d.label}</th>)}
+                            {chunk.map((d, i) => {
+                               let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : '';
+                               return <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${textColor}`}>{d.label}</th>;
+                            })}
                           </tr>
                         </thead>
                         <tbody>
                           <tr className="bg-white">
-                            <td className="border border-slate-300 text-center font-black bg-slate-50 text-indigo-600">비고</td>
+                            <td className="border border-slate-300 text-center font-black bg-slate-50 text-black">비고</td>
                             {chunk.map((d) => (
                               <td key={`note-${d.full}`} className="border border-slate-300 p-0 align-middle">
                                 <textarea value={termScheduler.topNotes[d.full] || ''} onChange={(e) => handleTopNoteChange(d.full, e.target.value)} onInput={autoResize} className="w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" />
@@ -735,10 +747,16 @@ export default function App() {
                               </td>
                               {chunk.map((d) => {
                                 const val = termScheduler.cells[`${sub}-${d.full}`] || '';
+                                const isChecked = termScheduler.checks[`${sub}-${d.full}`] || false;
                                 const bg = getCellColor(val);
                                 return (
-                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle" style={{ backgroundColor: bg }}>
-                                    <textarea value={val} onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} onInput={autoResize} className="w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" />
+                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle transition-colors relative" style={{ backgroundColor: bg }}>
+                                    <div className="flex items-center h-full w-full">
+                                      <textarea value={val} onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} onInput={autoResize} className="flex-1 bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" />
+                                      <div className="pr-1">
+                                        <input type="checkbox" checked={isChecked} onChange={() => handleTermCheckToggle(sub, d.full)} className="w-4 h-4 cursor-pointer accent-indigo-600" />
+                                      </div>
+                                    </div>
                                   </td>
                                 );
                               })}
@@ -750,28 +768,39 @@ export default function App() {
                   })}
 
                   {termScheduler.subjects.length > 0 && (
-                    <table className="w-full border-collapse text-[11px] max-w-5xl">
+                    <table className="w-full border-collapse text-[11px] max-w-6xl">
                       <thead>
                         <tr className="bg-slate-50 font-black">
                           <th className="border border-slate-300 w-24 py-3">과목</th>
                           <th className="border border-slate-300 w-48">교재</th>
-                          <th className="border border-slate-300 w-32">시작</th>
-                          <th className="border border-slate-300 w-48">목표</th>
-                          <th className="border border-slate-300 w-24">달성률</th>
-                          <th className="border border-slate-300 w-32">달성도</th>
+                          <th className="border border-slate-300 w-48">시작 (1일차)</th>
+                          <th className="border border-slate-300 w-48">목표 (28일차)</th>
+                          <th className="border border-slate-300 w-64">달성도 (바 그래프)</th>
                         </tr>
                       </thead>
                       <tbody>
                         {termScheduler.subjects.map((sub) => {
-                          const s = termScheduler.status[sub] || {};
+                          const allDates = getSchedulerDates();
+                          const firstDayVal = termScheduler.cells[`${sub}-${allDates[0].full}`] || '';
+                          const lastDayVal = termScheduler.cells[`${sub}-${allDates[27].full}`] || '';
+                          
+                          // 달성도 계산 (체크박스 기준)
+                          const totalDays = 28;
+                          const checkedCount = allDates.filter(d => termScheduler.checks[`${sub}-${d.full}`]).length;
+                          const percent = Math.round((checkedCount / totalDays) * 100);
+
                           return (
                             <tr key={`status-${sub}`}>
                               <td className="border border-slate-300 text-center font-black py-2 bg-slate-50/30">{sub}</td>
                               <td className="border border-slate-300 p-0"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-2 outline-none font-bold text-center" /></td>
-                              <td className="border border-slate-300 p-0"><input value={s.start || ''} onChange={(e) => handleTermStatusChange(sub, 'start', e.target.value)} className="w-full h-full p-2 outline-none text-center font-bold" /></td>
-                              <td className="border border-slate-300 p-0"><input value={s.goal || ''} onChange={(e) => handleTermStatusChange(sub, 'goal', e.target.value)} className="w-full h-full p-2 outline-none text-center font-bold" /></td>
-                              <td className="border border-slate-300 p-0"><input value={s.rate || ''} onChange={(e) => handleTermStatusChange(sub, 'rate', e.target.value)} className="w-full h-full p-2 outline-none text-center font-bold" /></td>
-                              <td className="border border-slate-300 p-0"><input value={s.level || ''} onChange={(e) => handleTermStatusChange(sub, 'level', e.target.value)} className="w-full h-full p-2 outline-none text-center font-bold" /></td>
+                              <td className="border border-slate-300 bg-slate-50/10 text-center font-bold px-2 py-2">{firstDayVal || '-'}</td>
+                              <td className="border border-slate-300 bg-slate-50/10 text-center font-bold px-2 py-2">{lastDayVal || '-'}</td>
+                              <td className="border border-slate-300 p-2">
+                                <div className="relative w-full h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner">
+                                  <div className="absolute inset-y-0 left-0 bg-green-200 transition-all duration-500 ease-out" style={{ width: `${percent}%` }} />
+                                  <span className="absolute left-3 inset-y-0 flex items-center text-[9px] font-black text-slate-600">{percent}%</span>
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
@@ -824,7 +853,7 @@ export default function App() {
             <div className="space-y-6 text-sm leading-relaxed font-bold">
               <div>
                 <p className="text-indigo-600 mb-1">🎨 색상 자동 강조</p>
-                <p className="text-slate-500 font-medium">상단 [색상] 버튼에서 키워드(예: 수학)와 색을 지정하면, 모든 탭의 해당 단어가 자동으로 채색됩니다.</p>
+                <p className="text-slate-500 font-medium">상단 [색상] 버튼에서 키워드와 색을 지정하면, 모든 탭의 해당 단어가 자동으로 채색됩니다.</p>
               </div>
               <div>
                 <p className="text-indigo-600 mb-1">⏎ 줄바꿈 (엔터)</p>
@@ -832,7 +861,7 @@ export default function App() {
               </div>
               <div>
                 <p className="text-indigo-600 mb-1">🤖 AI 조교 활용 (월간)</p>
-                <p className="text-slate-500 font-medium">과목을 먼저 추가한 뒤, AI에게 "수학 시발점 매일 1강씩 채워줘"라고 말해보세요. 날짜별로 진도를 자동 분배합니다.</p>
+                <p className="text-slate-500 font-medium">과목을 먼저 추가한 뒤, AI에게 "수학 시발점 매일 1강씩 채워줘"라고 말해보세요. 등록된 과목의 빈 칸을 자동으로 채워줍니다.</p>
               </div>
             </div>
             <button onClick={() => setShowHelpModal(false)} className="mt-8 w-full py-4 rounded-xl font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">알겠습니다!</button>
