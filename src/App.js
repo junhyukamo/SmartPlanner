@@ -166,7 +166,6 @@ export default function App() {
       try {
         await signInAnonymously(auth);
         
-        // 1. URL 파라미터(?sid=...) 확인 (학생 전용 링크)
         const params = new URLSearchParams(window.location.search);
         const sid = params.get('sid');
         
@@ -174,10 +173,9 @@ export default function App() {
           setCurrentDocId(sid);
           setRole('student');
           setView('PLANNER');
-          return; // 파라미터가 있으면 다른 로직 건너뜀
+          return; 
         }
 
-        // 2. 공용 API 키 실시간 감시
         const globalRef = doc(db, 'settings', 'global');
         onSnapshot(globalRef, (snap) => {
           if (snap.exists()) {
@@ -190,7 +188,6 @@ export default function App() {
         setCriticalError('AUTH_CONFIG_MISSING');
       }
 
-      // 3. 기존 세션 확인 (없을 때만 랜딩으로)
       const savedRole = localStorage.getItem('planner_role');
       const savedName = localStorage.getItem('planner_name');
 
@@ -211,7 +208,7 @@ export default function App() {
   }, []);
 
   // --------------------------------------------------------------------------------
-  // 9. 플래너 데이터 실시간 동기화
+  // 9. 플래너 데이터 실시간 동기화 (포인트 1 수정: 이름 보존을 위해 role 조건 제거)
   // --------------------------------------------------------------------------------
   useEffect(() => {
     if (!user || !currentDocId || (view !== 'PLANNER' && view !== 'TEACHER_DASHBOARD')) return;
@@ -238,16 +235,19 @@ export default function App() {
           if (data.monthlyMemo) setMonthlyMemo(data.monthlyMemo);
           if (data.monthlyEvents) setMonthlyEvents(data.monthlyEvents);
           if (data.colorRules) setColorRules(data.colorRules);
-          // 학생 모드일 때 이름 세팅
-          if (data.studentName && role === 'student') setStudentName(data.studentName);
+          
+          // [포인트 1 수정] 선생님이 보더라도 학생의 실제 이름을 상태에 동기화하여 UUID로 덮어쓰지 않게 함
+          if (data.studentName) {
+            setStudentName(data.studentName);
+          }
         }
       } catch (e) { console.error("데이터 로드 에러:", e); } finally { setLoading(false); }
     });
     return () => unsubscribe();
-  }, [user, currentDocId, role]);
+  }, [user, currentDocId, view]);
 
   // --------------------------------------------------------------------------------
-  // 10. 플래너 데이터 자동 저장
+  // 10. 플래너 데이터 자동 저장 (포인트 1 수정: studentName 저장 로직 강화)
   // --------------------------------------------------------------------------------
   const isFirstRun = useRef(true);
   useEffect(() => {
@@ -255,15 +255,19 @@ export default function App() {
     if (!user || !currentDocId || view !== 'PLANNER' || loading) return;
     const saveData = async () => {
       const docRef = doc(db, 'planners', currentDocId);
+      
+      // [포인트 1 수정] studentName이 비어있거나 UUID와 같으면 저장하지 않음 (이름 보존)
+      const isActuallyName = studentName && studentName !== currentDocId;
+
       await setDoc(docRef, {
         timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, monthlyEvents,
         lastUpdated: new Date().toISOString(),
-        studentName: studentName || currentDocId,
+        ...(isActuallyName && { studentName: studentName })
       }, { merge: true });
     };
     const timeoutId = setTimeout(saveData, 1000);
     return () => clearTimeout(timeoutId);
-  }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, monthlyEvents, user, currentDocId, view, loading]);
+  }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, monthlyEvents, user, currentDocId, view, loading, studentName]);
 
   // --------------------------------------------------------------------------------
   // 11. 선생님 대시보드 로드
@@ -413,7 +417,7 @@ export default function App() {
   };
 
   // --------------------------------------------------------------------------------
-  // 16. AI 호출 (탭별 특화)
+  // 16. AI 호출
   // --------------------------------------------------------------------------------
   const callGeminiAPI = async (systemPrompt, userText = "") => {
     if (!globalAiKey) { setAiFeedback('⚠️ 공용 API 키가 등록되지 않았습니다 (관리자 문의).'); return null; }
@@ -518,7 +522,6 @@ export default function App() {
   const executeLogout = () => {
     localStorage.removeItem('planner_role'); localStorage.removeItem('planner_name');
     setView('LANDING'); setRole(''); setStudentName(''); setCurrentDocId(null); setShowLogoutConfirm(false);
-    // sid 파라미터가 있을 경우 메인 경로로 이동시켜 초기화
     if (window.location.search.includes('sid=')) {
       window.history.replaceState({}, '', window.location.pathname);
     }
@@ -858,15 +861,16 @@ export default function App() {
         </div>
       )}
 
+      {/* [포인트 2 수정] 초기화 확인창 크기 조절 (max-w-xs 적용) */}
       {showResetConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowResetConfirm(false)}>
-          <div className={`w-full max-sm rounded-3xl shadow-2xl p-8 text-center ${darkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800'}`} onClick={(e) => e.stopPropagation()}>
+          <div className={`w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center ${darkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800'}`} onClick={(e) => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
             <h3 className="font-extrabold text-xl mb-2">일정 초기화</h3>
-            <p className="text-sm mb-8">모든 데이터가 삭제됩니다. 계속하시겠습니까?</p>
+            <p className="text-sm mb-8">모든 데이터가 삭제됩니다.<br/>계속하시겠습니까?</p>
             <div className="flex gap-3">
               <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold">취소</button>
-              <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-extrabold">확인 (삭제)</button>
+              <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-extrabold">확인</button>
             </div>
           </div>
         </div>
