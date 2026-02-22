@@ -70,6 +70,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 export default function App() {
+  // 1. 앱 전역 상태 관리 (다크모드 제거)
   const [user, setUser] = useState(null);
   const [view, setView] = useState('LOADING');
   const [role, setRole] = useState('');
@@ -88,7 +89,6 @@ export default function App() {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); 
   const [studentToDelete, setStudentToDelete] = useState(null); 
-  const [darkMode, setDarkMode] = useState(false);
 
   const generateTimeSlots = () => {
     const slots = [];
@@ -124,8 +124,8 @@ export default function App() {
     cells: {}, 
     status: {}, 
     textbooks: {}, 
-    subjects: [], // 과목 동적 관리
-    topNotes: {}  // 날짜 밑 빈 칸 데이터
+    subjects: [], 
+    topNotes: {} 
   });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [colorRules, setColorRules] = useState([]);
@@ -138,6 +138,12 @@ export default function App() {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiFeedback, setAiFeedback] = useState('');
 
+  // 헬퍼: 자동 높이 조절 핸들러
+  const autoResize = (e) => {
+    e.target.style.height = 'auto';
+    e.target.style.height = e.target.scrollHeight + 'px';
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       try {
@@ -145,10 +151,7 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get('sid');
         if (sid) {
-          setCurrentDocId(sid);
-          setRole('student');
-          setView('PLANNER');
-          return; 
+          setCurrentDocId(sid); setRole('student'); setView('PLANNER'); return; 
         }
         const globalRef = doc(db, 'settings', 'global');
         onSnapshot(globalRef, (snap) => {
@@ -333,20 +336,14 @@ export default function App() {
     return rule ? rule.color : null;
   };
 
-  // [수정] 1일 기준이 아니라 해당 월의 첫 번째 월요일부터 시작하는 28일 로직
   const getSchedulerDates = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const firstDayOfMonth = new Date(year, month, 1);
-    
-    // 첫 날의 요일 (0:일, 1:월, ...)
     let startDayOffset = firstDayOfMonth.getDay(); 
-    if (startDayOffset === 0) startDayOffset = 7; // 일요일이면 7로 취급
-    
-    // 해당 주의 월요일 찾기
+    if (startDayOffset === 0) startDayOffset = 7; 
     const startDate = new Date(firstDayOfMonth);
     startDate.setDate(firstDayOfMonth.getDate() - (startDayOffset - 1));
-
     const days = [];
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
     for (let i = 0; i < 28; i++) {
@@ -425,12 +422,19 @@ export default function App() {
     setAiFeedback('AI 조교가 요청을 처리 중입니다...');
     const curYear = currentDate.getFullYear();
     const curMonth = currentDate.getMonth() + 1;
+    const schedulerDates = getSchedulerDates().map(d => d.full);
+
     const systemPrompts = {
       WEEKLY: `당신은 주간 학습 플래너 전문가입니다. 사용자의 요청을 08:00~24:00 일정표에 분배하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon|tue|wed|thu|fri|sat|sun", "startTime": "HH:MM", "endTime": "HH:MM", "content": "내용" }] }`,
-      MONTHLY: `당신은 '팀 스케줄러' 관리 전문가입니다. 사용자가 '과목 추가'를 요청하면 새 과목을 행에 추가하고 내용을 배치하세요. JSON 구조: { "type": "UPDATE_TERM_SCHEDULER", "addSubjects": ["신규과목명"], "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용" }], "status": [{ "subject": "과목명", "goal": "목표" }] }`,
+      MONTHLY: `당신은 '팀 스케줄러' 데이터 채우기 전문가입니다. 
+               중요: 과목을 새로 추가하지 마세요. 현재 등록된 과목 리스트: [${termScheduler.subjects.join(', ')}]. 
+               사용자가 특정 과목의 학습 계획을 말하면 해당 과목의 행을 찾아 날짜별로 내용을 채우세요.
+               예를 들어 "수학 1강씩" 이라고 하면 등록된 '수학' 과목의 첫 날부터 '1강', '2강', '3강'... 순으로 내용을 채웁니다.
+               JSON 구조: { "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용" }] }`,
       YEARLY: `당신은 연간 로드맵 전문가입니다. 1월부터 12월까지 학습 흐름을 구성하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_YEARLY", "plans": ["1월내용", ..., "12월내용"] }`
     };
-    const text = await callGeminiAPI(systemPrompts[activeTab], `사용자 요청: "${aiPrompt}"`);
+
+    const text = await callGeminiAPI(systemPrompts[activeTab], `사용자 요청: "${aiPrompt}" / 현재 사용 가능한 날짜 리스트: ${JSON.stringify(schedulerDates)}`);
     if (text) {
       try {
         const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -451,13 +455,14 @@ export default function App() {
           });
           setTimetable(newTimetable); setAiFeedback('✅ 주간 시간표 반영 완료!');
         } else if (aiResponse.type === 'UPDATE_TERM_SCHEDULER' && activeTab === 'MONTHLY') {
-          const newSubjects = [...new Set([...termScheduler.subjects, ...(aiResponse.addSubjects || [])])];
           const newCells = { ...termScheduler.cells };
-          const newStatus = { ...termScheduler.status };
-          aiResponse.cells?.forEach(c => { newCells[`${c.subject}-${c.date}`] = c.content; });
-          aiResponse.status?.forEach(s => { newStatus[s.subject] = { ...(newStatus[s.subject] || {}), goal: s.goal }; });
-          setTermScheduler(prev => ({ ...prev, subjects: newSubjects, cells: newCells, status: newStatus }));
-          setAiFeedback('✅ 월간 팀 스케줄러 반영 완료!');
+          aiResponse.cells?.forEach(c => { 
+            if(termScheduler.subjects.includes(c.subject)) {
+              newCells[`${c.subject}-${c.date}`] = c.content; 
+            }
+          });
+          setTermScheduler(prev => ({ ...prev, cells: newCells }));
+          setAiFeedback('✅ 월간 데이터 반영 완료!');
         } else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') {
           setYearlyPlan(aiResponse.plans); setAiFeedback('✅ 연간 로드맵 반영 완료!');
         }
@@ -494,7 +499,7 @@ export default function App() {
   );
 
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${darkMode ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-800'}`}>
+    <div className="min-h-screen bg-slate-50 text-slate-800 transition-colors duration-300">
       
       {view === 'LANDING' && (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -502,13 +507,13 @@ export default function App() {
             <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-10 text-center relative overflow-hidden">
               <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner"><BookOpen className="w-10 h-10 text-white" /></div>
               <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">스마트 학습 플래너</h1>
-              <p className="text-indigo-100 font-medium">고유 링크 시스템</p>
+              <p className="text-indigo-100 font-medium">개별 맞춤형 스케줄 시스템</p>
             </div>
             <div className="p-8 space-y-4 bg-white text-center">
-              <p className="text-slate-500 text-sm mb-4">선생님이 전달해준 링크로 접속해주세요.</p>
+              <p className="text-slate-500 text-sm mb-4">전달받은 고유 링크로 다시 접속해주세요.</p>
               <button onClick={() => setView('TEACHER_LOGIN')} className="w-full p-5 rounded-2xl border-2 border-slate-100 hover:border-slate-500 hover:bg-slate-50 flex items-center gap-5 group transition-all shadow-sm">
                 <div className="p-4 bg-slate-100 text-slate-600 rounded-xl group-hover:bg-slate-700 group-hover:text-white transition-colors"><Users size={24} /></div>
-                <div className="text-left"><div className="font-extrabold text-lg text-slate-800">관리자 로그인</div><div className="text-sm text-slate-500 mt-1">학생 시트 및 공유 링크 관리</div></div>
+                <div className="text-left"><div className="font-extrabold text-lg text-slate-800">관리자 로그인</div><div className="text-sm text-slate-500 mt-1">통합 대시보드 관리</div></div>
               </button>
             </div>
           </div>
@@ -519,7 +524,7 @@ export default function App() {
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
             <button onClick={() => setView('LANDING')} className="text-slate-400 mb-8 flex items-center gap-2 text-sm font-medium hover:text-slate-700 transition-colors bg-slate-50 px-4 py-2 rounded-lg w-fit"><ChevronLeft className="w-4 h-4" /> 뒤로가기</button>
-            <div className="mb-8"><h2 className="text-3xl font-extrabold text-slate-800 mb-2">관리자 로그인</h2><p className="text-slate-500">비밀번호를 입력해주세요.</p></div>
+            <div className="mb-8"><h2 className="text-3xl font-extrabold text-slate-800 mb-2">관리자 로그인</h2><p className="text-slate-500">비밀번호를 입력하세요.</p></div>
             <form onSubmit={handleTeacherLogin} className="space-y-6">
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700 ml-1">비밀번호</label>
@@ -538,7 +543,7 @@ export default function App() {
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100">
               <div>
                 <h1 className="text-3xl font-extrabold flex items-center gap-3 text-slate-800 mb-2"><Users className="text-indigo-600 w-8 h-8" /> 관리자 대시보드</h1>
-                <p className="text-slate-500 font-medium">총 {studentList.length}명의 학생 플래너 관리 중</p>
+                <p className="text-slate-500 font-medium">총 {studentList.length}명의 시트가 있습니다.</p>
               </div>
               <div className="flex flex-wrap gap-3 mt-4 md:mt-0">
                 <button onClick={createNewStudentSheet} className="text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg"><UserPlus className="w-5 h-5" /> 새 학생 추가</button>
@@ -578,26 +583,24 @@ export default function App() {
 
       {view === 'PLANNER' && (
         <>
-          <header className={`px-4 py-3 shadow-sm sticky top-0 z-30 transition-colors duration-300 border-b ${darkMode ? 'bg-slate-800/90 border-slate-700' : 'bg-white/90 border-slate-200'} backdrop-blur-md`}>
+          <header className="px-4 py-3 shadow-sm sticky top-0 z-30 bg-white border-b border-slate-200 backdrop-blur-md">
             <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
                 <div className="flex items-center gap-3">
-                  {role === 'teacher' && <button onClick={() => setView('TEACHER_DASHBOARD')} className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-slate-700 bg-slate-800' : 'hover:bg-slate-100 bg-white border border-slate-200'}`}><ChevronLeft className="w-5 h-5" /></button>}
-                  <div className={`p-2.5 rounded-xl shadow-inner ${role === 'teacher' ? 'bg-gradient-to-br from-slate-600 to-slate-800' : 'bg-gradient-to-br from-indigo-500 to-indigo-700'}`}><BookOpen className="text-white w-5 h-5" /></div>
+                  {role === 'teacher' && <button onClick={() => setView('TEACHER_DASHBOARD')} className="p-2 rounded-full hover:bg-slate-100 border border-slate-200"><ChevronLeft className="w-5 h-5" /></button>}
+                  <div className="p-2.5 rounded-xl shadow-inner bg-gradient-to-br from-indigo-500 to-indigo-700"><BookOpen className="text-white w-5 h-5" /></div>
                   <div className="font-extrabold text-xl tracking-tight">{studentName} 플래너</div>
                 </div>
-                <div className="md:hidden flex gap-2"><button onClick={() => setDarkMode(!darkMode)} className={`p-2 rounded-full transition-colors ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-200'}`}>{darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-slate-500" />}</button></div>
               </div>
               <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-                <div className={`flex p-1.5 rounded-xl shadow-inner ${darkMode ? 'bg-slate-800' : 'bg-slate-100'} flex-1 md:flex-none justify-center`}>
+                <div className="flex p-1.5 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
                   {['WEEKLY', 'MONTHLY', 'YEARLY'].map((tab) => (
-                    <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? darkMode ? 'bg-indigo-600 text-white shadow-lg scale-[1.02]' : 'bg-white text-indigo-700 shadow-md scale-[1.02]' : darkMode ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200/50'}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
+                    <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? 'bg-white text-indigo-700 shadow-md scale-[1.02]' : 'text-slate-400 hover:text-slate-600'}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
                   ))}
                 </div>
-                <div className={`hidden md:flex items-center gap-2 border-l pl-3 ml-1 ${darkMode ? 'border-slate-700' : 'border-slate-200'}`}>
-                  <button onClick={() => setShowHelpModal(true)} className={`p-2.5 rounded-xl transition-colors ${darkMode ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}><HelpCircle className="w-5 h-5" /></button>
-                  <button onClick={() => setDarkMode(!darkMode)} className={`p-2.5 rounded-xl transition-colors ${darkMode ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}>{darkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-slate-500" />}</button>
-                  <button onClick={handleLogout} className={`p-2.5 rounded-xl transition-colors ${darkMode ? 'hover:bg-red-900/30 text-red-400' : 'hover:bg-red-50 text-red-500'}`}><LogOut className="w-5 h-5" /></button>
+                <div className="hidden md:flex items-center gap-2 border-l pl-3 ml-1 border-slate-200">
+                  <button onClick={() => setShowHelpModal(true)} className="p-2.5 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors"><HelpCircle className="w-5 h-5" /></button>
+                  <button onClick={handleLogout} className="p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button>
                 </div>
               </div>
             </div>
@@ -607,73 +610,68 @@ export default function App() {
             {activeTab === 'WEEKLY' && (
               <div className="animate-fade-in h-full flex flex-col">
                 <div className="space-y-4 flex-1 flex flex-col">
-                  <div className={`p-3 md:p-4 rounded-3xl shadow-sm border flex flex-col h-[calc(100vh-140px)] min-h-[500px] ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                  <div className="p-3 md:p-4 rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-[calc(100vh-140px)] min-h-[500px]">
                     <div className="flex flex-wrap items-center justify-between gap-4 mb-2 flex-shrink-0">
                       <div className="flex items-center gap-4">
                         {dDay ? (
                           <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl shadow-md text-sm"><Calendar size={16} /><span className="font-bold">{dDay.title}</span><button onClick={() => setDDay(null)} className="hover:text-red-200 p-1"><X className="w-4 h-4" /></button></div>
                         ) : (
-                          <div className={`flex items-center gap-2 p-1.5 rounded-2xl border shadow-inner ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-200'}`}><input type="text" placeholder="목표 (예: 중간고사)" className={`w-32 p-2.5 text-sm rounded-xl outline-none font-medium ${darkMode ? 'bg-slate-800 text-white placeholder-slate-500 focus:border-indigo-500 border-transparent' : 'bg-white border-slate-100 focus:border-indigo-500 border'}`} value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/><input type="date" className={`w-36 p-2.5 text-sm rounded-xl outline-none ${darkMode ? 'bg-slate-800 text-white border-transparent focus:border-indigo-500' : 'bg-white border-slate-100 focus:border-indigo-500 border'}`} value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/><button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); } }} className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm ${darkMode ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : 'bg-slate-800 hover:bg-slate-900 text-white'}`}>설정</button></div>
+                          <div className="flex items-center gap-2 p-1.5 rounded-2xl border border-slate-200 bg-slate-50 shadow-inner"><input type="text" placeholder="목표 (예: 중간고사)" className="w-32 p-2.5 text-sm rounded-xl outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/><input type="date" className="w-36 p-2.5 text-sm rounded-xl outline-none bg-white border border-slate-100 focus:border-indigo-500" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/><button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); } }} className="px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button></div>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2 text-sm ml-auto">
-                        <div className="relative">
-                          <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-all shadow-sm border ${showColorModal ? (darkMode ? 'bg-indigo-900/50 border-indigo-700 text-indigo-300' : 'bg-indigo-50 border-indigo-200 text-indigo-700') : (darkMode ? 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50')}`}><Palette className="w-4 h-4" /> 색상</button>
-                          {showColorModal && (
-                            <div className={`absolute right-0 top-14 w-80 p-5 rounded-2xl shadow-2xl border z-30 animate-fade-in ${darkMode ? 'bg-slate-800 border-slate-600' : 'bg-white border-slate-200'}`}>
-                              <h4 className="font-extrabold mb-4 text-base flex items-center gap-2"><Palette className="text-indigo-500 w-5 h-5"/> 키워드 색상 지정</h4>
-                              <div className="flex gap-2 mb-4">
-                                <input type="text" placeholder="단어 (예: 수학)" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className={`flex-1 p-3 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border ${darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'}`} />
-                                <div className={`relative w-12 h-12 rounded-xl overflow-hidden shadow-inner border flex-shrink-0 cursor-pointer ${darkMode ? 'border-slate-600' : 'border-slate-200'}`}><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
-                                <button onClick={addColorRule} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md">추가</button>
-                              </div>
-                              <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                                {colorRules.map((rule) => (
-                                  <div key={rule.id} className={`flex items-center justify-between text-sm p-3 rounded-xl border group transition-colors ${darkMode ? 'bg-slate-900/50 border-slate-700 hover:border-indigo-500' : 'bg-slate-50 border-slate-100 hover:border-indigo-200'}`}>
-                                    <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
-                                    <button onClick={() => removeColorRule(rule.id)} className={`p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100 ${darkMode ? 'text-slate-400 hover:text-red-400 hover:bg-red-900/30' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}><X className="w-4 h-4" /></button>
-                                  </div>
-                                ))}
-                              </div>
+                        <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><Palette className="w-4 h-4" /> 색상</button>
+                        {showColorModal && (
+                          <div className="absolute right-0 top-14 w-80 p-5 rounded-2xl shadow-2xl border border-slate-200 bg-white z-30 animate-fade-in">
+                            <h4 className="font-extrabold mb-4 text-base flex items-center gap-2"><Palette className="text-indigo-500 w-5 h-5"/> 키워드 색상 지정</h4>
+                            <div className="flex gap-2 mb-4">
+                              <input type="text" placeholder="단어 (예: 수학)" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-3 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50" />
+                              <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
+                              <button onClick={addColorRule} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md">추가</button>
                             </div>
-                          )}
-                        </div>
-                        <div className={`h-8 w-px mx-1 ${darkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
-                        {selection.day && selection.startId !== selection.endId ? <button onClick={mergeCells} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-4 h-4" /> 병합</button> : <div className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium border border-dashed select-none ${darkMode ? 'bg-slate-900/50 text-slate-500 border-slate-700' : 'bg-slate-50 text-slate-400 border-slate-200'}`}><MousePointer2 className="w-4 h-4" /> 드래그</div>}
-                        <button onClick={unmergeCells} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold shadow-sm transition-colors border ${darkMode ? 'bg-slate-800 text-slate-300 border-slate-600 hover:bg-slate-700' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}`}><Split className="w-4 h-4" /> 분할</button>
-                        <button onClick={() => setShowResetConfirm(true)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-colors ml-1 ${darkMode ? 'bg-red-900/20 text-red-400 hover:bg-red-900/40' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}><Trash2 className="w-4 h-4" /> 일정 초기화</button>
+                            <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                              {colorRules.map((rule) => (
+                                <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors">
+                                  <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
+                                  <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="h-8 w-px mx-1 bg-slate-200"></div>
+                        {selection.day && selection.startId !== selection.endId ? <button onClick={mergeCells} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-4 h-4" /> 병합</button> : <div className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-4 h-4" /> 드래그</div>}
+                        <button onClick={unmergeCells} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-4 h-4" /> 분할</button>
+                        <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-colors ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-4 h-4" /> 일정 초기화</button>
                       </div>
                     </div>
-                    <div className={`flex-1 relative select-none rounded-xl border-2 shadow-inner overflow-x-auto overflow-y-hidden ${darkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-white'}`} onMouseLeave={handleMouseUp}>
+                    <div className="flex-1 relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-x-auto overflow-y-hidden" onMouseLeave={handleMouseUp}>
                       <table className="w-full h-full text-center text-sm border-collapse min-w-[800px] table-fixed">
-                        <thead className={`z-20 shadow-sm ${darkMode ? 'bg-slate-800 border-b-2 border-slate-600 text-slate-200' : 'bg-slate-50 border-b-2 border-slate-200 text-slate-800'}`}>
+                        <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800">
                           <tr>
-                            <th className={`py-2 w-16 border-r uppercase tracking-widest text-[10px] font-black ${darkMode ? 'border-slate-700 text-slate-500' : 'border-slate-200 text-slate-400'}`}><Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50"/> Time</th>
+                            <th className="py-2 w-16 border-r border-slate-200 uppercase tracking-widest text-[10px] font-black text-slate-400"><Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50"/> Time</th>
                             {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((d, i) => {
                               const labels = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
-                              let textColor = '';
-                              if (d === 'sat') textColor = darkMode ? 'text-blue-400' : 'text-blue-500';
-                              else if (d === 'sun') textColor = darkMode ? 'text-red-400' : 'text-red-500';
-                              return <th key={d} className={`py-2 font-black text-xs border-r ${darkMode ? 'border-slate-700' : 'border-slate-200'} ${textColor}`}>{labels[i]}</th>;
+                              let textColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : '';
+                              return <th key={d} className={`py-2 font-black text-xs border-r border-slate-200 ${textColor}`}>{labels[i]}</th>;
                             })}
                           </tr>
                         </thead>
                         <tbody>
                           {timetable.map((row) => (
                             <tr key={row.id} className="group">
-                              <td className={`p-0 w-16 border align-middle transition-colors select-none ${darkMode ? 'border-slate-700 bg-slate-900/50' : 'border-slate-200 bg-white'}`}>
-                                <div className={`flex flex-col items-center justify-center h-full text-[10px] font-medium ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}><span>{row.time}</span></div>
+                              <td className="p-0 w-16 border border-slate-200 align-middle bg-white transition-colors select-none text-center">
+                                <div className="flex flex-col items-center justify-center h-full text-[10px] font-medium text-slate-400"><span>{row.time}</span></div>
                               </td>
                               {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => {
                                 if (row[`${day}_hidden`]) return null;
-                                const span = row[`${day}_span`] || 1;
                                 const isSelected = selection.day === day && row.id >= Math.min(selection.startId, selection.endId) && row.id <= Math.max(selection.startId, selection.endId);
                                 const keywordColor = getCellColor(row[day]);
-                                const bgColor = isSelected ? (darkMode ? 'rgba(99, 102, 241, 0.4)' : 'rgba(224, 231, 255, 0.8)') : keywordColor ? keywordColor : 'transparent';
+                                const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
                                 return (
-                                  <td key={day} className={`p-0 relative align-middle border cursor-text transition-all duration-200 ease-in-out ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10 relative' : ''} ${darkMode ? 'border-slate-700 hover:bg-slate-700/30' : 'border-slate-200 hover:bg-indigo-50/30'}`} style={{ backgroundColor: bgColor }} rowSpan={span} onMouseDown={() => handleMouseDown(day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)} onClick={(e) => { const textarea = e.currentTarget.querySelector('textarea'); if (textarea) textarea.focus(); }}>
-                                    <div className="w-full h-full flex flex-col items-center justify-center p-0.5 group">
-                                      <textarea value={row[day]} onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} onInput={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }} placeholder={span > 1 ? '일정 입력' : ''} onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} rows={1} className={`w-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 transition-shadow ${darkMode ? 'text-slate-100 placeholder-slate-500' : 'text-slate-700 placeholder-slate-300'} ${keywordColor && !darkMode ? 'text-black mix-blend-color-burn' : ''}`} />
+                                  <td key={day} className={`p-0 relative align-middle border border-slate-200 cursor-text transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30`} style={{ backgroundColor: bgColor }} rowSpan={row[`${day}_span`] || 1} onMouseDown={() => handleMouseDown(day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)}>
+                                    <div className="w-full h-full flex items-center justify-center p-0.5">
+                                      <textarea value={row[day]} onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} onInput={autoResize} onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} rows={1} className="w-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50" />
                                     </div>
                                   </td>
                                 );
@@ -690,60 +688,57 @@ export default function App() {
 
             {activeTab === 'MONTHLY' && (
               <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto">
-                <div className={`p-6 rounded-3xl border shadow-sm ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} min-w-[1400px]`}>
-                  <div className="flex items-center justify-between mb-4">
+                <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[1400px]">
+                  <div className="flex items-center justify-between mb-6">
                     <div className="flex gap-2">
-                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200"><ChevronLeft size={20}/></button>
-                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200"><ChevronRight size={20}/></button>
+                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors"><ChevronLeft size={20}/></button>
+                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors"><ChevronRight size={20}/></button>
                     </div>
                     <div className="flex gap-3">
                       <button onClick={() => {
                         const name = prompt("추가할 과목명을 입력하세요 (예: 국어)");
                         if(name) addSubjectRow(name.trim());
-                      }} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-md transition-all"><Plus size={16}/> 과목 추가</button>
-                      <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl font-bold text-sm hover:bg-red-100 transition-all"><Trash2 size={16}/> 초기화</button>
+                      }} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-sm hover:bg-indigo-700 shadow-md transition-all"><Plus size={18}/> 과목 추가</button>
+                      <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-sm hover:bg-red-100 transition-all"><Trash2 size={18}/> 일정 초기화</button>
                     </div>
                   </div>
 
-                  {/* 팀 스케줄러 테이블 (2단계 레이아웃) */}
                   {[0, 1].map((blockIdx) => {
                     const allDates = getSchedulerDates();
-                    const chunkSize = 14; // 한 블록에 14일씩 (2주)
+                    const chunkSize = 14;
                     const chunk = allDates.slice(blockIdx * chunkSize, (blockIdx + 1) * chunkSize);
                     return (
-                      <table key={blockIdx} className="w-full border-collapse mb-8 text-[11px] table-fixed">
+                      <table key={blockIdx} className="w-full border-collapse mb-10 text-[11px] table-fixed">
                         <thead>
                           <tr className="bg-slate-50">
-                            <th className="border border-slate-300 w-24 py-2" rowSpan={2}>과목</th>
-                            {chunk.map((d, i) => <th key={i} className={`border border-slate-300 py-1 font-bold ${d.isWeekend ? 'text-red-500' : ''}`}>{d.day}</th>)}
+                            <th className="border border-slate-300 w-24 py-2 text-center font-black" rowSpan={2}>과목</th>
+                            {chunk.map((d, i) => <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${d.isWeekend ? 'text-red-500' : ''}`}>{d.day}</th>)}
                           </tr>
                           <tr className="bg-slate-50">
-                            {chunk.map((d, i) => <th key={i} className={`border border-slate-300 py-1 font-bold ${d.isWeekend ? 'text-red-500' : ''}`}>{d.label}</th>)}
+                            {chunk.map((d, i) => <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${d.isWeekend ? 'text-red-500' : ''}`}>{d.label}</th>)}
                           </tr>
                         </thead>
                         <tbody>
-                          {/* 날짜 밑 빈 칸 행 */}
                           <tr className="bg-white">
-                            <td className="border border-slate-300 text-center font-bold bg-slate-50">메모</td>
+                            <td className="border border-slate-300 text-center font-black bg-slate-50 text-indigo-600">비고</td>
                             {chunk.map((d) => (
-                              <td key={`note-${d.full}`} className="border border-slate-300 p-0 h-10">
-                                <textarea value={termScheduler.topNotes[d.full] || ''} onChange={(e) => handleTopNoteChange(d.full, e.target.value)} className="w-full h-full bg-transparent resize-none outline-none p-1 text-center font-bold" />
+                              <td key={`note-${d.full}`} className="border border-slate-300 p-0 align-middle">
+                                <textarea value={termScheduler.topNotes[d.full] || ''} onChange={(e) => handleTopNoteChange(d.full, e.target.value)} onInput={autoResize} className="w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" />
                               </td>
                             ))}
                           </tr>
-                          {/* 과목 행들 */}
                           {termScheduler.subjects.map((sub) => (
                             <tr key={sub}>
-                              <td className="border border-slate-300 px-2 py-1 font-bold flex items-center justify-between group">
-                                <span>{sub}</span>
-                                <button onClick={() => removeSubjectRow(sub)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"><X size={12}/></button>
+                              <td className="border border-slate-300 px-2 py-1 font-black text-center relative group bg-slate-50/50">
+                                {sub}
+                                <button onClick={() => removeSubjectRow(sub)} className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600"><X size={12}/></button>
                               </td>
                               {chunk.map((d) => {
                                 const val = termScheduler.cells[`${sub}-${d.full}`] || '';
                                 const bg = getCellColor(val);
                                 return (
-                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 h-12" style={{ backgroundColor: bg }}>
-                                    <textarea value={val} onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} className="w-full h-full bg-transparent resize-none outline-none p-1 text-center font-bold" />
+                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle" style={{ backgroundColor: bg }}>
+                                    <textarea value={val} onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} onInput={autoResize} className="w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" />
                                   </td>
                                 );
                               })}
@@ -754,12 +749,11 @@ export default function App() {
                     );
                   })}
 
-                  {/* 하단 성취 테이블 (과목이 있을 때만 표시) */}
                   {termScheduler.subjects.length > 0 && (
-                    <table className="w-full border-collapse text-[11px] max-w-4xl">
+                    <table className="w-full border-collapse text-[11px] max-w-5xl">
                       <thead>
-                        <tr className="bg-slate-50">
-                          <th className="border border-slate-300 w-24 py-2">과목</th>
+                        <tr className="bg-slate-50 font-black">
+                          <th className="border border-slate-300 w-24 py-3">과목</th>
                           <th className="border border-slate-300 w-48">교재</th>
                           <th className="border border-slate-300 w-32">시작</th>
                           <th className="border border-slate-300 w-48">목표</th>
@@ -772,12 +766,12 @@ export default function App() {
                           const s = termScheduler.status[sub] || {};
                           return (
                             <tr key={`status-${sub}`}>
-                              <td className="border border-slate-300 text-center font-bold py-1 bg-slate-50">{sub}</td>
-                              <td className="border border-slate-300 p-0"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-1 outline-none font-bold" /></td>
-                              <td className="border border-slate-300 p-0"><input value={s.start || ''} onChange={(e) => handleTermStatusChange(sub, 'start', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
-                              <td className="border border-slate-300 p-0"><input value={s.goal || ''} onChange={(e) => handleTermStatusChange(sub, 'goal', e.target.value)} className="w-full h-full p-1 outline-none font-bold" /></td>
-                              <td className="border border-slate-300 p-0"><input value={s.rate || ''} onChange={(e) => handleTermStatusChange(sub, 'rate', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
-                              <td className="border border-slate-300 p-0"><input value={s.level || ''} onChange={(e) => handleTermStatusChange(sub, 'level', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
+                              <td className="border border-slate-300 text-center font-black py-2 bg-slate-50/30">{sub}</td>
+                              <td className="border border-slate-300 p-0"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-2 outline-none font-bold text-center" /></td>
+                              <td className="border border-slate-300 p-0"><input value={s.start || ''} onChange={(e) => handleTermStatusChange(sub, 'start', e.target.value)} className="w-full h-full p-2 outline-none text-center font-bold" /></td>
+                              <td className="border border-slate-300 p-0"><input value={s.goal || ''} onChange={(e) => handleTermStatusChange(sub, 'goal', e.target.value)} className="w-full h-full p-2 outline-none text-center font-bold" /></td>
+                              <td className="border border-slate-300 p-0"><input value={s.rate || ''} onChange={(e) => handleTermStatusChange(sub, 'rate', e.target.value)} className="w-full h-full p-2 outline-none text-center font-bold" /></td>
+                              <td className="border border-slate-300 p-0"><input value={s.level || ''} onChange={(e) => handleTermStatusChange(sub, 'level', e.target.value)} className="w-full h-full p-2 outline-none text-center font-bold" /></td>
                             </tr>
                           );
                         })}
@@ -791,9 +785,9 @@ export default function App() {
             {activeTab === 'YEARLY' && (
               <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {yearlyPlan.map((plan, idx) => (
-                  <div key={idx} className={`p-6 rounded-3xl border shadow-sm transition-all hover:shadow-md ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                  <div key={idx} className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
                     <h4 className="font-black text-indigo-600 mb-3">{idx + 1}월 계획</h4>
-                    <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} placeholder={`${idx + 1}월의 계획`} className={`w-full h-32 p-4 rounded-xl border outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none ${darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-slate-50 border-slate-100 text-slate-700'}`} />
+                    <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} onInput={autoResize} placeholder={`${idx + 1}월의 주요 마일스톤`} className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden" />
                   </div>
                 ))}
               </div>
@@ -802,15 +796,15 @@ export default function App() {
 
           <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end">
             {showAiModal ? (
-              <div className={`w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+              <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white">
                 <div className="bg-indigo-600 p-5 text-white flex justify-between items-center">
-                  <h3 className="font-extrabold text-lg">AI 매직 플래너 ({activeTab === 'WEEKLY' ? '주간' : activeTab === 'MONTHLY' ? '월간' : '연간'})</h3>
+                  <h3 className="font-extrabold text-lg">AI 매직 플래너</h3>
                   <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5" /></button>
                 </div>
                 <div className="p-6">
                   {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100">{aiFeedback}</div>}
                   <form onSubmit={handleAiSubmit} className="relative mt-2">
-                    <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="일정을 말해주세요..." className={`w-full pl-5 pr-14 py-4 rounded-2xl border-2 focus:outline-none focus:border-indigo-500 transition-all font-medium ${darkMode ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-800'}`} disabled={isAiProcessing} />
+                    <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="일정을 말해주세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-medium text-slate-800" disabled={isAiProcessing} />
                     <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl"><Send size={20} /></button>
                   </form>
                 </div>
@@ -822,30 +816,39 @@ export default function App() {
         </>
       )}
 
-      {/* 모달들 */}
       {showHelpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}>
-          <div className={`w-full max-w-md rounded-3xl shadow-2xl p-8 relative ${darkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-3xl shadow-2xl p-8 relative bg-white text-slate-800" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setShowHelpModal(false)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-100"><X className="w-6 h-6" /></button>
-            <h3 className="font-extrabold text-2xl mb-6">스마트 플래너 팁</h3>
-            <div className="space-y-4 text-sm leading-relaxed">
-              <p>1. <strong>고유 주소</strong>: 선생님이 주신 링크를 즐겨찾기 해두시면 매번 이름 입력 없이 바로 접속됩니다.</p>
-              <p>2. <strong>AI 조교</strong>: 오른쪽 하단 반짝이는 버튼을 통해 학습 계획을 자동으로 세울 수 있습니다.</p>
+            <h3 className="font-black text-2xl mb-6 flex items-center gap-2"><Sparkles className="text-indigo-600"/> 플래너 100% 활용법</h3>
+            <div className="space-y-6 text-sm leading-relaxed font-bold">
+              <div>
+                <p className="text-indigo-600 mb-1">🎨 색상 자동 강조</p>
+                <p className="text-slate-500 font-medium">상단 [색상] 버튼에서 키워드(예: 수학)와 색을 지정하면, 모든 탭의 해당 단어가 자동으로 채색됩니다.</p>
+              </div>
+              <div>
+                <p className="text-indigo-600 mb-1">⏎ 줄바꿈 (엔터)</p>
+                <p className="text-slate-500 font-medium">칸 안에서 줄을 바꾸고 싶다면 <span className="bg-slate-100 px-1 rounded text-slate-800">Alt + Enter</span>를 누르세요. 일반 Enter는 작성을 완료합니다.</p>
+              </div>
+              <div>
+                <p className="text-indigo-600 mb-1">🤖 AI 조교 활용 (월간)</p>
+                <p className="text-slate-500 font-medium">과목을 먼저 추가한 뒤, AI에게 "수학 시발점 매일 1강씩 채워줘"라고 말해보세요. 날짜별로 진도를 자동 분배합니다.</p>
+              </div>
             </div>
-            <button onClick={() => setShowHelpModal(false)} className="mt-8 w-full py-4 rounded-xl font-extrabold bg-indigo-600 text-white">확인</button>
+            <button onClick={() => setShowHelpModal(false)} className="mt-8 w-full py-4 rounded-xl font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">알겠습니다!</button>
           </div>
         </div>
       )}
 
       {showResetConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowResetConfirm(false)}>
-          <div className={`w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center ${darkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
-            <h3 className="font-extrabold text-xl mb-2">데이터 초기화</h3>
-            <p className="text-sm mb-8">현재 탭({activeTab})의 모든 데이터가 삭제됩니다.<br/>계속하시겠습니까?</p>
+            <h3 className="font-black text-xl mb-2">데이터 초기화</h3>
+            <p className="text-sm mb-8 text-slate-500 font-bold">현재 탭({activeTab === 'WEEKLY' ? '주간' : '월간'})의<br/>모든 데이터가 삭제됩니다.</p>
             <div className="flex gap-3">
-              <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold">취소</button>
-              <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-extrabold">확인</button>
+              <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
+              <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg">확인</button>
             </div>
           </div>
         </div>
@@ -853,13 +856,13 @@ export default function App() {
 
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowLogoutConfirm(false)}>
-          <div className={`w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center ${darkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4"><LogOut size={32} /></div>
-            <h3 className="font-extrabold text-xl mb-2">로그아웃</h3>
-            <p className="text-sm mb-8">정말 로그아웃 하시겠습니까?</p>
+            <h3 className="font-black text-xl mb-2">로그아웃</h3>
+            <p className="text-sm mb-8 text-slate-500 font-bold">정말 로그아웃 하시겠습니까?</p>
             <div className="flex gap-3">
-              <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold">취소</button>
-              <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-extrabold">로그아웃</button>
+              <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
+              <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100">로그아웃</button>
             </div>
           </div>
         </div>
@@ -867,13 +870,13 @@ export default function App() {
 
       {studentToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setStudentToDelete(null)}>
-          <div className={`w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center ${darkMode ? 'bg-slate-800 text-white' : 'bg-white text-slate-800'}`} onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
-            <h3 className="font-extrabold text-xl mb-2">데이터 삭제</h3>
-            <p className="text-sm mb-8">이 시트를 삭제하시겠습니까? (복구 불가능)</p>
+            <h3 className="font-black text-xl mb-2">데이터 삭제</h3>
+            <p className="text-sm mb-8 text-slate-500 font-bold">이 시트를 삭제하시겠습니까?<br/>(복구 불가능)</p>
             <div className="flex gap-3">
-              <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold">취소</button>
-              <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-extrabold">삭제</button>
+              <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
+              <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg">삭제</button>
             </div>
           </div>
         </div>
