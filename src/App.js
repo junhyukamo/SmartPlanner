@@ -125,7 +125,7 @@ export default function App() {
     textbooks: {}, 
     subjects: [], 
     topNotes: {},
-    checks: {} 
+    checks: {} // 구조: { "subject-date-index": boolean }
   });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [colorRules, setColorRules] = useState([]);
@@ -335,14 +335,9 @@ export default function App() {
     return rule ? rule.color : null;
   };
 
+  // [수정] 고정된 2026-02-02(월) 시작 기준 28일 로직
   const getSchedulerDates = () => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1);
-    let startDayOffset = firstDayOfMonth.getDay(); 
-    if (startDayOffset === 0) startDayOffset = 7; 
-    const startDate = new Date(firstDayOfMonth);
-    startDate.setDate(firstDayOfMonth.getDate() - (startDayOffset - 1));
+    const startDate = new Date(2026, 1, 2); // 2026년 2월 2일 (월요일)
     const days = [];
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
     for (let i = 0; i < 28; i++) {
@@ -366,8 +361,8 @@ export default function App() {
     }));
   };
 
-  const handleTermCheckToggle = (subject, dateKey) => {
-    const key = `${subject}-${dateKey}`;
+  const handleTermCheckToggle = (subject, dateKey, index) => {
+    const key = `${subject}-${dateKey}-${index}`;
     setTermScheduler(prev => ({
       ...prev,
       checks: { ...prev.checks, [key]: !prev.checks[key] }
@@ -435,8 +430,9 @@ export default function App() {
       MONTHLY: `당신은 '팀 스케줄러' 데이터 채우기 전문가입니다. 
                중요: 과목을 새로 추가하지 마세요. 현재 등록된 과목 리스트: [${termScheduler.subjects.join(', ')}]. 
                사용자가 특정 과목의 학습 계획을 말하면 해당 과목의 행을 찾아 날짜별로 내용을 채우세요.
+               한 날짜에 여러 항목이 있다면 줄바꿈(\\n)으로 구분하여 작성하세요. 각 줄은 자동으로 체크박스가 생성됩니다.
                예를 들어 "수학 1강씩" 이라고 하면 등록된 '수학' 과목의 첫 날부터 '1강', '2강', '3강'... 순으로 내용을 채웁니다.
-               JSON 구조: { "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용" }] }`,
+               JSON 구조: { "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용1\\n내용2" }] }`,
       YEARLY: `당신은 연간 로드맵 전문가입니다. 1월부터 12월까지 학습 흐름을 구성하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_YEARLY", "plans": ["1월내용", ..., "12월내용"] }`
     };
 
@@ -735,7 +731,12 @@ export default function App() {
                             <td className="border border-slate-300 text-center font-black bg-slate-50 text-black">비고</td>
                             {chunk.map((d) => (
                               <td key={`note-${d.full}`} className="border border-slate-300 p-0 align-middle">
-                                <textarea value={termScheduler.topNotes[d.full] || ''} onChange={(e) => handleTopNoteChange(d.full, e.target.value)} onInput={autoResize} className="w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" />
+                                <textarea 
+                                  value={termScheduler.topNotes[d.full] || ''} 
+                                  onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
+                                  rows={1}
+                                  className="w-full bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" 
+                                />
                               </td>
                             ))}
                           </tr>
@@ -747,15 +748,32 @@ export default function App() {
                               </td>
                               {chunk.map((d) => {
                                 const val = termScheduler.cells[`${sub}-${d.full}`] || '';
-                                const isChecked = termScheduler.checks[`${sub}-${d.full}`] || false;
                                 const bg = getCellColor(val);
+                                const lines = val.split('\n').filter(l => l.trim() !== '');
                                 return (
                                   <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle transition-colors relative" style={{ backgroundColor: bg }}>
-                                    <div className="flex items-center h-full w-full">
-                                      <textarea value={val} onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} onInput={autoResize} className="flex-1 bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" />
-                                      <div className="pr-1">
-                                        <input type="checkbox" checked={isChecked} onChange={() => handleTermCheckToggle(sub, d.full)} className="w-4 h-4 cursor-pointer accent-indigo-600" />
-                                      </div>
+                                    <div className="flex flex-col h-full w-full">
+                                      <textarea 
+                                        value={val} 
+                                        onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
+                                        onInput={autoResize} 
+                                        className="flex-1 bg-transparent resize-none outline-none p-2 text-center font-bold overflow-hidden" 
+                                      />
+                                      {lines.length > 0 && (
+                                        <div className="flex flex-col gap-1 px-1 pb-1">
+                                          {lines.map((line, idx) => (
+                                            <div key={idx} className="flex items-center justify-center gap-1 bg-white/40 rounded px-1 py-0.5">
+                                              <span className="text-[8px] truncate max-w-[40px] opacity-70">{line}</span>
+                                              <input 
+                                                type="checkbox" 
+                                                checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
+                                                onChange={() => handleTermCheckToggle(sub, d.full, idx)} 
+                                                className="w-3 h-3 cursor-pointer accent-indigo-600" 
+                                              />
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
                                     </div>
                                   </td>
                                 );
@@ -773,28 +791,42 @@ export default function App() {
                         <tr className="bg-slate-50 font-black">
                           <th className="border border-slate-300 w-24 py-3">과목</th>
                           <th className="border border-slate-300 w-48">교재</th>
-                          <th className="border border-slate-300 w-48">시작 (1일차)</th>
-                          <th className="border border-slate-300 w-48">목표 (28일차)</th>
-                          <th className="border border-slate-300 w-64">달성도 (바 그래프)</th>
+                          <th className="border border-slate-300 w-48">시작</th>
+                          <th className="border border-slate-300 w-48">목표</th>
+                          <th className="border border-slate-300 w-64">달성도</th>
                         </tr>
                       </thead>
                       <tbody>
                         {termScheduler.subjects.map((sub) => {
                           const allDates = getSchedulerDates();
-                          const firstDayVal = termScheduler.cells[`${sub}-${allDates[0].full}`] || '';
-                          const lastDayVal = termScheduler.cells[`${sub}-${allDates[27].full}`] || '';
                           
-                          // 달성도 계산 (체크박스 기준)
-                          const totalDays = 28;
-                          const checkedCount = allDates.filter(d => termScheduler.checks[`${sub}-${d.full}`]).length;
-                          const percent = Math.round((checkedCount / totalDays) * 100);
+                          // [수정] 실제 데이터가 존재하는 첫날과 막날 찾기
+                          let firstData = "-";
+                          let lastData = "-";
+                          let totalItems = 0;
+                          let checkedItems = 0;
+
+                          for (let i = 0; i < allDates.length; i++) {
+                            const val = termScheduler.cells[`${sub}-${allDates[i].full}`] || "";
+                            if (val.trim() !== "" && firstData === "-") firstData = val.split('\n')[0];
+                            if (val.trim() !== "") {
+                              lastData = val.split('\n').pop();
+                              const lines = val.split('\n').filter(l => l.trim() !== '');
+                              totalItems += lines.length;
+                              lines.forEach((_, idx) => {
+                                if (termScheduler.checks[`${sub}-${allDates[i].full}-${idx}`]) checkedItems++;
+                              });
+                            }
+                          }
+
+                          const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
 
                           return (
                             <tr key={`status-${sub}`}>
                               <td className="border border-slate-300 text-center font-black py-2 bg-slate-50/30">{sub}</td>
                               <td className="border border-slate-300 p-0"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-2 outline-none font-bold text-center" /></td>
-                              <td className="border border-slate-300 bg-slate-50/10 text-center font-bold px-2 py-2">{firstDayVal || '-'}</td>
-                              <td className="border border-slate-300 bg-slate-50/10 text-center font-bold px-2 py-2">{lastDayVal || '-'}</td>
+                              <td className="border border-slate-300 bg-slate-50/10 text-center font-bold px-2 py-2 truncate max-w-[150px]">{firstData}</td>
+                              <td className="border border-slate-300 bg-slate-50/10 text-center font-bold px-2 py-2 truncate max-w-[150px]">{lastData}</td>
                               <td className="border border-slate-300 p-2">
                                 <div className="relative w-full h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner">
                                   <div className="absolute inset-y-0 left-0 bg-green-200 transition-all duration-500 ease-out" style={{ width: `${percent}%` }} />
@@ -849,22 +881,22 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowHelpModal(false)}>
           <div className="w-full max-w-md rounded-3xl shadow-2xl p-8 relative bg-white text-slate-800" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setShowHelpModal(false)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-100"><X className="w-6 h-6" /></button>
-            <h3 className="font-black text-2xl mb-6 flex items-center gap-2"><Sparkles className="text-indigo-600"/> 플래너 100% 활용법</h3>
+            <h3 className="font-black text-2xl mb-6 flex items-center gap-2"><Sparkles className="text-indigo-600"/> 플래너 활용법</h3>
             <div className="space-y-6 text-sm leading-relaxed font-bold">
               <div>
                 <p className="text-indigo-600 mb-1">🎨 색상 자동 강조</p>
-                <p className="text-slate-500 font-medium">상단 [색상] 버튼에서 키워드와 색을 지정하면, 모든 탭의 해당 단어가 자동으로 채색됩니다.</p>
+                <p className="text-slate-500 font-medium">[색상] 버튼에서 키워드와 색을 지정하면 모든 탭의 해당 단어가 자동으로 강조됩니다.</p>
               </div>
               <div>
-                <p className="text-indigo-600 mb-1">⏎ 줄바꿈 (엔터)</p>
-                <p className="text-slate-500 font-medium">칸 안에서 줄을 바꾸고 싶다면 <span className="bg-slate-100 px-1 rounded text-slate-800">Alt + Enter</span>를 누르세요. 일반 Enter는 작성을 완료합니다.</p>
+                <p className="text-indigo-600 mb-1">⏎ 줄바꿈 및 체크박스</p>
+                <p className="text-slate-500 font-medium"><span className="bg-slate-100 px-1 rounded text-slate-800">Alt + Enter</span>로 줄을 바꾸면 각 항목마다 개별 체크박스가 생깁니다.</p>
               </div>
               <div>
-                <p className="text-indigo-600 mb-1">🤖 AI 조교 활용 (월간)</p>
-                <p className="text-slate-500 font-medium">과목을 먼저 추가한 뒤, AI에게 "수학 시발점 매일 1강씩 채워줘"라고 말해보세요. 등록된 과목의 빈 칸을 자동으로 채워줍니다.</p>
+                <p className="text-indigo-600 mb-1">🤖 AI 조교 활용</p>
+                <p className="text-slate-500 font-medium">과목 추가 후 "수학 1강씩 채워줘"라고 하면 날짜별로 진도를 분배하며 체크박스도 함께 생성합니다.</p>
               </div>
             </div>
-            <button onClick={() => setShowHelpModal(false)} className="mt-8 w-full py-4 rounded-xl font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">알겠습니다!</button>
+            <button onClick={() => setShowHelpModal(false)} className="mt-8 w-full py-4 rounded-xl font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-lg">알겠습니다!</button>
           </div>
         </div>
       )}
