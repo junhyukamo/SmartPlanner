@@ -69,16 +69,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const SUBJECTS = ['국어', '수학', '영어', '과학', '사회', '역사'];
-const SUBJECT_COLORS = {
-  '국어': '#e2e8f0',
-  '수학': '#fee2e2',
-  '영어': '#fef9c3',
-  '과학': '#dbeafe',
-  '사회': '#ffedd5',
-  '역사': '#f3e8ff'
-};
-
 export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('LOADING');
@@ -130,7 +120,13 @@ export default function App() {
   const [memo, setMemo] = useState('');
   const [yearlyPlan, setYearlyPlan] = useState(Array(12).fill(''));
   const [monthlyMemo, setMonthlyMemo] = useState('');
-  const [termScheduler, setTermScheduler] = useState({ cells: {}, status: {}, textbooks: {} });
+  const [termScheduler, setTermScheduler] = useState({ 
+    cells: {}, 
+    status: {}, 
+    textbooks: {}, 
+    subjects: [], // 과목 동적 관리
+    topNotes: {}  // 날짜 밑 빈 칸 데이터
+  });
   const [currentDate, setCurrentDate] = useState(new Date());
   const [colorRules, setColorRules] = useState([]);
   const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#bfdbfe' });
@@ -199,7 +195,10 @@ export default function App() {
           if (data.memo) setMemo(data.memo);
           if (data.yearlyPlan) setYearlyPlan(data.yearlyPlan);
           if (data.monthlyMemo) setMonthlyMemo(data.monthlyMemo);
-          if (data.termScheduler) setTermScheduler(data.termScheduler);
+          if (data.termScheduler) setTermScheduler({
+            subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {},
+            ...data.termScheduler
+          });
           if (data.colorRules) setColorRules(data.colorRules);
           if (data.studentName) setStudentName(data.studentName);
         }
@@ -306,13 +305,17 @@ export default function App() {
   };
 
   const executeResetTimetable = () => {
-    setTimetable((prev) => prev.map((row) => {
-      const newRow = { ...row };
-      ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach((day) => {
-        newRow[day] = ''; newRow[`${day}_span`] = 1; newRow[`${day}_hidden`] = false;
-      });
-      return newRow;
-    }));
+    if (activeTab === 'WEEKLY') {
+      setTimetable((prev) => prev.map((row) => {
+        const newRow = { ...row };
+        ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].forEach((day) => {
+          newRow[day] = ''; newRow[`${day}_span`] = 1; newRow[`${day}_hidden`] = false;
+        });
+        return newRow;
+      }));
+    } else if (activeTab === 'MONTHLY') {
+      setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {} });
+    }
     setSelection({ day: null, startId: null, endId: null });
     setShowResetConfirm(false); 
   };
@@ -330,17 +333,28 @@ export default function App() {
     return rule ? rule.color : null;
   };
 
+  // [수정] 1일 기준이 아니라 해당 월의 첫 번째 월요일부터 시작하는 28일 로직
   const getSchedulerDates = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    const lastDate = new Date(year, month + 1, 0).getDate();
+    const firstDayOfMonth = new Date(year, month, 1);
+    
+    // 첫 날의 요일 (0:일, 1:월, ...)
+    let startDayOffset = firstDayOfMonth.getDay(); 
+    if (startDayOffset === 0) startDayOffset = 7; // 일요일이면 7로 취급
+    
+    // 해당 주의 월요일 찾기
+    const startDate = new Date(firstDayOfMonth);
+    startDate.setDate(firstDayOfMonth.getDate() - (startDayOffset - 1));
+
     const days = [];
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
-    for (let i = 1; i <= lastDate; i++) {
-      const dateObj = new Date(year, month, i);
+    for (let i = 0; i < 28; i++) {
+      const dateObj = new Date(startDate);
+      dateObj.setDate(startDate.getDate() + i);
       days.push({
-        full: `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`,
-        label: `${month + 1}/${i}`,
+        full: `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`,
+        label: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
         day: dayLabels[dateObj.getDay()],
         isWeekend: dateObj.getDay() === 0 || dateObj.getDay() === 6
       });
@@ -355,6 +369,13 @@ export default function App() {
     }));
   };
 
+  const handleTopNoteChange = (dateKey, value) => {
+    setTermScheduler(prev => ({
+      ...prev,
+      topNotes: { ...prev.topNotes, [dateKey]: value }
+    }));
+  };
+
   const handleTermStatusChange = (subject, field, value) => {
     setTermScheduler(prev => ({
       ...prev,
@@ -366,6 +387,21 @@ export default function App() {
     setTermScheduler(prev => ({
       ...prev,
       textbooks: { ...prev.textbooks, [subject]: value }
+    }));
+  };
+
+  const addSubjectRow = (name) => {
+    if (!name || termScheduler.subjects.includes(name)) return;
+    setTermScheduler(prev => ({
+      ...prev,
+      subjects: [...prev.subjects, name]
+    }));
+  };
+
+  const removeSubjectRow = (name) => {
+    setTermScheduler(prev => ({
+      ...prev,
+      subjects: prev.subjects.filter(s => s !== name)
     }));
   };
 
@@ -391,7 +427,7 @@ export default function App() {
     const curMonth = currentDate.getMonth() + 1;
     const systemPrompts = {
       WEEKLY: `당신은 주간 학습 플래너 전문가입니다. 사용자의 요청을 08:00~24:00 일정표에 분배하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon|tue|wed|thu|fri|sat|sun", "startTime": "HH:MM", "endTime": "HH:MM", "content": "내용" }] }`,
-      MONTHLY: `당신은 '팀 스케줄러' 관리 전문가입니다. 현재 ${curYear}년 ${curMonth}월입니다. 사용자의 요청을 국어, 수학, 영어, 과학, 사회, 역사 과목별로 날짜에 맞춰 배분하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용" }], "status": [{ "subject": "과목명", "goal": "목표설명" }] }`,
+      MONTHLY: `당신은 '팀 스케줄러' 관리 전문가입니다. 사용자가 '과목 추가'를 요청하면 새 과목을 행에 추가하고 내용을 배치하세요. JSON 구조: { "type": "UPDATE_TERM_SCHEDULER", "addSubjects": ["신규과목명"], "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용" }], "status": [{ "subject": "과목명", "goal": "목표" }] }`,
       YEARLY: `당신은 연간 로드맵 전문가입니다. 1월부터 12월까지 학습 흐름을 구성하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_YEARLY", "plans": ["1월내용", ..., "12월내용"] }`
     };
     const text = await callGeminiAPI(systemPrompts[activeTab], `사용자 요청: "${aiPrompt}"`);
@@ -415,11 +451,12 @@ export default function App() {
           });
           setTimetable(newTimetable); setAiFeedback('✅ 주간 시간표 반영 완료!');
         } else if (aiResponse.type === 'UPDATE_TERM_SCHEDULER' && activeTab === 'MONTHLY') {
+          const newSubjects = [...new Set([...termScheduler.subjects, ...(aiResponse.addSubjects || [])])];
           const newCells = { ...termScheduler.cells };
           const newStatus = { ...termScheduler.status };
           aiResponse.cells?.forEach(c => { newCells[`${c.subject}-${c.date}`] = c.content; });
           aiResponse.status?.forEach(s => { newStatus[s.subject] = { ...(newStatus[s.subject] || {}), goal: s.goal }; });
-          setTermScheduler(prev => ({ ...prev, cells: newCells, status: newStatus }));
+          setTermScheduler(prev => ({ ...prev, subjects: newSubjects, cells: newCells, status: newStatus }));
           setAiFeedback('✅ 월간 팀 스케줄러 반영 완료!');
         } else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') {
           setYearlyPlan(aiResponse.plans); setAiFeedback('✅ 연간 로드맵 반영 완료!');
@@ -465,13 +502,13 @@ export default function App() {
             <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-10 text-center relative overflow-hidden">
               <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner"><BookOpen className="w-10 h-10 text-white" /></div>
               <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">스마트 학습 플래너</h1>
-              <p className="text-indigo-100 font-medium">관리자 전용 & 고유 링크 시스템</p>
+              <p className="text-indigo-100 font-medium">고유 링크 시스템</p>
             </div>
             <div className="p-8 space-y-4 bg-white text-center">
-              <p className="text-slate-500 text-sm mb-4">선생님이 전달해준 고유 링크로 접속해주세요.</p>
+              <p className="text-slate-500 text-sm mb-4">선생님이 전달해준 링크로 접속해주세요.</p>
               <button onClick={() => setView('TEACHER_LOGIN')} className="w-full p-5 rounded-2xl border-2 border-slate-100 hover:border-slate-500 hover:bg-slate-50 flex items-center gap-5 group transition-all shadow-sm">
                 <div className="p-4 bg-slate-100 text-slate-600 rounded-xl group-hover:bg-slate-700 group-hover:text-white transition-colors"><Users size={24} /></div>
-                <div className="text-left"><div className="font-extrabold text-lg text-slate-800">선생님 관리자 로그인</div><div className="text-sm text-slate-500 mt-1">학생 시트 생성 및 공유 링크 관리</div></div>
+                <div className="text-left"><div className="font-extrabold text-lg text-slate-800">관리자 로그인</div><div className="text-sm text-slate-500 mt-1">학생 시트 및 공유 링크 관리</div></div>
               </button>
             </div>
           </div>
@@ -482,7 +519,7 @@ export default function App() {
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
           <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
             <button onClick={() => setView('LANDING')} className="text-slate-400 mb-8 flex items-center gap-2 text-sm font-medium hover:text-slate-700 transition-colors bg-slate-50 px-4 py-2 rounded-lg w-fit"><ChevronLeft className="w-4 h-4" /> 뒤로가기</button>
-            <div className="mb-8"><h2 className="text-3xl font-extrabold text-slate-800 mb-2">관리자 로그인</h2><p className="text-slate-500">선생님 비밀번호를 입력해주세요.</p></div>
+            <div className="mb-8"><h2 className="text-3xl font-extrabold text-slate-800 mb-2">관리자 로그인</h2><p className="text-slate-500">비밀번호를 입력해주세요.</p></div>
             <form onSubmit={handleTeacherLogin} className="space-y-6">
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700 ml-1">비밀번호</label>
@@ -501,7 +538,7 @@ export default function App() {
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100">
               <div>
                 <h1 className="text-3xl font-extrabold flex items-center gap-3 text-slate-800 mb-2"><Users className="text-indigo-600 w-8 h-8" /> 관리자 대시보드</h1>
-                <p className="text-slate-500 font-medium">총 {studentList.length}명의 개별 플래너가 존재합니다.</p>
+                <p className="text-slate-500 font-medium">총 {studentList.length}명의 학생 플래너 관리 중</p>
               </div>
               <div className="flex flex-wrap gap-3 mt-4 md:mt-0">
                 <button onClick={createNewStudentSheet} className="text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg"><UserPlus className="w-5 h-5" /> 새 학생 추가</button>
@@ -509,6 +546,15 @@ export default function App() {
                 <button onClick={handleLogout} className="text-slate-500 hover:text-red-600 hover:bg-red-50 px-5 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 bg-slate-100"><LogOut className="w-5 h-5" /> 로그아웃</button>
               </div>
             </header>
+            {showGlobalKeyInput && (
+              <div className="mb-10 p-8 bg-indigo-50 rounded-3xl border-2 border-indigo-100 animate-fade-in shadow-inner">
+                <h3 className="text-lg font-black text-indigo-900 mb-4 flex items-center gap-2"><Key className="w-5 h-5"/> AI 공용 API 키 설정</h3>
+                <div className="flex flex-col md:flex-row gap-4">
+                  <input type="password" value={globalAiKey} onChange={(e) => setGlobalAiKey(e.target.value)} placeholder="Gemini API Key" className="flex-1 p-4 rounded-2xl border-2 border-indigo-200 outline-none focus:border-indigo-500 text-lg font-mono" />
+                  <button onClick={saveGlobalAiKey} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-extrabold text-lg shadow-lg">저장</button>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {studentList.map((student) => (
                 <div key={student.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-500 transition-all flex flex-col justify-between h-48 group">
@@ -644,26 +690,31 @@ export default function App() {
 
             {activeTab === 'MONTHLY' && (
               <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto">
-                <div className={`p-6 rounded-3xl border shadow-sm ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} min-w-[1200px]`}>
+                <div className={`p-6 rounded-3xl border shadow-sm ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} min-w-[1400px]`}>
                   <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-2xl font-black bg-[#e0f2f1] px-10 py-3 rounded-full border border-[#b2dfdb]">{currentDate.getMonth() + 1}월 팀 스케줄러</h2>
                     <div className="flex gap-2">
                       <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200"><ChevronLeft size={20}/></button>
                       <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200"><ChevronRight size={20}/></button>
+                    </div>
+                    <div className="flex gap-3">
+                      <button onClick={() => {
+                        const name = prompt("추가할 과목명을 입력하세요 (예: 국어)");
+                        if(name) addSubjectRow(name.trim());
+                      }} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 shadow-md transition-all"><Plus size={16}/> 과목 추가</button>
+                      <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-xl font-bold text-sm hover:bg-red-100 transition-all"><Trash2 size={16}/> 초기화</button>
                     </div>
                   </div>
 
                   {/* 팀 스케줄러 테이블 (2단계 레이아웃) */}
                   {[0, 1].map((blockIdx) => {
                     const allDates = getSchedulerDates();
-                    const chunkSize = Math.ceil(allDates.length / 2);
+                    const chunkSize = 14; // 한 블록에 14일씩 (2주)
                     const chunk = allDates.slice(blockIdx * chunkSize, (blockIdx + 1) * chunkSize);
                     return (
-                      <table key={blockIdx} className="w-full border-collapse mb-8 text-[11px]">
+                      <table key={blockIdx} className="w-full border-collapse mb-8 text-[11px] table-fixed">
                         <thead>
                           <tr className="bg-slate-50">
-                            <th className="border border-slate-300 w-16" rowSpan={2}></th>
-                            <th className="border border-slate-300 w-24" rowSpan={2}></th>
+                            <th className="border border-slate-300 w-24 py-2" rowSpan={2}>과목</th>
                             {chunk.map((d, i) => <th key={i} className={`border border-slate-300 py-1 font-bold ${d.isWeekend ? 'text-red-500' : ''}`}>{d.day}</th>)}
                           </tr>
                           <tr className="bg-slate-50">
@@ -671,15 +722,27 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {SUBJECTS.map((sub, sIdx) => (
+                          {/* 날짜 밑 빈 칸 행 */}
+                          <tr className="bg-white">
+                            <td className="border border-slate-300 text-center font-bold bg-slate-50">메모</td>
+                            {chunk.map((d) => (
+                              <td key={`note-${d.full}`} className="border border-slate-300 p-0 h-10">
+                                <textarea value={termScheduler.topNotes[d.full] || ''} onChange={(e) => handleTopNoteChange(d.full, e.target.value)} className="w-full h-full bg-transparent resize-none outline-none p-1 text-center font-bold" />
+                              </td>
+                            ))}
+                          </tr>
+                          {/* 과목 행들 */}
+                          {termScheduler.subjects.map((sub) => (
                             <tr key={sub}>
-                              {sIdx === 0 && <td className="border border-slate-300 text-center font-bold" rowSpan={6}>과목</td>}
-                              <td className="border border-slate-300 px-2 py-1 font-bold flex items-center gap-2" style={{ backgroundColor: SUBJECT_COLORS[sub] }}>{sub}</td>
+                              <td className="border border-slate-300 px-2 py-1 font-bold flex items-center justify-between group">
+                                <span>{sub}</span>
+                                <button onClick={() => removeSubjectRow(sub)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-all"><X size={12}/></button>
+                              </td>
                               {chunk.map((d) => {
                                 const val = termScheduler.cells[`${sub}-${d.full}`] || '';
                                 const bg = getCellColor(val);
                                 return (
-                                  <td key={d.full} className="border border-slate-300 p-0 h-10" style={{ backgroundColor: bg }}>
+                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 h-12" style={{ backgroundColor: bg }}>
                                     <textarea value={val} onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} className="w-full h-full bg-transparent resize-none outline-none p-1 text-center font-bold" />
                                   </td>
                                 );
@@ -691,34 +754,36 @@ export default function App() {
                     );
                   })}
 
-                  {/* 하단 성취 테이블 */}
-                  <table className="w-full border-collapse text-[11px] max-w-4xl">
-                    <thead>
-                      <tr className="bg-slate-50">
-                        <th className="border border-slate-300 w-16 py-2">과목</th>
-                        <th className="border border-slate-300 w-48">교재</th>
-                        <th className="border border-slate-300 w-32">시작</th>
-                        <th className="border border-slate-300 w-48">목표</th>
-                        <th className="border border-slate-300 w-24">달성률</th>
-                        <th className="border border-slate-300 w-32">달성도</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {SUBJECTS.map((sub) => {
-                        const s = termScheduler.status[sub] || {};
-                        return (
-                          <tr key={sub}>
-                            <td className="border border-slate-300 text-center font-bold py-1" style={{ backgroundColor: SUBJECT_COLORS[sub] }}>{sub}</td>
-                            <td className="border border-slate-300 p-0"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-1 outline-none font-bold" /></td>
-                            <td className="border border-slate-300 p-0"><input value={s.start || ''} onChange={(e) => handleTermStatusChange(sub, 'start', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
-                            <td className="border border-slate-300 p-0"><input value={s.goal || ''} onChange={(e) => handleTermStatusChange(sub, 'goal', e.target.value)} className="w-full h-full p-1 outline-none font-bold" /></td>
-                            <td className="border border-slate-300 p-0"><input value={s.rate || ''} onChange={(e) => handleTermStatusChange(sub, 'rate', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
-                            <td className="border border-slate-300 p-0"><input value={s.level || ''} onChange={(e) => handleTermStatusChange(sub, 'level', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                  {/* 하단 성취 테이블 (과목이 있을 때만 표시) */}
+                  {termScheduler.subjects.length > 0 && (
+                    <table className="w-full border-collapse text-[11px] max-w-4xl">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          <th className="border border-slate-300 w-24 py-2">과목</th>
+                          <th className="border border-slate-300 w-48">교재</th>
+                          <th className="border border-slate-300 w-32">시작</th>
+                          <th className="border border-slate-300 w-48">목표</th>
+                          <th className="border border-slate-300 w-24">달성률</th>
+                          <th className="border border-slate-300 w-32">달성도</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {termScheduler.subjects.map((sub) => {
+                          const s = termScheduler.status[sub] || {};
+                          return (
+                            <tr key={`status-${sub}`}>
+                              <td className="border border-slate-300 text-center font-bold py-1 bg-slate-50">{sub}</td>
+                              <td className="border border-slate-300 p-0"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-1 outline-none font-bold" /></td>
+                              <td className="border border-slate-300 p-0"><input value={s.start || ''} onChange={(e) => handleTermStatusChange(sub, 'start', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
+                              <td className="border border-slate-300 p-0"><input value={s.goal || ''} onChange={(e) => handleTermStatusChange(sub, 'goal', e.target.value)} className="w-full h-full p-1 outline-none font-bold" /></td>
+                              <td className="border border-slate-300 p-0"><input value={s.rate || ''} onChange={(e) => handleTermStatusChange(sub, 'rate', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
+                              <td className="border border-slate-300 p-0"><input value={s.level || ''} onChange={(e) => handleTermStatusChange(sub, 'level', e.target.value)} className="w-full h-full p-1 outline-none text-center font-bold" /></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
               </div>
             )}
@@ -776,8 +841,8 @@ export default function App() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowResetConfirm(false)}>
           <div className={`w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center ${darkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800'}`} onClick={(e) => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
-            <h3 className="font-extrabold text-xl mb-2">일정 초기화</h3>
-            <p className="text-sm mb-8">모든 데이터가 삭제됩니다.<br/>계속하시겠습니까?</p>
+            <h3 className="font-extrabold text-xl mb-2">데이터 초기화</h3>
+            <p className="text-sm mb-8">현재 탭({activeTab})의 모든 데이터가 삭제됩니다.<br/>계속하시겠습니까?</p>
             <div className="flex gap-3">
               <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold">취소</button>
               <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-extrabold">확인</button>
