@@ -208,7 +208,7 @@ export default function App() {
   }, []);
 
   // --------------------------------------------------------------------------------
-  // 9. 플래너 데이터 실시간 동기화 (포인트 1 수정: 이름 보존을 위해 role 조건 제거)
+  // 9. 플래너 데이터 실시간 동기화
   // --------------------------------------------------------------------------------
   useEffect(() => {
     if (!user || !currentDocId || (view !== 'PLANNER' && view !== 'TEACHER_DASHBOARD')) return;
@@ -236,7 +236,6 @@ export default function App() {
           if (data.monthlyEvents) setMonthlyEvents(data.monthlyEvents);
           if (data.colorRules) setColorRules(data.colorRules);
           
-          // [포인트 1 수정] 선생님이 보더라도 학생의 실제 이름을 상태에 동기화하여 UUID로 덮어쓰지 않게 함
           if (data.studentName) {
             setStudentName(data.studentName);
           }
@@ -247,7 +246,7 @@ export default function App() {
   }, [user, currentDocId, view]);
 
   // --------------------------------------------------------------------------------
-  // 10. 플래너 데이터 자동 저장 (포인트 1 수정: studentName 저장 로직 강화)
+  // 10. 플래너 데이터 자동 저장
   // --------------------------------------------------------------------------------
   const isFirstRun = useRef(true);
   useEffect(() => {
@@ -255,8 +254,6 @@ export default function App() {
     if (!user || !currentDocId || view !== 'PLANNER' || loading) return;
     const saveData = async () => {
       const docRef = doc(db, 'planners', currentDocId);
-      
-      // [포인트 1 수정] studentName이 비어있거나 UUID와 같으면 저장하지 않음 (이름 보존)
       const isActuallyName = studentName && studentName !== currentDocId;
 
       await setDoc(docRef, {
@@ -270,7 +267,7 @@ export default function App() {
   }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, monthlyEvents, user, currentDocId, view, loading, studentName]);
 
   // --------------------------------------------------------------------------------
-  // 11. 선생님 대시보드 로드
+  // 11. 선생님 대시보드 로드 (포인트: 한글 내림차순 정렬 적용)
   // --------------------------------------------------------------------------------
   useEffect(() => {
     if (!user || view !== 'TEACHER_DASHBOARD') return;
@@ -278,7 +275,14 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const students = [];
       snapshot.forEach((doc) => students.push({ id: doc.id, ...doc.data() }));
-      students.sort((a, b) => a.id.localeCompare(b.id));
+      
+      // [수정 사항] 학생 이름을 기준으로 한글 내림차순 정렬
+      students.sort((a, b) => {
+        const nameA = a.studentName || "";
+        const nameB = b.studentName || "";
+        return nameB.localeCompare(nameA, 'ko');
+      });
+      
       setStudentList(students);
     });
     return () => unsubscribe();
@@ -298,7 +302,7 @@ export default function App() {
   };
 
   // --------------------------------------------------------------------------------
-  // 13. [핵심 기능] 새로운 학생 시트 생성 (관리자 전용)
+  // 13. 새로운 학생 시트 생성
   // --------------------------------------------------------------------------------
   const createNewStudentSheet = async () => {
     const name = prompt("생성할 학생의 이름을 입력하세요.");
@@ -861,7 +865,6 @@ export default function App() {
         </div>
       )}
 
-      {/* [포인트 2 수정] 초기화 확인창 크기 조절 (max-w-xs 적용) */}
       {showResetConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowResetConfirm(false)}>
           <div className={`w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center ${darkMode ? 'bg-slate-800 text-white border border-slate-700' : 'bg-white text-slate-800'}`} onClick={(e) => e.stopPropagation()}>
