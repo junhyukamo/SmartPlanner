@@ -267,7 +267,7 @@ export default function App() {
   }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, monthlyEvents, user, currentDocId, view, loading, studentName]);
 
   // --------------------------------------------------------------------------------
-  // 11. 선생님 대시보드 로드 (포인트: 한글 내림차순 정렬 적용)
+  // 11. 선생님 대시보드 로드 (수정 사항: 한글 오름차순 정렬 적용)
   // --------------------------------------------------------------------------------
   useEffect(() => {
     if (!user || view !== 'TEACHER_DASHBOARD') return;
@@ -276,11 +276,11 @@ export default function App() {
       const students = [];
       snapshot.forEach((doc) => students.push({ id: doc.id, ...doc.data() }));
       
-      // [수정 사항] 학생 이름을 기준으로 한글 내림차순 정렬
+      // [수정 사항] 학생 이름을 기준으로 한글 오름차순 정렬 (ㄱ -> ㅎ)
       students.sort((a, b) => {
         const nameA = a.studentName || "";
         const nameB = b.studentName || "";
-        return nameB.localeCompare(nameA, 'ko');
+        return nameA.localeCompare(nameB, 'ko');
       });
       
       setStudentList(students);
