@@ -23,7 +23,6 @@ import {
   Merge,
   Split,
   Palette,
-  HelpCircle,
   AlertCircle,
   Key,
   Settings,
@@ -82,8 +81,8 @@ export default function App() {
   const [showGlobalKeyInput, setShowGlobalKeyInput] = useState(false);
   const [currentDocId, setCurrentDocId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [isNotFound, setIsNotFound] = useState(false); // [추가] 삭제된 시트 체크
   const [activeTab, setActiveTab] = useState('WEEKLY');
-  const [showHelpModal, setShowHelpModal] = useState(false);
   const [showColorModal, setShowColorModal] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); 
@@ -128,7 +127,7 @@ export default function App() {
     checks: {} 
   });
   
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 1));
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 1)); 
   const [colorRules, setColorRules] = useState([]);
   const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#bfdbfe' });
   const [studentList, setStudentList] = useState([]);
@@ -138,7 +137,7 @@ export default function App() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiFeedback, setAiFeedback] = useState('');
-  const [editingCell, setEditingCell] = useState(null); // 월간 셀 편집 상태 관리
+  const [editingCell, setEditingCell] = useState(null); 
 
   const autoResize = (e) => {
     e.target.style.height = 'auto';
@@ -152,8 +151,9 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get('sid');
         if (sid) {
-          setCurrentDocId(sid); setRole('student'); setView('PLANNER'); return; 
+          setCurrentDocId(sid); setRole('student'); setView('PLANNER'); 
         }
+        // 공용 API 키 실시간 연동
         const globalRef = doc(db, 'settings', 'global');
         onSnapshot(globalRef, (snap) => {
           if (snap.exists()) setGlobalAiKey(snap.data().aiKey || '');
@@ -168,7 +168,7 @@ export default function App() {
         setRole('student'); setStudentName(savedName); setCurrentDocId(savedName); setView('PLANNER');
       } else if (savedRole === 'teacher') {
         setRole('teacher'); setView('TEACHER_DASHBOARD');
-      } else {
+      } else if (!new URLSearchParams(window.location.search).get('sid')) {
         setView('LANDING');
       }
     };
@@ -184,6 +184,7 @@ export default function App() {
       try {
         if (docSnap.metadata?.hasPendingWrites) return;
         if (docSnap.exists()) {
+          setIsNotFound(false); // 데이터가 있으면 정상
           const data = docSnap.data();
           if (Array.isArray(data.timetable)) {
             const patchedTimetable = data.timetable.map((row) => ({
@@ -205,6 +206,9 @@ export default function App() {
           });
           if (data.colorRules) setColorRules(data.colorRules);
           if (data.studentName) setStudentName(data.studentName);
+        } else {
+          // [수정] 데이터가 없으면 '삭제된 페이지' 상태로 전환
+          setIsNotFound(true);
         }
       } catch (e) { console.error("데이터 로드 에러:", e); } finally { setLoading(false); }
     });
@@ -214,7 +218,8 @@ export default function App() {
   const isFirstRun = useRef(true);
   useEffect(() => {
     if (isFirstRun.current) { isFirstRun.current = false; return; }
-    if (!user || !currentDocId || view !== 'PLANNER' || loading) return;
+    // [수정] 삭제된 페이지이거나 로딩 중일 때는 절대 저장하지 않음 (다시 생성 방지)
+    if (!user || !currentDocId || view !== 'PLANNER' || loading || isNotFound) return;
     const saveData = async () => {
       const docRef = doc(db, 'planners', currentDocId);
       const isActuallyName = studentName && studentName !== currentDocId;
@@ -226,7 +231,7 @@ export default function App() {
     };
     const timeoutId = setTimeout(saveData, 1000);
     return () => clearTimeout(timeoutId);
-  }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, user, currentDocId, view, loading, studentName]);
+  }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, user, currentDocId, view, loading, studentName, isNotFound]);
 
   useEffect(() => {
     if (!user || view !== 'TEACHER_DASHBOARD') return;
@@ -337,18 +342,19 @@ export default function App() {
     return rule ? rule.color : null;
   };
 
-  // [수정] 2026-02-02 월요일 시작 고정 28일 로직 (월 변경 반영)
   const getSchedulerDates = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1);
-    
-    let startDayOffset = firstDayOfMonth.getDay(); 
-    if (startDayOffset === 0) startDayOffset = 7; 
-    
-    const startDate = new Date(firstDayOfMonth);
-    startDate.setDate(firstDayOfMonth.getDate() - (startDayOffset - 1));
-
+    let startDate;
+    if (year === 2026 && month === 1) {
+      startDate = new Date(2026, 1, 2);
+    } else {
+      const firstDayOfMonth = new Date(year, month, 1);
+      let offset = firstDayOfMonth.getDay(); 
+      if (offset === 0) offset = 7; 
+      startDate = new Date(firstDayOfMonth);
+      startDate.setDate(firstDayOfMonth.getDate() - (offset - 1));
+    }
     const days = [];
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
     for (let i = 0; i < 28; i++) {
@@ -387,13 +393,6 @@ export default function App() {
     }));
   };
 
-  const handleTermStatusChange = (subject, field, value) => {
-    setTermScheduler(prev => ({
-      ...prev,
-      status: { ...prev.status, [subject]: { ...(prev.status[subject] || {}), [field]: value } }
-    }));
-  };
-
   const handleTermTextbookChange = (subject, value) => {
     setTermScheduler(prev => ({
       ...prev,
@@ -416,20 +415,36 @@ export default function App() {
     }));
   };
 
-  const callGeminiAPI = async (systemPrompt, userText = "") => {
+  const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
     if (!globalAiKey) { setAiFeedback('⚠️ 공용 API 키가 등록되지 않았습니다 (관리자 문의).'); return null; }
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${globalAiKey}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + '\n' + userText }] }] }) }
-      );
-      const result = await response.json();
-      if (result.error) {
-        if (result.error.code === 429) throw new Error("AI 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.");
-        throw new Error(result.error.message);
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${globalAiKey}`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + '\n' + userText }] }] }) }
+        );
+        const result = await response.json();
+        if (result.error) {
+          if (result.error.code === 429) {
+            if (i < retries - 1) {
+              const delay = Math.pow(2, i) * 2000;
+              setAiFeedback(`⚠️ 사용량 초과. ${delay/1000}초 후 자동 재시도... (${i + 1}/${retries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              continue;
+            }
+            throw new Error("AI 사용 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.");
+          }
+          throw new Error(result.error.message);
+        }
+        return result.candidates?.[0]?.content?.parts?.[0]?.text;
+      } catch (error) {
+        if (i === retries - 1) {
+          setAiFeedback(`❌ AI 오류: ${error.message}`);
+          return null;
+        }
       }
-      return result.candidates?.[0]?.content?.parts?.[0]?.text;
-    } catch (error) { setAiFeedback(`❌ AI 오류: ${error.message}`); return null; }
+    }
+    return null;
   };
 
   const handleAiSubmit = async (e) => {
@@ -438,7 +453,6 @@ export default function App() {
     setIsAiProcessing(true);
     setAiFeedback('AI 조교가 요청을 처리 중입니다...');
     const schedulerDates = getSchedulerDates().map(d => d.full);
-
     const systemPrompts = {
       WEEKLY: `당신은 주간 학습 플래너 전문가입니다. 사용자의 요청을 08:00~24:00 일정표에 분배하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon|tue|wed|thu|fri|sat|sun", "startTime": "HH:MM", "endTime": "HH:MM", "content": "내용" }] }`,
       MONTHLY: `당신은 '팀 스케줄러' 데이터 채우기 전문가입니다. 
@@ -449,7 +463,6 @@ export default function App() {
                JSON 구조: { "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "추가될내용" }] }`,
       YEARLY: `당신은 연간 로드맵 전문가입니다. 1월부터 12월까지 학습 흐름을 구성하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_YEARLY", "plans": ["1월내용", ..., "12월내용"] }`
     };
-
     const text = await callGeminiAPI(systemPrompts[activeTab], `사용자 요청: "${aiPrompt}" / 현재 사용 가능한 날짜 리스트: ${JSON.stringify(schedulerDates)}`);
     if (text) {
       try {
@@ -515,11 +528,21 @@ export default function App() {
     </div>
   );
 
+  // [추가] 삭제된 시트 접근 시 UI
+  if (isNotFound && view === 'PLANNER') return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6">
+      <div className="w-20 h-20 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-6"><AlertCircle size={40} /></div>
+      <h1 className="text-2xl font-black text-slate-800 mb-2">삭제된 플래너입니다.</h1>
+      <p className="text-slate-500 mb-8 text-center font-bold">해당 플래너는 더 이상 존재하지 않거나 관리자에 의해 삭제되었습니다.</p>
+      <button onClick={() => window.location.href = window.location.pathname} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">메인으로 이동</button>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 transition-colors duration-300">
       
       {view === 'LANDING' && (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
           <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 transform transition-all hover:scale-[1.01]">
             <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-10 text-center relative overflow-hidden">
               <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner"><BookOpen className="w-10 h-10 text-white" /></div>
@@ -538,16 +561,16 @@ export default function App() {
       )}
 
       {view === 'TEACHER_LOGIN' && (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
           <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
             <button onClick={() => setView('LANDING')} className="text-slate-400 mb-8 flex items-center gap-2 text-sm font-medium hover:text-slate-700 transition-colors bg-slate-50 px-4 py-2 rounded-lg w-fit"><ChevronLeft className="w-4 h-4" /> 뒤로가기</button>
             <div className="mb-8"><h2 className="text-3xl font-extrabold text-slate-800 mb-2">관리자 로그인</h2><p className="text-slate-500">비밀번호를 입력하세요.</p></div>
             <form onSubmit={handleTeacherLogin} className="space-y-6">
-              <div className="space-y-2">
+              <div className="space-y-2 text-center">
                 <label className="text-sm font-bold text-slate-700 ml-1">비밀번호</label>
-                <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="비밀번호 입력" className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-lg font-medium" autoFocus />
+                <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="비밀번호 입력" className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-lg font-medium text-center" autoFocus />
               </div>
-              {errorMsg && <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2"><AlertCircle size={16}/> {errorMsg}</div>}
+              {errorMsg && <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 justify-center"><AlertCircle size={16}/> {errorMsg}</div>}
               <button type="submit" className="w-full text-white p-5 rounded-2xl font-extrabold text-lg transition-all transform hover:-translate-y-1 shadow-lg bg-slate-800 hover:bg-slate-900 shadow-slate-200">대시보드 접속</button>
             </form>
           </div>
@@ -555,33 +578,33 @@ export default function App() {
       )}
 
       {view === 'TEACHER_DASHBOARD' && (
-        <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+        <div className="min-h-screen bg-slate-50 p-4 md:p-8 text-center">
           <div className="max-w-6xl mx-auto">
-            <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100">
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100 text-center">
               <div>
                 <h1 className="text-3xl font-extrabold flex items-center gap-3 text-slate-800 mb-2"><Users className="text-indigo-600 w-8 h-8" /> 관리자 대시보드</h1>
-                <p className="text-slate-500 font-medium">총 {studentList.length}명의 시트가 있습니다.</p>
+                <p className="text-slate-500 font-medium text-center">총 {studentList.length}명의 시트가 있습니다.</p>
               </div>
-              <div className="flex flex-wrap gap-3 mt-4 md:mt-0">
+              <div className="flex flex-wrap gap-3 mt-4 md:mt-0 justify-center">
                 <button onClick={createNewStudentSheet} className="text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg"><UserPlus className="w-5 h-5" /> 새 학생 추가</button>
                 <button onClick={() => setShowGlobalKeyInput(!showGlobalKeyInput)} className="text-white bg-slate-800 hover:bg-slate-900 px-5 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 shadow-lg"><Settings className="w-5 h-5" /> AI 공용 키 설정</button>
                 <button onClick={handleLogout} className="text-slate-500 hover:text-red-600 hover:bg-red-50 px-5 py-3 rounded-xl font-bold transition-colors flex items-center gap-2 bg-slate-100"><LogOut className="w-5 h-5" /> 로그아웃</button>
               </div>
             </header>
             {showGlobalKeyInput && (
-              <div className="mb-10 p-8 bg-indigo-50 rounded-3xl border-2 border-indigo-100 animate-fade-in shadow-inner">
-                <h3 className="text-lg font-black text-indigo-900 mb-4 flex items-center gap-2"><Key className="w-5 h-5"/> AI 공용 API 키 설정</h3>
-                <div className="flex flex-col md:flex-row gap-4">
-                  <input type="password" value={globalAiKey} onChange={(e) => setGlobalAiKey(e.target.value)} placeholder="Gemini API Key" className="flex-1 p-4 rounded-2xl border-2 border-indigo-200 outline-none focus:border-indigo-500 text-lg font-mono" />
+              <div className="mb-10 p-8 bg-indigo-50 rounded-3xl border-2 border-indigo-100 animate-fade-in shadow-inner text-center">
+                <h3 className="text-lg font-black text-indigo-900 mb-4 flex items-center justify-center gap-2"><Key className="w-5 h-5"/> AI 공용 API 키 설정</h3>
+                <div className="flex flex-col md:flex-row gap-4 justify-center">
+                  <input type="password" value={globalAiKey} onChange={(e) => setGlobalAiKey(e.target.value)} placeholder="Gemini API Key" className="flex-1 max-w-lg p-4 rounded-2xl border-2 border-indigo-200 outline-none focus:border-indigo-500 text-lg font-mono text-center" />
                   <button onClick={saveGlobalAiKey} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-extrabold text-lg shadow-lg">저장</button>
                 </div>
               </div>
             )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-center">
               {studentList.map((student) => (
-                <div key={student.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-500 transition-all flex flex-col justify-between h-48 group">
+                <div key={student.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-500 transition-all flex flex-col justify-between h-48 group text-center">
                   <div className="flex justify-between items-start">
-                    <div onClick={() => { setCurrentDocId(student.id); setView('PLANNER'); setRole('teacher'); }} className="cursor-pointer">
+                    <div onClick={() => { setCurrentDocId(student.id); setView('PLANNER'); setRole('teacher'); }} className="cursor-pointer text-center w-full">
                       <span className="text-xl font-extrabold text-slate-800 block mb-1">{student.studentName || '이름 없음'}</span>
                       <span className="text-[10px] text-slate-400 font-mono">{student.id.substring(0, 13)}...</span>
                     </div>
@@ -601,7 +624,7 @@ export default function App() {
       {view === 'PLANNER' && (
         <>
           <header className="px-4 py-3 shadow-sm sticky top-0 z-30 bg-white border-b border-slate-200 backdrop-blur-md">
-            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="max-w-[98vw] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
                 <div className="flex items-center gap-3">
                   {role === 'teacher' && <button onClick={() => setView('TEACHER_DASHBOARD')} className="p-2 rounded-full hover:bg-slate-100 border border-slate-200"><ChevronLeft className="w-5 h-5" /></button>}
@@ -616,14 +639,13 @@ export default function App() {
                   ))}
                 </div>
                 <div className="hidden md:flex items-center gap-2 border-l pl-3 ml-1 border-slate-200">
-                  <button onClick={() => setShowHelpModal(true)} className="p-2.5 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors"><HelpCircle className="w-5 h-5" /></button>
                   <button onClick={handleLogout} className="p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button>
                 </div>
               </div>
             </div>
           </header>
 
-          <main className="max-w-[2000px] mx-auto p-4 md:p-6 pb-24 h-full relative text-center">
+          <main className="max-w-[98vw] mx-auto p-4 md:p-6 pb-24 h-full relative text-center">
             {activeTab === 'WEEKLY' && (
               <div className="animate-fade-in h-full flex flex-col text-center">
                 <div className="space-y-4 flex-1 flex flex-col">
@@ -631,9 +653,9 @@ export default function App() {
                     <div className="flex flex-wrap items-center justify-between gap-4 mb-2 flex-shrink-0">
                       <div className="flex items-center gap-4">
                         {dDay ? (
-                          <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl shadow-md text-sm"><Calendar size={16} /><span className="font-bold">{dDay.title}</span><button onClick={() => setDDay(null)} className="hover:text-red-200 p-1"><X className="w-4 h-4" /></button></div>
+                          <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl shadow-md text-sm text-center"><Calendar size={16} /><span className="font-bold">{dDay.title}</span><button onClick={() => setDDay(null)} className="hover:text-red-200 p-1"><X className="w-4 h-4" /></button></div>
                         ) : (
-                          <div className="flex items-center gap-2 p-1.5 rounded-2xl border border-slate-200 bg-slate-50 shadow-inner"><input type="text" placeholder="목표" className="w-32 p-2.5 text-sm rounded-xl outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/><input type="date" className="w-36 p-2.5 text-sm rounded-xl outline-none bg-white border border-slate-100 focus:border-indigo-500" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/><button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); } }} className="px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button></div>
+                          <div className="flex items-center gap-2 p-1.5 rounded-2xl border border-slate-200 bg-slate-50 shadow-inner"><input type="text" placeholder="목표" className="w-32 p-2.5 text-sm rounded-xl outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/><input type="date" className="w-36 p-2.5 text-sm rounded-xl outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/><button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); } }} className="px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button></div>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2 text-sm ml-auto">
@@ -662,23 +684,23 @@ export default function App() {
                         <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-colors ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-4 h-4" /> 일정 초기화</button>
                       </div>
                     </div>
-                    <div className="flex-1 relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-x-auto overflow-y-hidden" onMouseLeave={handleMouseUp}>
-                      <table className="w-full h-full text-center text-sm border-collapse min-w-[800px] table-fixed">
-                        <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800">
+                    <div className="flex-1 relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-x-auto overflow-y-hidden text-center" onMouseLeave={handleMouseUp}>
+                      <table className="w-full h-full text-center text-sm border-collapse min-w-[800px] table-fixed text-center">
+                        <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800 text-center">
                           <tr>
-                            <th className="py-2 w-16 border-r border-slate-200 uppercase tracking-widest text-[10px] font-black text-slate-400"><Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50"/> Time</th>
+                            <th className="py-2 w-16 border-r border-slate-200 uppercase tracking-widest text-[10px] font-black text-slate-400 text-center"><Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50"/> Time</th>
                             {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((d, i) => {
                               const labels = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
                               let textColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : '';
-                              return <th key={d} className={`py-2 font-black text-xs border-r border-slate-200 ${textColor}`}>{labels[i]}</th>;
+                              return <th key={d} className={`py-2 font-black text-xs border-r border-slate-200 ${textColor} text-center`}>{labels[i]}</th>;
                             })}
                           </tr>
                         </thead>
                         <tbody>
                           {timetable.map((row) => (
-                            <tr key={row.id} className="group">
+                            <tr key={row.id} className="group text-center">
                               <td className="p-0 w-16 border border-slate-200 align-middle bg-white transition-colors select-none text-center">
-                                <div className="flex flex-col items-center justify-center h-full text-[10px] font-medium text-slate-400"><span>{row.time}</span></div>
+                                <div className="flex flex-col items-center justify-center h-full text-[10px] font-medium text-slate-400 text-center"><span>{row.time}</span></div>
                               </td>
                               {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => {
                                 if (row[`${day}_hidden`]) return null;
@@ -686,9 +708,9 @@ export default function App() {
                                 const keywordColor = getCellColor(row[day]);
                                 const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
                                 return (
-                                  <td key={day} className={`p-0 relative align-middle border border-slate-200 cursor-text transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30`} style={{ backgroundColor: bgColor }} rowSpan={row[`${day}_span`] || 1} onMouseDown={() => handleMouseDown(day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)}>
-                                    <div className="w-full h-full flex items-center justify-center p-0.5">
-                                      <textarea value={row[day]} onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} onInput={autoResize} onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} rows={1} className="w-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50" />
+                                  <td key={day} className={`p-0 relative align-middle border border-slate-200 cursor-text transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 text-center text-center`} style={{ backgroundColor: bgColor }} rowSpan={row[`${day}_span`] || 1} onMouseDown={() => handleMouseDown(day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)}>
+                                    <div className="w-full h-full flex items-center justify-center p-0.5 text-center">
+                                      <textarea value={row[day]} onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} onInput={autoResize} onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} rows={1} className="w-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" />
                                     </div>
                                   </td>
                                 );
@@ -705,18 +727,18 @@ export default function App() {
 
             {activeTab === 'MONTHLY' && (
               <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto text-center">
-                <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[2000px]">
-                  <div className="flex items-center justify-between mb-6 px-2">
-                    <div className="flex gap-2">
-                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors"><ChevronLeft size={20}/></button>
-                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors"><ChevronRight size={20}/></button>
+                <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[2200px] text-center">
+                  <div className="flex items-center justify-between mb-6 px-2 text-center">
+                    <div className="flex gap-2 text-center">
+                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center"><ChevronLeft size={20}/></button>
+                      <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center"><ChevronRight size={20}/></button>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 text-center">
                       <button onClick={() => {
                         const name = prompt("추가할 과목명을 입력하세요");
                         if(name) addSubjectRow(name.trim());
-                      }} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-sm hover:bg-indigo-700 shadow-md transition-all"><Plus size={18}/> 과목 추가</button>
-                      <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-sm hover:bg-red-100 transition-all"><Trash2 size={18}/> 일정 초기화</button>
+                      }} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={18}/> 과목 추가</button>
+                      <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={18}/> 일정 초기화</button>
                     </div>
                   </div>
 
@@ -725,16 +747,16 @@ export default function App() {
                     const chunkSize = 14;
                     const chunk = allDates.slice(blockIdx * chunkSize, (blockIdx + 1) * chunkSize);
                     return (
-                      <table key={blockIdx} className="w-full border-collapse mb-10 text-[11px] table-fixed">
+                      <table key={blockIdx} className="w-full border-collapse mb-10 text-[11px] table-fixed text-center">
                         <thead>
-                          <tr className="bg-slate-50">
+                          <tr className="bg-slate-50 text-center">
                             <th className="border border-slate-300 w-32 py-2 text-center font-black" rowSpan={2}>과목</th>
                             {chunk.map((d, i) => {
                               let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
                               return <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${textColor}`}>{d.day}</th>;
                             })}
                           </tr>
-                          <tr className="bg-slate-50">
+                          <tr className="bg-slate-50 text-center">
                             {chunk.map((d, i) => {
                                let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
                                return <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${textColor}`}>{d.label}</th>;
@@ -742,33 +764,32 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          <tr className="bg-white">
-                            <td className="border border-slate-300 text-center font-black bg-slate-50 text-black">비고</td>
+                          <tr className="bg-white h-8 text-center text-center">
+                            <td className="border border-slate-300 text-center font-black bg-slate-50 text-black text-center text-center">비고</td>
                             {chunk.map((d) => (
-                              <td key={`note-${d.full}`} className="border border-slate-300 p-0 align-middle h-8">
+                              <td key={`note-${d.full}`} className="border border-slate-300 p-0 align-middle h-8 text-center">
                                 <textarea 
                                   value={termScheduler.topNotes[d.full] || ''} 
                                   onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
                                   rows={1}
-                                  className="w-full h-full bg-transparent resize-none outline-none px-2 py-1 text-center font-bold overflow-hidden leading-tight" 
+                                  className="w-full h-full bg-transparent resize-none outline-none px-2 py-1 text-center font-bold overflow-hidden leading-tight text-center" 
                                 />
                               </td>
                             ))}
                           </tr>
                           {termScheduler.subjects.map((sub) => (
-                            <tr key={sub}>
-                              <td className="border border-slate-300 px-2 py-1 font-black text-center relative group bg-slate-50/50">
+                            <tr key={sub} className="text-center">
+                              <td className="border border-slate-300 px-2 py-1 font-black text-center relative group bg-slate-50/50 text-center">
                                 {sub}
-                                <button onClick={() => removeSubjectRow(sub)} className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity"><X size={12}/></button>
+                                <button onClick={() => removeSubjectRow(sub)} className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={12}/></button>
                               </td>
                               {chunk.map((d) => {
                                 const val = termScheduler.cells[`${sub}-${d.full}`] || '';
                                 const bg = getCellColor(val);
                                 const lines = val.split('\n').filter(l => l.trim() !== '');
                                 return (
-                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle transition-colors relative min-h-[60px]" style={{ backgroundColor: bg }}>
-                                    <div className="relative h-full w-full flex flex-col justify-center items-center py-2">
-                                      {/* 편집 모드일 때만 텍스트를 보여주고, 아닐 때는 체크박스 리스트만 노출 */}
+                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle transition-colors relative min-h-[60px] text-center" style={{ backgroundColor: bg }}>
+                                    <div className="relative h-full w-full flex flex-col justify-center items-center py-2 text-center">
                                       <textarea 
                                         value={val} 
                                         onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
@@ -776,19 +797,18 @@ export default function App() {
                                         onFocus={() => setEditingCell(`${sub}-${d.full}`)}
                                         onBlur={() => setEditingCell(null)}
                                         className={`absolute inset-0 w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold z-20 transition-colors
-                                          ${editingCell === `${sub}-${d.full}` ? 'text-slate-800 bg-white/80' : 'text-transparent caret-transparent'}`} 
+                                          ${editingCell === `${sub}-${d.full}` ? 'text-slate-800 bg-white/90' : 'text-transparent caret-transparent'} text-center`} 
                                       />
-                                      {/* 결과물: 오직 체크박스가 포함된 텍스트만 표시 */}
                                       {editingCell !== `${sub}-${d.full}` && lines.length > 0 && (
-                                        <div className="relative z-10 flex flex-col gap-1 w-full px-1">
+                                        <div className="relative z-10 flex flex-col gap-1.5 w-full px-1.5 text-center">
                                           {lines.map((line, idx) => (
-                                            <div key={idx} className="flex items-center justify-center gap-1.5 bg-white/60 rounded px-2 py-1 shadow-sm border border-black/5 mx-1">
-                                              <span className="text-[9px] font-black text-slate-800 truncate leading-none">{line}</span>
+                                            <div key={idx} className="flex items-center justify-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5 shadow-sm border border-black/5 mx-1 text-center">
+                                              <span className="text-[9px] font-black text-slate-800 leading-tight text-center flex-1">{line}</span>
                                               <input 
                                                 type="checkbox" 
                                                 checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
                                                 onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
-                                                className="w-3.5 h-3.5 cursor-pointer accent-indigo-600 flex-shrink-0" 
+                                                className="w-4 h-4 cursor-pointer accent-indigo-600 flex-shrink-0 text-center" 
                                               />
                                             </div>
                                           ))}
@@ -806,11 +826,11 @@ export default function App() {
                   })}
 
                   {termScheduler.subjects.length > 0 && (
-                    <div className="text-left">
-                    <table className="w-full border-collapse text-[11px] max-w-7xl shadow-sm rounded-2xl overflow-hidden border border-slate-200">
+                    <div className="text-left flex justify-start w-full text-center">
+                    <table className="w-full border-collapse text-[11px] max-w-7xl shadow-md rounded-2xl overflow-hidden border border-slate-200 text-left text-center">
                       <thead>
-                        <tr className="bg-slate-50 font-black text-slate-700">
-                          <th className="border border-slate-200 w-32 py-3 text-center">과목</th>
+                        <tr className="bg-slate-100 font-black text-slate-800 text-center">
+                          <th className="border border-slate-200 w-32 py-4 text-center">과목</th>
                           <th className="border border-slate-200 w-64 text-center">교재</th>
                           <th className="border border-slate-200 w-64 text-center">시작</th>
                           <th className="border border-slate-200 w-64 text-center">목표</th>
@@ -824,7 +844,6 @@ export default function App() {
                           let lastData = "-";
                           let totalItems = 0;
                           let checkedItems = 0;
-
                           for (let i = 0; i < allDates.length; i++) {
                             const val = termScheduler.cells[`${sub}-${allDates[i].full}`] || "";
                             if (val.trim() !== "") {
@@ -837,19 +856,17 @@ export default function App() {
                               });
                             }
                           }
-
                           const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
-
                           return (
-                            <tr key={`status-${sub}`} className="bg-white hover:bg-slate-50 transition-colors">
-                              <td className="border border-slate-200 text-center font-black py-2 bg-slate-50/50">{sub}</td>
-                              <td className="border border-slate-200 p-0"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-2 outline-none font-black text-center bg-transparent" placeholder="학습 교재 입력" /></td>
-                              <td className="border border-slate-200 bg-slate-50/10 text-center font-black px-4 py-2 truncate max-w-[200px] text-indigo-700">{firstData}</td>
-                              <td className="border border-slate-200 bg-slate-50/10 text-center font-black px-4 py-2 truncate max-w-[200px] text-rose-700">{lastData}</td>
-                              <td className="border border-slate-200 p-3">
-                                <div className="relative w-full h-7 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200/50">
+                            <tr key={`status-${sub}`} className="bg-white hover:bg-slate-50 transition-colors text-center text-center">
+                              <td className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 text-center text-center">{sub}</td>
+                              <td className="border border-slate-200 p-0 text-center text-center"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-2 outline-none font-black text-center bg-transparent text-center" placeholder="학습 교재" /></td>
+                              <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-4 py-2 truncate max-w-[200px] text-indigo-700 text-center">{firstData}</td>
+                              <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-4 py-2 truncate max-w-[200px] text-rose-700 text-center">{lastData}</td>
+                              <td className="border border-slate-200 p-4 text-center text-center">
+                                <div className="relative w-full h-8 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 text-center">
                                   <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${percent}%` }} />
-                                  <span className="absolute left-4 inset-y-0 flex items-center text-[10px] font-black text-slate-700 drop-shadow-sm">{percent}%</span>
+                                  <span className="absolute left-4 inset-y-0 flex items-center text-[10px] font-black text-slate-800 drop-shadow-sm text-center">{percent}%</span>
                                 </div>
                               </td>
                             </tr>
@@ -864,11 +881,11 @@ export default function App() {
             )}
 
             {activeTab === 'YEARLY' && (
-              <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-center">
+              <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-center text-center">
                 {yearlyPlan.map((plan, idx) => (
-                  <div key={idx} className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
-                    <h4 className="font-black text-indigo-600 mb-3">{idx + 1}월 계획</h4>
-                    <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} onInput={autoResize} placeholder={`${idx + 1}월 마일스톤`} className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden" />
+                  <div key={idx} className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
+                    <h4 className="font-black text-indigo-600 mb-3 text-center text-center">{idx + 1}월 계획</h4>
+                    <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} onInput={autoResize} placeholder={`${idx + 1}월 마일스톤`} className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden text-center text-center" />
                   </div>
                 ))}
               </div>
@@ -877,78 +894,63 @@ export default function App() {
 
           <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center">
             {showAiModal ? (
-              <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in">
-                <div className="bg-indigo-600 p-5 text-white flex justify-between items-center">
-                  <h3 className="font-extrabold text-lg flex items-center gap-2"><Sparkles size={20}/> AI 매직 플래너</h3>
-                  <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5" /></button>
+              <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in text-center">
+                <div className="bg-indigo-600 p-5 text-white flex justify-between items-center text-center">
+                  <h3 className="font-extrabold text-lg flex items-center justify-center gap-2 w-full text-center"><Sparkles size={20}/> AI 매직 플래너</h3>
+                  <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5 text-center" /></button>
                 </div>
-                <div className="p-6 text-center">
-                  {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-sm leading-relaxed">{aiFeedback}</div>}
-                  <form onSubmit={handleAiSubmit} className="relative mt-2">
-                    <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-center" disabled={isAiProcessing} />
-                    <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"><Send size={20} /></button>
+                <div className="p-6 text-center text-center">
+                  {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs leading-relaxed text-center">{aiFeedback}</div>}
+                  <form onSubmit={handleAiSubmit} className="relative mt-2 text-center text-center">
+                    <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-center text-center" disabled={isAiProcessing} />
+                    <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors text-center"><Send size={20} /></button>
                   </form>
                 </div>
               </div>
             ) : (
-              <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all"><Sparkles className="w-7 h-7" /></button>
+              <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all text-center"><Sparkles className="w-7 h-7 text-center" /></button>
             )}
           </div>
         </>
       )}
 
-      {showHelpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowHelpModal(false)}>
-          <div className="w-full max-w-md rounded-3xl shadow-2xl p-8 relative bg-white text-slate-800 text-center" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setShowHelpModal(false)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-100"><X className="w-6 h-6" /></button>
-            <h3 className="font-black text-2xl mb-6 flex items-center justify-center gap-2"><Sparkles className="text-indigo-600"/> 플래너 활용 가이드</h3>
-            <div className="space-y-6 text-sm leading-relaxed font-bold">
-              <div><p className="text-indigo-600 mb-1">🎨 색상 설정</p><p className="text-slate-500 font-medium">키워드와 색상을 지정하면 모든 탭의 텍스트가 자동으로 강조됩니다.</p></div>
-              <div><p className="text-indigo-600 mb-1">⏎ 항목 추가</p><p className="text-slate-500 font-medium">Alt + Enter로 줄을 바꾸면 각 항목마다 개별 체크박스가 생깁니다.</p></div>
-              <div><p className="text-indigo-600 mb-1">🤖 AI 데이터 추가</p><p className="text-slate-500 font-medium">AI에게 요청하면 기존 데이터 뒤에 새로운 계획을 덧붙여줍니다.</p></div>
-            </div>
-            <button onClick={() => setShowHelpModal(false)} className="mt-8 w-full py-4 rounded-xl font-black bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-lg">알겠습니다!</button>
-          </div>
-        </div>
-      )}
-
       {showResetConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowResetConfirm(false)}>
-          <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center bg-white" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
-            <h3 className="font-black text-xl mb-2 text-center">데이터 초기화</h3>
-            <p className="text-sm mb-8 text-slate-500 font-bold text-center">현재 탭의 모든 데이터를 삭제할까요?</p>
-            <div className="flex gap-3 text-center">
-              <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
-              <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg">확인</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setShowResetConfirm(false)}>
+          <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center"><AlertCircle size={32} /></div>
+            <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center">데이터 초기화</h3>
+            <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center">현재 탭의 데이터를 모두 지울까요?</p>
+            <div className="flex gap-3 text-center text-center text-center">
+              <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center">취소</button>
+              <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg text-center text-center text-center text-center">확인</button>
             </div>
           </div>
         </div>
       )}
 
       {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowLogoutConfirm(false)}>
-          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4"><LogOut size={32} /></div>
-            <h3 className="font-black text-xl mb-2">로그아웃</h3>
-            <p className="text-sm mb-8 text-slate-500 font-bold">로그아웃 하시겠습니까?</p>
-            <div className="flex gap-3 text-center">
-              <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
-              <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100">로그아웃</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setShowLogoutConfirm(false)}>
+          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center"><LogOut size={32} /></div>
+            <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center">로그아웃</h3>
+            <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center">정말 로그아웃 하시겠습니까?</p>
+            <div className="flex gap-3 text-center text-center text-center text-center text-center">
+              <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center">취소</button>
+              <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 text-center text-center text-center text-center text-center text-center text-center">로그아웃</button>
             </div>
           </div>
         </div>
       )}
 
       {studentToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setStudentToDelete(null)}>
-          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
-            <h3 className="font-black text-xl mb-2 text-center">데이터 삭제</h3>
-            <p className="text-sm mb-8 text-slate-500 font-bold text-center">이 시트를 삭제하시겠습니까?</p>
-            <div className="flex gap-3 text-center">
-              <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
-              <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg">삭제</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setStudentToDelete(null)}>
+          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
+            <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
+            <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center">이 시트를 삭제하시겠습니까?</p>
+            <div className="flex gap-3 text-center text-center text-center text-center text-center text-center text-center text-center">
+              <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
+              <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg text-center text-center text-center text-center text-center text-center text-center text-center text-center">삭제</button>
             </div>
           </div>
         </div>
