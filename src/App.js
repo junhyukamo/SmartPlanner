@@ -329,7 +329,7 @@ export default function App() {
 
   const executeResetTimetable = () => {
     if (activeTab === 'WEEKLY') {
-      setTimetable(generateTimeSlots()); // AI 병합 및 데이터까지 모두 초기화
+      setTimetable(generateTimeSlots());
     } else if (activeTab === 'MONTHLY') {
       setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
     }
@@ -555,9 +555,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 transition-colors duration-300">
-      {/* 이미지에서 보인 '작은 화면' 문제를 해결하기 위해 
-          모바일 기기에서도 전체 너비를 유연하게 쓰도록 수정했습니다.
-      */}
       <div className="w-full mx-auto">
         {view === 'LANDING' && (
           <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
@@ -665,72 +662,84 @@ export default function App() {
               </div>
             </header>
 
-            <main className="max-w-full mx-auto p-4 md:p-6 pb-24 relative text-center min-h-screen overflow-x-hidden">
+            <main className="max-w-full mx-auto p-2 md:p-6 pb-24 relative text-center min-h-screen overflow-x-hidden">
               {activeTab === 'WEEKLY' && (
                 <div className="animate-fade-in flex flex-col text-center">
-                  <div className="space-y-4 flex-1 flex flex-col">
-                    <div className="p-3 md:p-4 rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-auto min-h-[600px]">
-                      <div className="flex flex-wrap items-center justify-between gap-4 mb-4 flex-shrink-0">
-                        <div className="flex items-center gap-4">
+                  <div className="space-y-2 md:space-y-4 flex-1 flex flex-col">
+                    <div className="p-2 md:p-4 rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-auto">
+                      
+                      {/* 반응형 컨트롤 패널 영역 */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4 mb-2 md:mb-4 flex-shrink-0">
+                        <div className="flex flex-wrap items-center gap-2 md:gap-4">
                           {dDay ? (
-                            <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl shadow-md text-sm text-center">
-                              <Calendar size={16} />
+                            <div className="flex items-center gap-1.5 md:gap-3 px-3 md:px-5 py-1.5 md:py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl shadow-md text-xs md:text-sm text-center">
+                              <Calendar className="w-3 h-3 md:w-4 md:h-4" />
                               <span className="font-bold">{dDay.title} ({calculateDDay(dDay.date)})</span>
-                              <button onClick={() => setDDay(null)} className="hover:text-red-200 p-1"><X className="w-4 h-4" /></button>
+                              <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3 md:w-4 md:h-4" /></button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-2 p-1.5 rounded-2xl border border-slate-200 bg-slate-50 shadow-inner">
-                              <input type="text" placeholder="D-day 제목" className="w-32 p-2.5 text-sm rounded-xl outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
-                              <input type="date" className="w-36 p-2.5 text-sm rounded-xl outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
-                              <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); } }} className="px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
+                            <div className="flex items-center gap-1.5 md:gap-2 p-1 md:p-1.5 rounded-xl border border-slate-200 bg-slate-50 shadow-inner flex-wrap md:flex-nowrap justify-center">
+                              <input type="text" placeholder="D-day 제목" className="w-20 md:w-32 p-1.5 md:p-2.5 text-xs md:text-sm rounded-lg outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
+                              <input type="date" className="w-24 md:w-36 p-1.5 md:p-2.5 text-[10px] md:text-sm rounded-lg outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
+                              <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); } }} className="px-3 md:px-5 py-1.5 md:py-2.5 rounded-lg text-xs md:text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
                             </div>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center justify-end gap-2 text-sm ml-auto">
-                          <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><Palette className="w-4 h-4" /> 색상</button>
+                        <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 text-[10px] md:text-sm ml-auto">
+                          <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><Palette className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">색상</span></button>
                           {showColorModal && (
-                            <div className="absolute right-0 top-14 w-80 p-5 rounded-2xl shadow-2xl border border-slate-200 bg-white z-30 animate-fade-in text-center">
-                              <h4 className="font-extrabold mb-4 text-base flex items-center justify-center gap-2"><Palette className="text-indigo-500 w-5 h-5"/> 키워드 색상 지정</h4>
-                              <div className="flex gap-2 mb-4">
-                                <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-3 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
-                                <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
-                                <button onClick={addColorRule} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md">추가</button>
+                            <div className="absolute right-0 top-14 w-64 md:w-80 p-4 md:p-5 rounded-2xl shadow-2xl border border-slate-200 bg-white z-30 animate-fade-in text-center">
+                              <h4 className="font-extrabold mb-3 md:mb-4 text-sm md:text-base flex items-center justify-center gap-2"><Palette className="text-indigo-500 w-4 h-4 md:w-5 md:h-5"/> 키워드 색상 지정</h4>
+                              <div className="flex gap-2 mb-3 md:mb-4">
+                                <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-2 md:p-3 text-xs md:text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
+                                <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
+                                <button onClick={addColorRule} className="bg-indigo-600 text-white px-3 md:px-4 py-1.5 md:py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md text-xs md:text-sm">추가</button>
                               </div>
-                              <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                              <div className="space-y-2 max-h-40 md:max-h-48 overflow-y-auto custom-scrollbar pr-1">
                                 {colorRules.map((rule) => (
-                                  <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors text-center">
-                                    <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
-                                    <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
+                                  <div key={rule.id} className="flex items-center justify-between text-xs md:text-sm p-2 md:p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors text-center">
+                                    <div className="flex items-center gap-2 md:gap-3 font-bold"><div className="w-4 h-4 md:w-5 md:h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
+                                    <button onClick={() => removeColorRule(rule.id)} className="p-1 md:p-1.5 rounded-lg transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-3 h-3 md:w-4 md:h-4" /></button>
                                   </div>
                                 ))}
                               </div>
                             </div>
                           )}
-                          <div className="h-8 w-px mx-1 bg-slate-200 text-center"></div>
-                          {selection.day && selection.startId !== selection.endId ? <button onClick={mergeCells} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-4 h-4" /> 병합</button> : <div className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-4 h-4" /> 드래그</div>}
-                          <button onClick={unmergeCells} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-4 h-4" /> 분할</button>
-                          <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-colors ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-4 h-4" /> 일정 초기화</button>
+                          <div className="h-5 md:h-8 w-px mx-0.5 md:mx-1 bg-slate-200 text-center"></div>
+                          {selection.day && selection.startId !== selection.endId ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
+                          <button onClick={unmergeCells} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">분할</span></button>
+                          <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold transition-colors ml-0 md:ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">초기화</span></button>
                         </div>
                       </div>
                       
-                      {/* 가로 스크롤을 위해 overflow-x-auto를 부여하고 Table의 최소 너비를 설정합니다. */}
-                      <div className="flex-1 relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-x-auto overflow-y-visible text-center" onMouseLeave={handleMouseUp}>
-                        <table className="w-full text-center text-sm border-collapse min-w-[1000px] table-fixed text-center">
-                          <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800 text-center sticky top-0">
+                      {/* 화면이 넘어갈 경우 스크롤되도록 overflow-auto 및 max-h를 부여하고 모바일에서도 한 눈에 보이도록 반응형 스타일을 적용합니다. */}
+                      <div className="w-full relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-auto max-h-[65vh] md:max-h-[75vh] custom-scrollbar text-center" onMouseLeave={handleMouseUp}>
+                        <table className="w-full text-center border-collapse min-w-[320px] md:min-w-full table-fixed">
+                          <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800 sticky top-0">
                             <tr>
-                              <th className="py-2 w-16 border-r border-slate-200 uppercase tracking-widest text-[10px] font-black text-slate-400 text-center"><Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50"/> Time</th>
+                              <th className="py-1 md:py-2 w-10 md:w-16 border-r border-slate-200 uppercase tracking-widest text-[8px] md:text-[10px] font-black text-slate-400 bg-slate-50 z-20">
+                                <Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50 hidden md:block"/>
+                                <span className="md:hidden">시간</span>
+                                <span className="hidden md:inline">Time</span>
+                              </th>
                               {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((d, i) => {
-                                const labels = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+                                const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+                                const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
                                 let textColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : '';
-                                return <th key={d} className={`py-2 font-black text-xs border-r border-slate-200 ${textColor} text-center`}>{labels[i]}</th>;
+                                return (
+                                  <th key={d} className={`py-1 md:py-2 font-black text-[10px] md:text-xs border-r border-slate-200 bg-slate-50 z-20 ${textColor}`}>
+                                    <span className="hidden md:inline">{labelsLong[i]}</span>
+                                    <span className="md:hidden">{labelsShort[i]}</span>
+                                  </th>
+                                );
                               })}
                             </tr>
                           </thead>
                           <tbody>
                             {timetable.map((row) => (
                               <tr key={row.id} className="group text-center">
-                                <td className="p-0 w-16 border border-slate-200 align-middle bg-white transition-colors select-none text-center">
-                                  <div className="flex flex-col items-center justify-center h-full text-[10px] font-medium text-slate-400 text-center"><span>{row.time}</span></div>
+                                <td className="p-0 w-10 md:w-16 border border-slate-200 align-middle bg-slate-50/50 transition-colors select-none">
+                                  <div className="flex flex-col items-center justify-center h-full text-[8px] md:text-[10px] font-medium text-slate-400"><span>{row.time}</span></div>
                                 </td>
                                 {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => {
                                   if (row[`${day}_hidden`]) return null;
@@ -740,7 +749,7 @@ export default function App() {
                                   return (
                                     <td 
                                       key={day} 
-                                      className={`p-0 relative align-middle border border-slate-200 transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 text-center cursor-text`} 
+                                      className={`p-0 relative align-middle border border-slate-200 transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 cursor-text`} 
                                       style={{ backgroundColor: bgColor }} 
                                       rowSpan={row[`${day}_span`] || 1} 
                                       onMouseDown={() => handleMouseDown(day, row.id)} 
@@ -750,14 +759,14 @@ export default function App() {
                                         if (area) area.focus();
                                       }}
                                     >
-                                      <div className="w-full h-full flex items-center justify-center p-1 text-center min-h-[40px]">
+                                      <div className="w-full h-full flex items-center justify-center p-0 md:p-0.5 text-center min-h-[24px] md:min-h-[28px]">
                                         <textarea 
                                           value={row[day]} 
                                           onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} 
                                           onInput={autoResize} 
                                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} 
                                           rows={1} 
-                                          className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" 
+                                          className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-[10px] md:text-xs" 
                                         />
                                       </div>
                                     </td>
@@ -774,7 +783,7 @@ export default function App() {
               )}
 
               {activeTab === 'MONTHLY' && (
-                <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto text-center">
+                <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto text-center custom-scrollbar">
                   <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[2200px] text-center">
                     <div className="flex items-center justify-between mb-6 px-2 text-center">
                       <div className="flex gap-2 text-center">
@@ -994,18 +1003,18 @@ export default function App() {
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setStudentToDelete(null)}>
             <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
               <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
-              <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
-              <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">이 시트를 삭제하시겠습니까?</p>
+              <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
+              <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center">이 시트를 삭제하시겠습니까?</p>
               <div className="flex gap-3 text-center text-center text-center text-center text-center text-center text-center text-center text-center">
-                <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
-                <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">삭제</button>
+                <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
+                <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg text-center text-center text-center text-center text-center text-center text-center text-center text-center">삭제</button>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.2); border-radius: 10px; } .animate-fade-in { animation: fadeIn 0.3s forwards; } @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }` }} />
+      <style dangerouslySetInnerHTML={{ __html: `.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; } .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.4); border-radius: 10px; } .animate-fade-in { animation: fadeIn 0.3s forwards; } @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }` }} />
     </div>
   );
 }
