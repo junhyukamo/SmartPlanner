@@ -329,7 +329,7 @@ export default function App() {
 
   const executeResetTimetable = () => {
     if (activeTab === 'WEEKLY') {
-      setTimetable(generateTimeSlots()); // 모든 병합 및 AI 입력 데이터 완전 삭제
+      setTimetable(generateTimeSlots()); // AI 병합 및 데이터까지 모두 초기화
     } else if (activeTab === 'MONTHLY') {
       setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
     }
@@ -479,14 +479,20 @@ export default function App() {
         if (aiResponse.type === 'UPDATE_TIMETABLE' && activeTab === 'WEEKLY') {
           let newTimetable = [...timetable];
           aiResponse.updates.forEach((update) => {
-            const timeToIndex = (t) => { const [h, m] = t.split(':').map(Number); return (h - 8) * 2 + (m === 30 ? 1 : 0); };
+            const timeToIndex = (t) => { 
+              const [h, m] = t.split(':').map(Number); 
+              return (h - 8) * 2 + (m === 30 ? 1 : 0); 
+            };
             const startIdx = timeToIndex(update.startTime);
             const endIdx = timeToIndex(update.endTime) - 1;
+            
             if (startIdx >= 0 && endIdx <= 31) {
               newTimetable = newTimetable.map((row, idx) => {
-                // 병합 및 표시 상태 동시 업데이트 (8~10시 버그 수정)
-                if (idx === startIdx) return { ...row, [`${update.day}_span`]: endIdx - startIdx + 1, [`${update.day}_hidden`]: false, [update.day]: update.content };
-                else if (idx > startIdx && idx <= endIdx) return { ...row, [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true, [update.day]: '' };
+                if (idx === startIdx) {
+                  return { ...row, [`${update.day}_span`]: endIdx - startIdx + 1, [`${update.day}_hidden`]: false, [update.day]: update.content };
+                } else if (idx > startIdx && idx <= endIdx) {
+                  return { ...row, [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true, [update.day]: '' };
+                }
                 return row;
               });
             }
@@ -549,10 +555,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 transition-colors duration-300">
-      {/* 강제 PC 모드를 위한 스타일 
-          전체 컨테이너를 1200px로 고정하여 모바일에서 PC와 동일한 비율로 축소 노출 
+      {/* 이미지에서 보인 '작은 화면' 문제를 해결하기 위해 
+          모바일 기기에서도 전체 너비를 유연하게 쓰도록 수정했습니다.
       */}
-      <div className="min-w-[1200px] w-full mx-auto">
+      <div className="w-full mx-auto">
         {view === 'LANDING' && (
           <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
             <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 transform transition-all hover:scale-[1.01]">
@@ -659,7 +665,7 @@ export default function App() {
               </div>
             </header>
 
-            <main className="max-w-[98vw] mx-auto p-4 md:p-6 pb-24 relative text-center min-h-screen">
+            <main className="max-w-full mx-auto p-4 md:p-6 pb-24 relative text-center min-h-screen overflow-x-hidden">
               {activeTab === 'WEEKLY' && (
                 <div className="animate-fade-in flex flex-col text-center">
                   <div className="space-y-4 flex-1 flex flex-col">
@@ -706,7 +712,9 @@ export default function App() {
                           <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-colors ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-4 h-4" /> 일정 초기화</button>
                         </div>
                       </div>
-                      <div className="flex-1 relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-x-auto overflow-y-auto text-center" onMouseLeave={handleMouseUp}>
+                      
+                      {/* 가로 스크롤을 위해 overflow-x-auto를 부여하고 Table의 최소 너비를 설정합니다. */}
+                      <div className="flex-1 relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-x-auto overflow-y-visible text-center" onMouseLeave={handleMouseUp}>
                         <table className="w-full text-center text-sm border-collapse min-w-[1000px] table-fixed text-center">
                           <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800 text-center sticky top-0">
                             <tr>
@@ -749,7 +757,7 @@ export default function App() {
                                           onInput={autoResize} 
                                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} 
                                           rows={1} 
-                                          className="w-full h-auto text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" 
+                                          className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" 
                                         />
                                       </div>
                                     </td>
@@ -970,7 +978,7 @@ export default function App() {
 
         {showLogoutConfirm && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setShowLogoutConfirm(false)}>
-            <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center" onClick={(e) => e.stopPropagation()}>
               <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center"><LogOut size={32} /></div>
               <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center">로그아웃</h3>
               <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center">정말 로그아웃 하시겠습니까?</p>
@@ -989,7 +997,7 @@ export default function App() {
               <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
               <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">이 시트를 삭제하시겠습니까?</p>
               <div className="flex gap-3 text-center text-center text-center text-center text-center text-center text-center text-center text-center">
-                <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
+                <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
                 <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">삭제</button>
               </div>
             </div>
