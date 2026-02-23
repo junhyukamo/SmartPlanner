@@ -81,7 +81,7 @@ export default function App() {
   const [showGlobalKeyInput, setShowGlobalKeyInput] = useState(false);
   const [currentDocId, setCurrentDocId] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [isNotFound, setIsNotFound] = useState(false); // [추가] 삭제된 시트 체크
+  const [isNotFound, setIsNotFound] = useState(false); 
   const [activeTab, setActiveTab] = useState('WEEKLY');
   const [showColorModal, setShowColorModal] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -144,16 +144,44 @@ export default function App() {
     e.target.style.height = e.target.scrollHeight + 'px';
   };
 
+  // D-day 계산 함수
+  const calculateDDay = (targetDate) => {
+    if (!targetDate) return '';
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(targetDate);
+    target.setHours(0, 0, 0, 0);
+    const diff = target.getTime() - today.getTime();
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (days === 0) return 'D-Day';
+    return days > 0 ? `D-${days}` : `D+${Math.abs(days)}`;
+  };
+
   useEffect(() => {
     const initAuth = async () => {
       try {
         await signInAnonymously(auth);
         const params = new URLSearchParams(window.location.search);
         const sid = params.get('sid');
+        
+        // 1. URL 파라미터가 있으면 최우선으로 학생 뷰 진입 (관리자 로그인 무시)
         if (sid) {
-          setCurrentDocId(sid); setRole('student'); setView('PLANNER'); 
+          setCurrentDocId(sid); 
+          setRole('student'); 
+          setView('PLANNER'); 
+        } else {
+          // 2. 파라미터가 없을 때만 기존 세션(localStorage) 확인
+          const savedRole = localStorage.getItem('planner_role');
+          const savedName = localStorage.getItem('planner_name');
+          if (savedRole === 'student' && savedName) {
+            setRole('student'); setStudentName(savedName); setCurrentDocId(savedName); setView('PLANNER');
+          } else if (savedRole === 'teacher') {
+            setRole('teacher'); setView('TEACHER_DASHBOARD');
+          } else {
+            setView('LANDING');
+          }
         }
-        // 공용 API 키 실시간 연동
+
         const globalRef = doc(db, 'settings', 'global');
         onSnapshot(globalRef, (snap) => {
           if (snap.exists()) setGlobalAiKey(snap.data().aiKey || '');
@@ -161,15 +189,6 @@ export default function App() {
       } catch (error) {
         console.error("로그인 실패:", error);
         setCriticalError('AUTH_CONFIG_MISSING');
-      }
-      const savedRole = localStorage.getItem('planner_role');
-      const savedName = localStorage.getItem('planner_name');
-      if (savedRole === 'student' && savedName) {
-        setRole('student'); setStudentName(savedName); setCurrentDocId(savedName); setView('PLANNER');
-      } else if (savedRole === 'teacher') {
-        setRole('teacher'); setView('TEACHER_DASHBOARD');
-      } else if (!new URLSearchParams(window.location.search).get('sid')) {
-        setView('LANDING');
       }
     };
     initAuth();
@@ -184,7 +203,7 @@ export default function App() {
       try {
         if (docSnap.metadata?.hasPendingWrites) return;
         if (docSnap.exists()) {
-          setIsNotFound(false); // 데이터가 있으면 정상
+          setIsNotFound(false); 
           const data = docSnap.data();
           if (Array.isArray(data.timetable)) {
             const patchedTimetable = data.timetable.map((row) => ({
@@ -207,7 +226,6 @@ export default function App() {
           if (data.colorRules) setColorRules(data.colorRules);
           if (data.studentName) setStudentName(data.studentName);
         } else {
-          // [수정] 데이터가 없으면 '삭제된 페이지' 상태로 전환
           setIsNotFound(true);
         }
       } catch (e) { console.error("데이터 로드 에러:", e); } finally { setLoading(false); }
@@ -218,7 +236,6 @@ export default function App() {
   const isFirstRun = useRef(true);
   useEffect(() => {
     if (isFirstRun.current) { isFirstRun.current = false; return; }
-    // [수정] 삭제된 페이지이거나 로딩 중일 때는 절대 저장하지 않음 (다시 생성 방지)
     if (!user || !currentDocId || view !== 'PLANNER' || loading || isNotFound) return;
     const saveData = async () => {
       const docRef = doc(db, 'planners', currentDocId);
@@ -528,7 +545,6 @@ export default function App() {
     </div>
   );
 
-  // [추가] 삭제된 시트 접근 시 UI
   if (isNotFound && view === 'PLANNER') return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6">
       <div className="w-20 h-20 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-6"><AlertCircle size={40} /></div>
@@ -653,9 +669,17 @@ export default function App() {
                     <div className="flex flex-wrap items-center justify-between gap-4 mb-2 flex-shrink-0">
                       <div className="flex items-center gap-4">
                         {dDay ? (
-                          <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl shadow-md text-sm text-center"><Calendar size={16} /><span className="font-bold">{dDay.title}</span><button onClick={() => setDDay(null)} className="hover:text-red-200 p-1"><X className="w-4 h-4" /></button></div>
+                          <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl shadow-md text-sm text-center">
+                            <Calendar size={16} />
+                            <span className="font-bold">{dDay.title} ({calculateDDay(dDay.date)})</span>
+                            <button onClick={() => setDDay(null)} className="hover:text-red-200 p-1"><X className="w-4 h-4" /></button>
+                          </div>
                         ) : (
-                          <div className="flex items-center gap-2 p-1.5 rounded-2xl border border-slate-200 bg-slate-50 shadow-inner"><input type="text" placeholder="목표" className="w-32 p-2.5 text-sm rounded-xl outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/><input type="date" className="w-36 p-2.5 text-sm rounded-xl outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/><button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); } }} className="px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button></div>
+                          <div className="flex items-center gap-2 p-1.5 rounded-2xl border border-slate-200 bg-slate-50 shadow-inner">
+                            <input type="text" placeholder="D-day 제목" className="w-32 p-2.5 text-sm rounded-xl outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
+                            <input type="date" className="w-36 p-2.5 text-sm rounded-xl outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
+                            <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); } }} className="px-5 py-2.5 rounded-xl text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
+                          </div>
                         )}
                       </div>
                       <div className="flex flex-wrap items-center justify-end gap-2 text-sm ml-auto">
@@ -710,7 +734,7 @@ export default function App() {
                                 return (
                                   <td key={day} className={`p-0 relative align-middle border border-slate-200 cursor-text transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 text-center text-center`} style={{ backgroundColor: bgColor }} rowSpan={row[`${day}_span`] || 1} onMouseDown={() => handleMouseDown(day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)}>
                                     <div className="w-full h-full flex items-center justify-center p-0.5 text-center">
-                                      <textarea value={row[day]} onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} onInput={autoResize} onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} rows={1} className="w-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" />
+                                      <textarea value={row[day]} onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} onInput={autoResize} onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} rows={1} className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" />
                                     </div>
                                   </td>
                                 );
@@ -945,7 +969,7 @@ export default function App() {
       {studentToDelete && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setStudentToDelete(null)}>
           <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
+            <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
             <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
             <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center">이 시트를 삭제하시겠습니까?</p>
             <div className="flex gap-3 text-center text-center text-center text-center text-center text-center text-center text-center">
