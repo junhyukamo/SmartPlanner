@@ -542,7 +542,6 @@ export default function App() {
     </div>
   );
 
-  // 삭제된 시트 접근 시 UI (확인 버튼 누르면 아무것도 안 뜨는 빈 화면으로 전환)
   if (view === 'PLANNER_DELETED_BLANK') return <div className="min-h-screen bg-slate-50" />;
   if (isNotFound && view === 'PLANNER') return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6">
@@ -653,7 +652,6 @@ export default function App() {
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
                   ))}
                 </div>
-                {/* 로그아웃 버튼: 관리자일 때만 노출 */}
                 {role === 'teacher' && (
                   <div className="hidden md:flex items-center gap-2 border-l pl-3 ml-1 border-slate-200">
                     <button onClick={handleLogout} className="p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button>
@@ -734,9 +732,22 @@ export default function App() {
                                 const keywordColor = getCellColor(row[day]);
                                 const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
                                 return (
-                                  <td key={day} className={`p-0 relative align-middle border border-slate-200 cursor-text transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 text-center text-center`} style={{ backgroundColor: bgColor }} rowSpan={row[`${day}_span`] || 1} onMouseDown={() => handleMouseDown(day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)}>
-                                    <div className="w-full h-full flex items-center justify-center p-0.5 text-center">
-                                      <textarea value={row[day]} onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} onInput={autoResize} onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} rows={1} className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" />
+                                  <td key={day} className={`p-0 relative align-middle border border-slate-200 cursor-text transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 text-center`} style={{ backgroundColor: bgColor }} rowSpan={row[`${day}_span`] || 1} onMouseDown={() => handleMouseDown(day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)}>
+                                    <div 
+                                      className="w-full h-full flex items-center justify-center p-0.5 text-center cursor-text"
+                                      onClick={(e) => {
+                                        const txt = e.currentTarget.querySelector('textarea');
+                                        if (txt) txt.focus();
+                                      }}
+                                    >
+                                      <textarea 
+                                        value={row[day]} 
+                                        onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} 
+                                        onInput={autoResize} 
+                                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} 
+                                        rows={1} 
+                                        className="w-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" 
+                                      />
                                     </div>
                                   </td>
                                 );
@@ -790,8 +801,8 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          <tr className="bg-white h-8 text-center text-center">
-                            <td className="border border-slate-300 text-center font-black bg-slate-50 text-black text-center text-center">비고</td>
+                          <tr className="bg-white h-8 text-center">
+                            <td className="border border-slate-300 text-center font-black bg-slate-50 text-black text-center">비고</td>
                             {chunk.map((d) => (
                               <td key={`note-${d.full}`} className="border border-slate-300 p-0 align-middle h-8 text-center">
                                 <textarea 
@@ -884,15 +895,15 @@ export default function App() {
                           }
                           const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
                           return (
-                            <tr key={`status-${sub}`} className="bg-white hover:bg-slate-50 transition-colors text-center text-center">
-                              <td className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 text-center text-center">{sub}</td>
-                              <td className="border border-slate-200 p-0 text-center text-center"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-2 outline-none font-black text-center bg-transparent text-center" placeholder="학습 교재" /></td>
+                            <tr key={`status-${sub}`} className="bg-white hover:bg-slate-50 transition-colors text-center">
+                              <td className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 text-center">{sub}</td>
+                              <td className="border border-slate-200 p-0 text-center"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-2 outline-none font-black text-center bg-transparent text-center" placeholder="학습 교재" /></td>
                               <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-4 py-2 truncate max-w-[200px] text-indigo-700 text-center">{firstData}</td>
                               <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-4 py-2 truncate max-w-[200px] text-rose-700 text-center">{lastData}</td>
-                              <td className="border border-slate-200 p-4 text-center text-center">
+                              <td className="border border-slate-200 p-4 text-center">
                                 <div className="relative w-full h-8 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 text-center">
                                   <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${percent}%` }} />
-                                  <span className="absolute left-4 inset-y-0 flex items-center text-[10px] font-black text-slate-800 drop-shadow-sm text-center">{percent}%</span>
+                                  <span className="absolute left-4 inset-y-0 flex items-center text-[10px] font-black text-slate-700 drop-shadow-sm text-center">{percent}%</span>
                                 </div>
                               </td>
                             </tr>
@@ -910,8 +921,8 @@ export default function App() {
               <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-center text-center">
                 {yearlyPlan.map((plan, idx) => (
                   <div key={idx} className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
-                    <h4 className="font-black text-indigo-600 mb-3 text-center text-center">{idx + 1}월 계획</h4>
-                    <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} onInput={autoResize} placeholder={`${idx + 1}월 마일스톤`} className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden text-center text-center" />
+                    <h4 className="font-black text-indigo-600 mb-3 text-center">{idx + 1}월 계획</h4>
+                    <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} onInput={autoResize} placeholder={`${idx + 1}월 마일스톤`} className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden text-center" />
                   </div>
                 ))}
               </div>
