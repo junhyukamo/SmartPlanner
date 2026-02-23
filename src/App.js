@@ -144,6 +144,7 @@ export default function App() {
     e.target.style.height = e.target.scrollHeight + 'px';
   };
 
+  // D-day 계산 함수
   const calculateDDay = (targetDate) => {
     if (!targetDate) return '';
     const today = new Date();
@@ -163,6 +164,7 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get('sid');
         
+        // sid 파라미터가 있으면 무조건 학생 뷰로 진입 (localStorage보다 우선)
         if (sid) {
           setCurrentDocId(sid); 
           setRole('student'); 
@@ -296,7 +298,7 @@ export default function App() {
     setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000);
   };
 
-  const handleMouseDown = (day, id) => { setIsDragging(true); setSelection({ day, startId: id, endId: id }); };
+  const handleMouseDown = (day, id) => { setIsDragging(true) ; setSelection({ day, startId: id, endId: id }); };
   const handleMouseEnter = (day, id) => { if (isDragging && selection.day === day) setSelection((prev) => ({ ...prev, endId: id })); };
   const handleMouseUp = () => setIsDragging(false);
   useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
@@ -661,12 +663,12 @@ export default function App() {
             </div>
           </header>
 
-          <main className="max-w-[98vw] mx-auto p-4 md:p-6 pb-24 h-full relative text-center">
+          <main className="max-w-[98vw] mx-auto p-4 md:p-6 pb-24 relative text-center min-h-screen">
             {activeTab === 'WEEKLY' && (
-              <div className="animate-fade-in h-full flex flex-col text-center">
+              <div className="animate-fade-in flex flex-col text-center">
                 <div className="space-y-4 flex-1 flex flex-col">
-                  <div className="p-3 md:p-4 rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-[calc(100vh-140px)] min-h-[500px]">
-                    <div className="flex flex-wrap items-center justify-between gap-4 mb-2 flex-shrink-0">
+                  <div className="p-3 md:p-4 rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-auto min-h-[600px]">
+                    <div className="flex flex-wrap items-center justify-between gap-4 mb-4 flex-shrink-0">
                       <div className="flex items-center gap-4">
                         {dDay ? (
                           <div className="flex items-center gap-3 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-2xl shadow-md text-sm text-center">
@@ -708,9 +710,9 @@ export default function App() {
                         <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-colors ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-4 h-4" /> 일정 초기화</button>
                       </div>
                     </div>
-                    <div className="flex-1 relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-x-auto overflow-y-hidden text-center" onMouseLeave={handleMouseUp}>
-                      <table className="w-full h-full text-center text-sm border-collapse min-w-[800px] table-fixed text-center">
-                        <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800 text-center">
+                    <div className="flex-1 relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-x-auto overflow-y-auto text-center" onMouseLeave={handleMouseUp}>
+                      <table className="w-full text-center text-sm border-collapse min-w-[800px] table-fixed text-center">
+                        <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800 text-center sticky top-0">
                           <tr>
                             <th className="py-2 w-16 border-r border-slate-200 uppercase tracking-widest text-[10px] font-black text-slate-400 text-center"><Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50"/> Time</th>
                             {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((d, i) => {
@@ -734,7 +736,7 @@ export default function App() {
                                 return (
                                   <td key={day} className={`p-0 relative align-middle border border-slate-200 cursor-text transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 text-center`} style={{ backgroundColor: bgColor }} rowSpan={row[`${day}_span`] || 1} onMouseDown={() => handleMouseDown(day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)}>
                                     <div 
-                                      className="w-full h-full flex items-center justify-center p-0.5 text-center cursor-text"
+                                      className="w-full h-full flex items-center justify-center p-0.5 text-center cursor-text min-h-[30px]"
                                       onClick={(e) => {
                                         const txt = e.currentTarget.querySelector('textarea');
                                         if (txt) txt.focus();
@@ -746,7 +748,7 @@ export default function App() {
                                         onInput={autoResize} 
                                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} 
                                         rows={1} 
-                                        className="w-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" 
+                                        className="w-full h-auto text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-center" 
                                       />
                                     </div>
                                   </td>
