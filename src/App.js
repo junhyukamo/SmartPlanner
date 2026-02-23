@@ -127,7 +127,7 @@ export default function App() {
     topNotes: {},
     checks: {} 
   });
-  // 초기 날짜를 2026년 2월로 설정
+  
   const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 1));
   const [colorRules, setColorRules] = useState([]);
   const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#bfdbfe' });
@@ -138,6 +138,7 @@ export default function App() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiFeedback, setAiFeedback] = useState('');
+  const [editingCell, setEditingCell] = useState(null); // 월간 셀 편집 상태 관리
 
   const autoResize = (e) => {
     e.target.style.height = 'auto';
@@ -336,9 +337,18 @@ export default function App() {
     return rule ? rule.color : null;
   };
 
-  // [수정] 2026-02-02 월요일 시작 고정 28일 로직
+  // [수정] 2026-02-02 월요일 시작 고정 28일 로직 (월 변경 반영)
   const getSchedulerDates = () => {
-    const startDate = new Date(2026, 1, 2); // 2026년 2월 2일 (월요일)
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1);
+    
+    let startDayOffset = firstDayOfMonth.getDay(); 
+    if (startDayOffset === 0) startDayOffset = 7; 
+    
+    const startDate = new Date(firstDayOfMonth);
+    startDate.setDate(firstDayOfMonth.getDate() - (startDayOffset - 1));
+
     const days = [];
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
     for (let i = 0; i < 28; i++) {
@@ -414,7 +424,10 @@ export default function App() {
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + '\n' + userText }] }] }) }
       );
       const result = await response.json();
-      if (result.error) throw new Error(result.error.message);
+      if (result.error) {
+        if (result.error.code === 429) throw new Error("AI 사용량이 초과되었습니다. 잠시 후 다시 시도해주세요.");
+        throw new Error(result.error.message);
+      }
       return result.candidates?.[0]?.content?.parts?.[0]?.text;
     } catch (error) { setAiFeedback(`❌ AI 오류: ${error.message}`); return null; }
   };
@@ -612,7 +625,7 @@ export default function App() {
 
           <main className="max-w-[2000px] mx-auto p-4 md:p-6 pb-24 h-full relative text-center">
             {activeTab === 'WEEKLY' && (
-              <div className="animate-fade-in h-full flex flex-col">
+              <div className="animate-fade-in h-full flex flex-col text-center">
                 <div className="space-y-4 flex-1 flex flex-col">
                   <div className="p-3 md:p-4 rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-[calc(100vh-140px)] min-h-[500px]">
                     <div className="flex flex-wrap items-center justify-between gap-4 mb-2 flex-shrink-0">
@@ -635,7 +648,7 @@ export default function App() {
                             </div>
                             <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                               {colorRules.map((rule) => (
-                                <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors">
+                                <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors text-center">
                                   <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
                                   <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
                                 </div>
@@ -643,7 +656,7 @@ export default function App() {
                             </div>
                           </div>
                         )}
-                        <div className="h-8 w-px mx-1 bg-slate-200"></div>
+                        <div className="h-8 w-px mx-1 bg-slate-200 text-center"></div>
                         {selection.day && selection.startId !== selection.endId ? <button onClick={mergeCells} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-4 h-4" /> 병합</button> : <div className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-4 h-4" /> 드래그</div>}
                         <button onClick={unmergeCells} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-4 h-4" /> 분할</button>
                         <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg font-bold transition-colors ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-4 h-4" /> 일정 초기화</button>
@@ -691,7 +704,7 @@ export default function App() {
             )}
 
             {activeTab === 'MONTHLY' && (
-              <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto">
+              <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto text-center">
                 <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[2000px]">
                   <div className="flex items-center justify-between mb-6 px-2">
                     <div className="flex gap-2">
@@ -753,26 +766,28 @@ export default function App() {
                                 const bg = getCellColor(val);
                                 const lines = val.split('\n').filter(l => l.trim() !== '');
                                 return (
-                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle transition-colors relative h-16" style={{ backgroundColor: bg }}>
-                                    <div className="relative h-full w-full flex flex-col justify-center items-center">
-                                      {/* 입력용 텍스트 에어리어 (항목이 있을 때 글자를 투명하게 하여 중복 방지) */}
+                                  <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle transition-colors relative min-h-[60px]" style={{ backgroundColor: bg }}>
+                                    <div className="relative h-full w-full flex flex-col justify-center items-center py-2">
+                                      {/* 편집 모드일 때만 텍스트를 보여주고, 아닐 때는 체크박스 리스트만 노출 */}
                                       <textarea 
                                         value={val} 
                                         onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
                                         onInput={autoResize} 
-                                        className={`absolute inset-0 w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold z-10 
-                                          ${lines.length > 0 ? 'text-transparent caret-slate-800' : 'text-slate-800'}`} 
+                                        onFocus={() => setEditingCell(`${sub}-${d.full}`)}
+                                        onBlur={() => setEditingCell(null)}
+                                        className={`absolute inset-0 w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold z-20 transition-colors
+                                          ${editingCell === `${sub}-${d.full}` ? 'text-slate-800 bg-white/80' : 'text-transparent caret-transparent'}`} 
                                       />
-                                      {/* 표시용 체크박스 리스트 (z-index 0) */}
-                                      {lines.length > 0 && (
-                                        <div className="relative z-0 flex flex-col gap-1 w-full px-1">
+                                      {/* 결과물: 오직 체크박스가 포함된 텍스트만 표시 */}
+                                      {editingCell !== `${sub}-${d.full}` && lines.length > 0 && (
+                                        <div className="relative z-10 flex flex-col gap-1 w-full px-1">
                                           {lines.map((line, idx) => (
-                                            <div key={idx} className="flex items-center justify-center gap-1 bg-white/60 rounded px-1.5 py-0.5 shadow-sm border border-black/5">
-                                              <span className="text-[9px] font-bold text-slate-800 truncate max-w-[100px] leading-none">{line}</span>
+                                            <div key={idx} className="flex items-center justify-center gap-1.5 bg-white/60 rounded px-2 py-1 shadow-sm border border-black/5 mx-1">
+                                              <span className="text-[9px] font-black text-slate-800 truncate leading-none">{line}</span>
                                               <input 
                                                 type="checkbox" 
                                                 checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
-                                                onChange={() => handleTermCheckToggle(sub, d.full, idx)} 
+                                                onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
                                                 className="w-3.5 h-3.5 cursor-pointer accent-indigo-600 flex-shrink-0" 
                                               />
                                             </div>
@@ -791,33 +806,31 @@ export default function App() {
                   })}
 
                   {termScheduler.subjects.length > 0 && (
-                    <table className="w-full border-collapse text-[11px] max-w-7xl mx-auto shadow-sm rounded-2xl overflow-hidden border border-slate-200">
+                    <div className="text-left">
+                    <table className="w-full border-collapse text-[11px] max-w-7xl shadow-sm rounded-2xl overflow-hidden border border-slate-200">
                       <thead>
                         <tr className="bg-slate-50 font-black text-slate-700">
-                          <th className="border border-slate-200 w-32 py-3">과목</th>
-                          <th className="border border-slate-200 w-64">교재</th>
-                          <th className="border border-slate-200 w-64">시작</th>
-                          <th className="border border-slate-200 w-64">목표</th>
-                          <th className="border border-slate-200 w-80">달성도</th>
+                          <th className="border border-slate-200 w-32 py-3 text-center">과목</th>
+                          <th className="border border-slate-200 w-64 text-center">교재</th>
+                          <th className="border border-slate-200 w-64 text-center">시작</th>
+                          <th className="border border-slate-200 w-64 text-center">목표</th>
+                          <th className="border border-slate-200 w-80 text-center">달성도</th>
                         </tr>
                       </thead>
                       <tbody>
                         {termScheduler.subjects.map((sub) => {
                           const allDates = getSchedulerDates();
-                          
                           let firstData = "-";
                           let lastData = "-";
                           let totalItems = 0;
                           let checkedItems = 0;
 
-                          // 전체 시트에서 실제 데이터가 존재하는 구간의 '내용'을 추출
                           for (let i = 0; i < allDates.length; i++) {
                             const val = termScheduler.cells[`${sub}-${allDates[i].full}`] || "";
                             if (val.trim() !== "") {
                               const lines = val.split('\n').filter(l => l.trim() !== '');
                               if (firstData === "-") firstData = lines[0];
                               lastData = lines[lines.length - 1];
-                              
                               totalItems += lines.length;
                               lines.forEach((_, idx) => {
                                 if (termScheduler.checks[`${sub}-${allDates[i].full}-${idx}`]) checkedItems++;
@@ -844,17 +857,18 @@ export default function App() {
                         })}
                       </tbody>
                     </table>
+                    </div>
                   )}
                 </div>
               </div>
             )}
 
             {activeTab === 'YEARLY' && (
-              <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-center">
                 {yearlyPlan.map((plan, idx) => (
                   <div key={idx} className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md">
                     <h4 className="font-black text-indigo-600 mb-3">{idx + 1}월 계획</h4>
-                    <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} onInput={autoResize} placeholder={`${idx + 1}월 주요 마일스톤`} className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden" />
+                    <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} onInput={autoResize} placeholder={`${idx + 1}월 마일스톤`} className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden" />
                   </div>
                 ))}
               </div>
@@ -869,7 +883,7 @@ export default function App() {
                   <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5" /></button>
                 </div>
                 <div className="p-6 text-center">
-                  {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-sm">{aiFeedback}</div>}
+                  {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-sm leading-relaxed">{aiFeedback}</div>}
                   <form onSubmit={handleAiSubmit} className="relative mt-2">
                     <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-center" disabled={isAiProcessing} />
                     <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors"><Send size={20} /></button>
@@ -883,13 +897,12 @@ export default function App() {
         </>
       )}
 
-      {/* 모달 공통 */}
       {showHelpModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowHelpModal(false)}>
-          <div className="w-full max-w-md rounded-3xl shadow-2xl p-8 relative bg-white text-slate-800" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-3xl shadow-2xl p-8 relative bg-white text-slate-800 text-center" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setShowHelpModal(false)} className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-100"><X className="w-6 h-6" /></button>
-            <h3 className="font-black text-2xl mb-6 flex items-center gap-2"><Sparkles className="text-indigo-600"/> 플래너 활용 가이드</h3>
-            <div className="space-y-6 text-sm leading-relaxed font-bold text-center">
+            <h3 className="font-black text-2xl mb-6 flex items-center justify-center gap-2"><Sparkles className="text-indigo-600"/> 플래너 활용 가이드</h3>
+            <div className="space-y-6 text-sm leading-relaxed font-bold">
               <div><p className="text-indigo-600 mb-1">🎨 색상 설정</p><p className="text-slate-500 font-medium">키워드와 색상을 지정하면 모든 탭의 텍스트가 자동으로 강조됩니다.</p></div>
               <div><p className="text-indigo-600 mb-1">⏎ 항목 추가</p><p className="text-slate-500 font-medium">Alt + Enter로 줄을 바꾸면 각 항목마다 개별 체크박스가 생깁니다.</p></div>
               <div><p className="text-indigo-600 mb-1">🤖 AI 데이터 추가</p><p className="text-slate-500 font-medium">AI에게 요청하면 기존 데이터 뒤에 새로운 계획을 덧붙여줍니다.</p></div>
@@ -905,7 +918,7 @@ export default function App() {
             <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
             <h3 className="font-black text-xl mb-2 text-center">데이터 초기화</h3>
             <p className="text-sm mb-8 text-slate-500 font-bold text-center">현재 탭의 모든 데이터를 삭제할까요?</p>
-            <div className="flex gap-3">
+            <div className="flex gap-3 text-center">
               <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
               <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg">확인</button>
             </div>
@@ -919,7 +932,7 @@ export default function App() {
             <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4"><LogOut size={32} /></div>
             <h3 className="font-black text-xl mb-2">로그아웃</h3>
             <p className="text-sm mb-8 text-slate-500 font-bold">로그아웃 하시겠습니까?</p>
-            <div className="flex gap-3">
+            <div className="flex gap-3 text-center">
               <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
               <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100">로그아웃</button>
             </div>
@@ -931,9 +944,9 @@ export default function App() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setStudentToDelete(null)}>
           <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white" onClick={(e) => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
-            <h3 className="font-black text-xl mb-2">데이터 삭제</h3>
-            <p className="text-sm mb-8 text-slate-500 font-bold">이 시트를 삭제하시겠습니까?</p>
-            <div className="flex gap-3">
+            <h3 className="font-black text-xl mb-2 text-center">데이터 삭제</h3>
+            <p className="text-sm mb-8 text-slate-500 font-bold text-center">이 시트를 삭제하시겠습니까?</p>
+            <div className="flex gap-3 text-center">
               <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">취소</button>
               <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg">삭제</button>
             </div>
