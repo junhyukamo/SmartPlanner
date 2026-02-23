@@ -144,7 +144,6 @@ export default function App() {
     e.target.style.height = e.target.scrollHeight + 'px';
   };
 
-  // D-day 계산 함수
   const calculateDDay = (targetDate) => {
     if (!targetDate) return '';
     const today = new Date();
@@ -164,13 +163,11 @@ export default function App() {
         const params = new URLSearchParams(window.location.search);
         const sid = params.get('sid');
         
-        // 1. URL 파라미터가 있으면 최우선으로 학생 뷰 진입 (관리자 로그인 무시)
         if (sid) {
           setCurrentDocId(sid); 
           setRole('student'); 
           setView('PLANNER'); 
         } else {
-          // 2. 파라미터가 없을 때만 기존 세션(localStorage) 확인
           const savedRole = localStorage.getItem('planner_role');
           const savedName = localStorage.getItem('planner_name');
           if (savedRole === 'student' && savedName) {
@@ -545,12 +542,14 @@ export default function App() {
     </div>
   );
 
+  // 삭제된 시트 접근 시 UI (확인 버튼 누르면 아무것도 안 뜨는 빈 화면으로 전환)
+  if (view === 'PLANNER_DELETED_BLANK') return <div className="min-h-screen bg-slate-50" />;
   if (isNotFound && view === 'PLANNER') return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6">
       <div className="w-20 h-20 rounded-full bg-red-100 text-red-600 flex items-center justify-center mb-6"><AlertCircle size={40} /></div>
       <h1 className="text-2xl font-black text-slate-800 mb-2">삭제된 플래너입니다.</h1>
       <p className="text-slate-500 mb-8 text-center font-bold">해당 플래너는 더 이상 존재하지 않거나 관리자에 의해 삭제되었습니다.</p>
-      <button onClick={() => window.location.href = window.location.pathname} className="px-8 py-3 bg-indigo-600 text-white rounded-xl font-bold shadow-lg">메인으로 이동</button>
+      <button onClick={() => setView('PLANNER_DELETED_BLANK')} className="px-8 py-3 bg-slate-800 text-white rounded-xl font-bold shadow-lg">확인</button>
     </div>
   );
 
@@ -654,9 +653,12 @@ export default function App() {
                     <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
                   ))}
                 </div>
-                <div className="hidden md:flex items-center gap-2 border-l pl-3 ml-1 border-slate-200">
-                  <button onClick={handleLogout} className="p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button>
-                </div>
+                {/* 로그아웃 버튼: 관리자일 때만 노출 */}
+                {role === 'teacher' && (
+                  <div className="hidden md:flex items-center gap-2 border-l pl-3 ml-1 border-slate-200">
+                    <button onClick={handleLogout} className="p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button>
+                  </div>
+                )}
               </div>
             </div>
           </header>
@@ -957,7 +959,7 @@ export default function App() {
           <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center" onClick={(e) => e.stopPropagation()}>
             <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center"><LogOut size={32} /></div>
             <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center">로그아웃</h3>
-            <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center">정말 로그아웃 하시겠습니까?</p>
+            <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center">정말 로그아웃 하시겠습니까?</p>
             <div className="flex gap-3 text-center text-center text-center text-center text-center">
               <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center">취소</button>
               <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 text-center text-center text-center text-center text-center text-center text-center">로그아웃</button>
