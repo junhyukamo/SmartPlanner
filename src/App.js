@@ -941,90 +941,106 @@ export default function App() {
                       );
                     })}
 
-                    {/* 요약(달성도) 테이블: 과목별, 교재(줄)별 독립적 달성도 분석 */}
+                    {/* 요약(달성도) 테이블: 과목별, 교재명 키워드별 독립적 달성도 분석 */}
                     {termScheduler.subjects.length > 0 && (
                       <div className="text-left flex justify-center w-full text-center mt-6">
                         <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
                           <thead>
                             <tr className="bg-slate-100 font-black text-slate-800 text-center">
-                              <th className="border border-slate-200 w-[15%] py-3 md:py-4 align-middle text-center">과목</th>
-                              {/* 요청에 따라 헤더 이름 변경 */}
-                              <th className="border border-slate-200 w-[25%] align-middle text-center">교재</th>
-                              <th className="border border-slate-200 w-[20%] align-middle text-center">시작</th>
-                              <th className="border border-slate-200 w-[20%] align-middle text-center">목표</th>
-                              <th className="border border-slate-200 w-[20%] align-middle text-center">달성도</th>
+                              {/* 과목 10%, 교재 10%, 시작 10%, 목표 10%, 달성도 60% */}
+                              <th className="border border-slate-200 w-[10%] py-3 md:py-4 align-middle text-center break-keep">과목</th>
+                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">교재</th>
+                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">시작</th>
+                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">목표</th>
+                              <th className="border border-slate-200 w-[60%] align-middle text-center break-keep">달성도</th>
                             </tr>
                           </thead>
                           <tbody>
                             {termScheduler.subjects.map((sub) => {
                               const allDates = getSchedulerDates();
                               const textbookVal = termScheduler.textbooks[sub] || '';
-                              const textbookLines = textbookVal.split('\n');
                               
-                              let maxLines = textbookLines.length;
-                              allDates.forEach(d => {
-                                const val = termScheduler.cells[`${sub}-${d.full}`] || "";
-                                if (val.trim() !== "") {
-                                  const lines = val.split('\n');
-                                  if (lines.length > maxLines) maxLines = lines.length;
-                                }
-                              });
-
-                              if (maxLines === 0) maxLines = 1;
+                              // 교재 열의 텍스트를 줄 단위로 읽어 유효한 교재 키워드 추출 (중복 제거)
+                              const tbNames = Array.from(new Set(textbookVal.split('\n').map(t => t.trim()).filter(t => t !== '')));
 
                               const rowData = [];
-                              for (let idx = 0; idx < maxLines; idx++) {
+
+                              if (tbNames.length === 0) {
+                                // 교재가 명시되지 않은 경우, 전체 일정 데이터를 합산하여 보여줌
                                 let firstData = "-";
                                 let lastData = "-";
                                 let totalItems = 0;
                                 let checkedItems = 0;
 
-                                for (let i = 0; i < allDates.length; i++) {
-                                  const val = termScheduler.cells[`${sub}-${allDates[i].full}`] || "";
+                                allDates.forEach(d => {
+                                  const val = termScheduler.cells[`${sub}-${d.full}`] || "";
                                   if (val.trim() !== "") {
                                     const lines = val.split('\n');
-                                    if (lines.length > idx) {
-                                      const lineText = lines[idx].trim();
-                                      if (lineText) {
-                                        if (firstData === "-") firstData = lineText;
-                                        lastData = lineText;
+                                    lines.forEach((lineText, idx) => {
+                                      const trimmedLine = lineText.trim();
+                                      if (trimmedLine !== "") {
+                                        if (firstData === "-") firstData = trimmedLine;
+                                        lastData = trimmedLine;
                                         totalItems++;
-                                        if (termScheduler.checks[`${sub}-${allDates[i].full}-${idx}`]) checkedItems++;
+                                        if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
                                       }
-                                    }
+                                    });
                                   }
-                                }
-
-                                const tbName = textbookLines[idx] && textbookLines[idx].trim() !== "" ? textbookLines[idx].trim() : "-";
-                                
-                                // 교재 이름도 없고 데이터도 비어있는 쓸데없는 초과 줄(엔터)은 렌더링 무시
-                                if (tbName === "-" && totalItems === 0 && idx > 0) continue;
+                                });
 
                                 rowData.push({
-                                  tbName,
+                                  tbName: "-",
                                   firstData,
                                   lastData,
                                   percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0,
                                 });
-                              }
+                              } else {
+                                tbNames.forEach((tbName) => {
+                                  let firstData = "-";
+                                  let lastData = "-";
+                                  let totalItems = 0;
+                                  let checkedItems = 0;
 
-                              if (rowData.length === 0) {
-                                rowData.push({ tbName: "-", firstData: "-", lastData: "-", percent: 0 });
+                                  allDates.forEach(d => {
+                                    const val = termScheduler.cells[`${sub}-${d.full}`] || "";
+                                    if (val.trim() !== "") {
+                                      const lines = val.split('\n');
+                                      lines.forEach((lineText, idx) => {
+                                        const trimmedLine = lineText.trim();
+                                        // 계획의 텍스트가 해당 교재의 텍스트(키워드)를 포함하고 있는지 확인
+                                        if (trimmedLine !== "" && trimmedLine.includes(tbName)) {
+                                          if (firstData === "-") firstData = trimmedLine;
+                                          lastData = trimmedLine;
+                                          totalItems++;
+                                          if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) {
+                                            checkedItems++;
+                                          }
+                                        }
+                                      });
+                                    }
+                                  });
+
+                                  rowData.push({
+                                    tbName,
+                                    firstData,
+                                    lastData,
+                                    percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0,
+                                  });
+                                });
                               }
 
                               return rowData.map((data, index) => (
                                 <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center">
-                                  {/* 과목명은 맨 첫 줄에만 표시하고 아래로 병합 */}
                                   {index === 0 && (
                                     <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 align-middle">
                                       {sub}
                                     </td>
                                   )}
                                   <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap">{data.tbName}</td>
-                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 truncate text-indigo-700 align-middle">{data.firstData}</td>
-                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 truncate text-rose-700 align-middle">{data.lastData}</td>
+                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap">{data.firstData}</td>
+                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-rose-700 align-middle break-words whitespace-pre-wrap">{data.lastData}</td>
                                   <td className="border border-slate-200 p-2 md:p-3 text-center align-middle">
-                                    <div className="relative w-full h-5 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto max-w-[90%]">
+                                    <div className="relative w-full h-5 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
                                       <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
                                       <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[9px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{data.percent}%</span>
                                     </div>
