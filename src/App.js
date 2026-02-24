@@ -791,7 +791,7 @@ export default function App() {
               )}
 
               {/* ========================================================================= */}
-              {/* 월간 시트 (전면 개편) */}
+              {/* 월간 시트 (전면 개편 적용) */}
               {/* ========================================================================= */}
               {activeTab === 'MONTHLY' && (
                 <div className="animate-fade-in flex flex-col gap-6 text-center w-full">
@@ -823,8 +823,9 @@ export default function App() {
                         <table key={blockIdx} className="w-full border-collapse mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
                           <thead>
                             <tr className="bg-slate-50 text-center">
+                              {/* 과목과 교재 열의 너비를 6%로 동일하게 맞춤 */}
                               <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2}>과목</th>
-                              <th className="border border-slate-300 w-[10%] py-2 text-center font-black align-middle" rowSpan={2}>교재</th>
+                              <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2}>교재</th>
                               {chunk.map((d, i) => {
                                 let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
                                 return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`}>{d.day}</th>;
@@ -871,28 +872,24 @@ export default function App() {
                                   <button onClick={() => removeSubjectRow(sub)} className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
                                 </td>
                                 
-                                <td 
-                                  className="border border-slate-300 p-0 align-middle text-center bg-white cursor-text"
-                                  onClick={(e) => {
-                                    if (e.target.tagName !== 'TEXTAREA') setEditingCell(`${sub}-textbook`);
-                                  }}
-                                >
-                                  {editingCell === `${sub}-textbook` ? (
+                                {/* 상시 직접 입력이 가능하도록 텍스트 영역 고정 렌더링 */}
+                                <td className="border border-slate-300 p-0 align-middle text-center bg-white cursor-text">
+                                  <div className="w-full h-full flex items-center justify-center p-1 min-h-[40px]">
                                     <textarea 
                                       value={termScheduler.textbooks[sub] || ''} 
                                       onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
-                                      onBlur={() => setEditingCell(null)}
                                       onInput={autoResize}
-                                      onFocus={autoResize}
-                                      autoFocus
+                                      placeholder="입력"
                                       rows={1}
-                                      className="w-full h-full min-h-[40px] p-1 outline-none font-bold text-center bg-transparent resize-none overflow-hidden text-slate-700 leading-tight align-middle" 
+                                      className="w-full bg-transparent resize-none outline-none overflow-hidden font-bold text-center text-slate-700 leading-tight align-middle focus:ring-1 focus:ring-indigo-400/50 rounded placeholder:text-slate-300" 
+                                      ref={(el) => {
+                                        if (el && el.value) {
+                                          el.style.height = 'auto';
+                                          el.style.height = el.scrollHeight + 'px';
+                                        }
+                                      }}
                                     />
-                                  ) : (
-                                    <div className="w-full h-full min-h-[40px] flex flex-col items-center justify-center p-1 whitespace-pre-wrap font-bold text-slate-700">
-                                      {termScheduler.textbooks[sub] || '입력'}
-                                    </div>
-                                  )}
+                                  </div>
                                 </td>
 
                                 {chunk.map((d) => {
@@ -963,7 +960,8 @@ export default function App() {
                           <thead>
                             <tr className="bg-slate-100 font-black text-slate-800 text-center">
                               <th className="border border-slate-200 w-[15%] py-3 md:py-4 align-middle text-center">과목</th>
-                              <th className="border border-slate-200 w-[25%] align-middle text-center">교재 (목표 항목)</th>
+                              {/* 요청에 따라 헤더 이름 변경 */}
+                              <th className="border border-slate-200 w-[25%] align-middle text-center">교재</th>
                               <th className="border border-slate-200 w-[20%] align-middle text-center">시작</th>
                               <th className="border border-slate-200 w-[20%] align-middle text-center">목표</th>
                               <th className="border border-slate-200 w-[20%] align-middle text-center">달성도</th>
@@ -1135,3 +1133,4 @@ export default function App() {
     </div>
   );
 }
+```</candidate>
