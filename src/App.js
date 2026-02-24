@@ -662,13 +662,12 @@ export default function App() {
               </div>
             </header>
 
-            <main className="max-w-full mx-auto p-2 md:p-6 pb-24 relative text-center min-h-screen overflow-x-hidden">
+            <main className="max-w-full mx-auto p-2 md:p-6 pb-24 relative text-center min-h-screen">
               {activeTab === 'WEEKLY' && (
                 <div className="animate-fade-in flex flex-col text-center">
                   <div className="space-y-2 md:space-y-4 flex-1 flex flex-col">
                     <div className="p-2 md:p-4 rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-auto">
                       
-                      {/* 반응형 컨트롤 패널 영역 */}
                       <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4 mb-2 md:mb-4 flex-shrink-0">
                         <div className="flex flex-wrap items-center gap-2 md:gap-4">
                           {dDay ? (
@@ -712,10 +711,9 @@ export default function App() {
                         </div>
                       </div>
                       
-                      {/* 화면이 넘어갈 경우 스크롤되도록 overflow-auto 및 max-h를 부여하고 모바일에서도 한 눈에 보이도록 반응형 스타일을 적용합니다. */}
-                      <div className="w-full relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner overflow-auto max-h-[65vh] md:max-h-[75vh] custom-scrollbar text-center" onMouseLeave={handleMouseUp}>
+                      <div className="w-full relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner text-center" onMouseLeave={handleMouseUp}>
                         <table className="w-full text-center border-collapse min-w-[320px] md:min-w-full table-fixed">
-                          <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800 sticky top-0">
+                          <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800">
                             <tr>
                               <th className="py-1 md:py-2 w-10 md:w-16 border-r border-slate-200 uppercase tracking-widest text-[8px] md:text-[10px] font-black text-slate-400 bg-slate-50 z-20">
                                 <Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50 hidden md:block"/>
@@ -783,8 +781,8 @@ export default function App() {
               )}
 
               {activeTab === 'MONTHLY' && (
-                <div className="animate-fade-in flex flex-col gap-6 overflow-x-auto text-center custom-scrollbar">
-                  <div className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[2200px] text-center">
+                <div className="animate-fade-in flex flex-col gap-6 text-center">
+                  <div className="p-4 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[1400px] text-center">
                     <div className="flex items-center justify-between mb-6 px-2 text-center">
                       <div className="flex gap-2 text-center">
                         <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center"><ChevronLeft size={20}/></button>
