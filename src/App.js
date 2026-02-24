@@ -227,14 +227,14 @@ export default function App() {
       const docRef = doc(db, 'planners', currentDocId);
       const isActuallyName = studentName && studentName !== currentDocId;
       await setDoc(docRef, {
-        timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler,
+        timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, colorRules, // ✅ colorRules 저장 항목 추가
         lastUpdated: new Date().toISOString(),
         ...(isActuallyName && { studentName: studentName })
       }, { merge: true });
     };
     const timeoutId = setTimeout(saveData, 1000);
     return () => clearTimeout(timeoutId);
-  }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, user, currentDocId, view, loading, studentName, isNotFound]);
+  }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, colorRules, user, currentDocId, view, loading, studentName, isNotFound]); // ✅ 의존성 배열에 colorRules 추가
 
   useEffect(() => {
     if (!user || view !== 'TEACHER_DASHBOARD') return;
@@ -882,15 +882,14 @@ export default function App() {
 
                                 {chunk.map((d) => {
                                   const val = termScheduler.cells[`${sub}-${d.full}`] || '';
-                                  const bg = getCellColor(val);
                                   const lines = val.split('\n').filter(l => l.trim() !== '');
                                   const isEditing = editingCell === `${sub}-${d.full}`;
                                   
                                   return (
                                     <td 
                                       key={`${sub}-${d.full}`} 
-                                      className="border border-slate-300 p-0 align-middle transition-colors relative text-center" 
-                                      style={{ backgroundColor: bg }}
+                                      // ✅ 월간 시트 배경색 함수(getCellColor) 제거, 기본 스타일 지정
+                                      className="border border-slate-300 p-0 align-middle transition-colors relative text-center hover:bg-slate-50" 
                                       onClick={(e) => {
                                         if (!isEditing && e.target.type !== 'checkbox') setEditingCell(`${sub}-${d.full}`);
                                       }}
@@ -1061,7 +1060,14 @@ export default function App() {
                   {yearlyPlan.map((plan, idx) => (
                     <div key={idx} className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
                       <h4 className="font-black text-indigo-600 mb-3 text-center text-center">{idx + 1}월 계획</h4>
-                      <textarea value={plan} style={{ backgroundColor: getCellColor(plan) }} onChange={(e) => handleYearlyChange(idx, e.target.value)} onInput={autoResize} placeholder={`${idx + 1}월 마일스톤`} className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden text-center text-center" />
+                      <textarea 
+                        value={plan} 
+                        // ✅ 연간 시트 셀 배경색 함수(getCellColor) 제거
+                        onChange={(e) => handleYearlyChange(idx, e.target.value)} 
+                        onInput={autoResize} 
+                        placeholder={`${idx + 1}월 마일스톤`} 
+                        className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden text-center text-center bg-transparent" 
+                      />
                     </div>
                   ))}
                 </div>
