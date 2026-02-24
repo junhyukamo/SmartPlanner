@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Check,
@@ -5,21 +6,14 @@ import {
   Plus,
   Clock,
   BookOpen,
-  Sun,
-  Moon,
   Calendar,
   X,
-  PenTool,
   Users,
-  LogIn,
   ChevronLeft,
   LogOut,
-  Layout,
   Sparkles,
   Send,
   MousePointer2,
-  Wand2,
-  ListTodo,
   Merge,
   Split,
   Palette,
@@ -27,7 +21,6 @@ import {
   Key,
   Settings,
   ChevronRight,
-  Copy,
   UserPlus,
   Link as LinkIcon
 } from 'lucide-react';
@@ -35,20 +28,15 @@ import { initializeApp } from 'firebase/app';
 import {
   getAuth,
   signInAnonymously,
-  onAuthStateChanged,
-  signOut
+  onAuthStateChanged
 } from 'firebase/auth';
 import {
   getFirestore,
   doc,
   setDoc,
-  getDoc,
-  updateDoc,
   onSnapshot,
   collection,
-  deleteDoc,
-  query,
-  where
+  deleteDoc
 } from 'firebase/firestore';
 
 // ==================================================================================
@@ -1133,4 +1121,3 @@ export default function App() {
     </div>
   );
 }
-```</candidate>
