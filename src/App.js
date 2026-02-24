@@ -200,17 +200,23 @@ export default function App() {
             }));
             setTimetable(patchedTimetable);
           } else { setTimetable(generateTimeSlots()); }
-          if (data.todos) setTodos(data.todos);
-          if (data.dDay) setDDay(data.dDay);
-          if (data.memo) setMemo(data.memo);
-          if (data.yearlyPlan) setYearlyPlan(data.yearlyPlan);
-          if (data.monthlyMemo) setMonthlyMemo(data.monthlyMemo);
-          if (data.termScheduler) setTermScheduler({
+          
+          // =======================================================================
+          // [수정됨] 다른 학생 시트로 넘어갈 때 이전 학생의 값이 남아 전이되지 않도록 
+          // 값이 없으면 확실하게 기본값(null, 빈 문자열 등)으로 강제 초기화
+          // =======================================================================
+          setTodos(data.todos || []);
+          setDDay(data.dDay || null); // D-Day 공유(전이) 현상 완벽 해결
+          setMemo(data.memo || '');
+          setYearlyPlan(data.yearlyPlan || Array(12).fill(''));
+          setMonthlyMemo(data.monthlyMemo || '');
+          setTermScheduler({
             subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {},
-            ...data.termScheduler
+            ...(data.termScheduler || {})
           });
-          if (data.colorRules) setColorRules(data.colorRules);
-          if (data.studentName) setStudentName(data.studentName);
+          setColorRules(data.colorRules || []);
+          setStudentName(data.studentName || '');
+          
         } else {
           setIsNotFound(true);
         }
@@ -227,14 +233,14 @@ export default function App() {
       const docRef = doc(db, 'planners', currentDocId);
       const isActuallyName = studentName && studentName !== currentDocId;
       await setDoc(docRef, {
-        timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, colorRules, // ✅ colorRules 저장 항목 추가
+        timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, colorRules,
         lastUpdated: new Date().toISOString(),
         ...(isActuallyName && { studentName: studentName })
       }, { merge: true });
     };
     const timeoutId = setTimeout(saveData, 1000);
     return () => clearTimeout(timeoutId);
-  }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, colorRules, user, currentDocId, view, loading, studentName, isNotFound]); // ✅ 의존성 배열에 colorRules 추가
+  }, [timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, colorRules, user, currentDocId, view, loading, studentName, isNotFound]);
 
   useEffect(() => {
     if (!user || view !== 'TEACHER_DASHBOARD') return;
