@@ -127,7 +127,8 @@ export default function App() {
     checks: {} 
   });
   
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 1)); 
+  // 기준일: 2026년 2월 2일 (월요일)
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 2)); 
   const [colorRules, setColorRules] = useState([]);
   const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#bfdbfe' });
   const [studentList, setStudentList] = useState([]);
@@ -350,24 +351,13 @@ export default function App() {
     return rule ? rule.color : null;
   };
 
+  // 정확히 4주(28일) 이동 로직
   const getSchedulerDates = () => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    let startDate;
-    if (year === 2026 && month === 1) {
-      startDate = new Date(2026, 1, 2);
-    } else {
-      const firstDayOfMonth = new Date(year, month, 1);
-      let offset = firstDayOfMonth.getDay(); 
-      if (offset === 0) offset = 7; 
-      startDate = new Date(firstDayOfMonth);
-      startDate.setDate(firstDayOfMonth.getDate() - (offset - 1));
-    }
     const days = [];
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
     for (let i = 0; i < 28; i++) {
-      const dateObj = new Date(startDate);
-      dateObj.setDate(startDate.getDate() + i);
+      const dateObj = new Date(currentDate);
+      dateObj.setDate(currentDate.getDate() + i);
       days.push({
         full: `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`,
         label: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
@@ -377,6 +367,23 @@ export default function App() {
       });
     }
     return days;
+  };
+
+  // 좌우 버튼: 정확히 28일씩 증감
+  const handlePrev4Weeks = () => {
+    setCurrentDate(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() - 28);
+      return d;
+    });
+  };
+
+  const handleNext4Weeks = () => {
+    setCurrentDate(prev => {
+      const d = new Date(prev);
+      d.setDate(d.getDate() + 28);
+      return d;
+    });
   };
 
   const handleTermCellChange = (subject, dateKey, value) => {
@@ -663,11 +670,14 @@ export default function App() {
             </header>
 
             <main className="max-w-full mx-auto p-2 md:p-6 pb-24 relative text-center min-h-screen">
+              
+              {/* ========================================================================= */}
+              {/* 주간 시트 (원본 변경 없이 유지) */}
+              {/* ========================================================================= */}
               {activeTab === 'WEEKLY' && (
                 <div className="animate-fade-in flex flex-col text-center">
                   <div className="space-y-2 md:space-y-4 flex-1 flex flex-col">
                     <div className="p-2 md:p-4 rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-auto">
-                      
                       <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4 mb-2 md:mb-4 flex-shrink-0">
                         <div className="flex flex-wrap items-center gap-2 md:gap-4">
                           {dDay ? (
@@ -715,7 +725,7 @@ export default function App() {
                         <table className="w-full text-center border-collapse min-w-[320px] md:min-w-full table-fixed">
                           <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800">
                             <tr>
-                              <th className="py-1 md:py-2 w-10 md:w-16 border-r border-slate-200 uppercase tracking-widest text-[8px] md:text-[10px] font-black text-slate-400 bg-slate-50 z-20">
+                              <th className="py-1 md:py-2 w-10 md:w-16 border-r border-slate-200 uppercase tracking-widest text-[8px] md:text-[10px] font-black text-slate-400 bg-slate-50 z-20 align-middle">
                                 <Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50 hidden md:block"/>
                                 <span className="md:hidden">시간</span>
                                 <span className="hidden md:inline">Time</span>
@@ -725,7 +735,7 @@ export default function App() {
                                 const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
                                 let textColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : '';
                                 return (
-                                  <th key={d} className={`py-1 md:py-2 font-black text-[10px] md:text-xs border-r border-slate-200 bg-slate-50 z-20 ${textColor}`}>
+                                  <th key={d} className={`py-1 md:py-2 font-black text-[10px] md:text-xs border-r border-slate-200 bg-slate-50 z-20 align-middle ${textColor}`}>
                                     <span className="hidden md:inline">{labelsLong[i]}</span>
                                     <span className="md:hidden">{labelsShort[i]}</span>
                                   </th>
@@ -764,7 +774,7 @@ export default function App() {
                                           onInput={autoResize} 
                                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} 
                                           rows={1} 
-                                          className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-[10px] md:text-xs" 
+                                          className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-[10px] md:text-xs align-middle" 
                                         />
                                       </div>
                                     </td>
@@ -780,20 +790,28 @@ export default function App() {
                 </div>
               )}
 
+              {/* ========================================================================= */}
+              {/* 월간 시트 (전면 개편) */}
+              {/* ========================================================================= */}
               {activeTab === 'MONTHLY' && (
-                <div className="animate-fade-in flex flex-col gap-6 text-center">
-                  <div className="p-4 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm min-w-[1400px] text-center">
+                <div className="animate-fade-in flex flex-col gap-6 text-center w-full">
+                  <div className="p-2 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm w-full text-center">
                     <div className="flex items-center justify-between mb-6 px-2 text-center">
-                      <div className="flex gap-2 text-center">
-                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center"><ChevronLeft size={20}/></button>
-                        <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center"><ChevronRight size={20}/></button>
+                      <div className="flex items-center gap-4 text-center">
+                        <div className="flex gap-2 text-center">
+                          <button onClick={handlePrev4Weeks} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronLeft size={20}/></button>
+                          <button onClick={handleNext4Weeks} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronRight size={20}/></button>
+                        </div>
+                        <div className="font-extrabold text-slate-600 text-sm hidden sm:block">
+                          {currentDate.getFullYear()}.{String(currentDate.getMonth() + 1).padStart(2, '0')}.{String(currentDate.getDate()).padStart(2, '0')} 기준
+                        </div>
                       </div>
                       <div className="flex gap-3 text-center">
                         <button onClick={() => {
                           const name = prompt("추가할 과목명을 입력하세요");
                           if(name) addSubjectRow(name.trim());
-                        }} className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={18}/> 과목 추가</button>
-                        <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={18}/> 일정 초기화</button>
+                        }} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-xs md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={16}/> <span className="hidden sm:inline">과목 추가</span></button>
+                        <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-xs md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={16}/> <span className="hidden sm:inline">일정 초기화</span></button>
                       </div>
                     </div>
 
@@ -802,71 +820,129 @@ export default function App() {
                       const chunkSize = 14;
                       const chunk = allDates.slice(blockIdx * chunkSize, (blockIdx + 1) * chunkSize);
                       return (
-                        <table key={blockIdx} className="w-full border-collapse mb-10 text-[11px] table-fixed text-center">
+                        <table key={blockIdx} className="w-full border-collapse mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
                           <thead>
                             <tr className="bg-slate-50 text-center">
-                              <th className="border border-slate-300 w-32 py-2 text-center font-black" rowSpan={2}>과목</th>
+                              <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2}>과목</th>
+                              <th className="border border-slate-300 w-[10%] py-2 text-center font-black align-middle" rowSpan={2}>교재</th>
                               {chunk.map((d, i) => {
                                 let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                return <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${textColor}`}>{d.day}</th>;
+                                return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`}>{d.day}</th>;
                               })}
                             </tr>
                             <tr className="bg-slate-50 text-center">
                               {chunk.map((d, i) => {
                                  let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                 return <th key={i} className={`border border-slate-300 py-1 font-bold text-center ${textColor}`}>{d.label}</th>;
+                                 return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`}>{d.label}</th>;
                               })}
                             </tr>
                           </thead>
                           <tbody>
-                            <tr className="bg-white h-8 text-center text-center">
-                              <td className="border border-slate-300 text-center font-black bg-slate-50 text-black text-center text-center">비고</td>
+                            <tr className="bg-white text-center">
+                              <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-1">비고</td>
                               {chunk.map((d) => (
-                                <td key={`note-${d.full}`} className="border border-slate-300 p-0 align-middle h-8 text-center">
-                                  <textarea 
-                                    value={termScheduler.topNotes[d.full] || ''} 
-                                    onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
-                                    rows={1}
-                                    className="w-full h-full bg-transparent resize-none outline-none px-2 py-1 text-center font-bold overflow-hidden leading-tight text-center" 
-                                  />
+                                <td key={`note-${d.full}`} className="border border-slate-300 p-0 align-middle text-center cursor-text">
+                                  {editingCell === `note-${d.full}` ? (
+                                    <textarea 
+                                      value={termScheduler.topNotes[d.full] || ''} 
+                                      onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
+                                      onInput={autoResize}
+                                      onFocus={autoResize}
+                                      onBlur={() => setEditingCell(null)}
+                                      autoFocus
+                                      rows={1}
+                                      className="w-full h-full min-h-[30px] bg-white resize-none outline-none p-1 text-center font-bold overflow-hidden leading-tight align-middle rounded shadow-inner" 
+                                    />
+                                  ) : (
+                                    <div 
+                                      className="w-full h-full min-h-[30px] flex items-center justify-center p-1 whitespace-pre-wrap font-bold text-slate-800"
+                                      onClick={() => setEditingCell(`note-${d.full}`)}
+                                    >
+                                      {termScheduler.topNotes[d.full] || ''}
+                                    </div>
+                                  )}
                                 </td>
                               ))}
                             </tr>
                             {termScheduler.subjects.map((sub) => (
-                              <tr key={sub} className="text-center">
-                                <td className="border border-slate-300 px-2 py-1 font-black text-center relative group bg-slate-50/50 text-center">
+                              <tr key={sub} className="text-center align-middle">
+                                <td className="border border-slate-300 px-1 py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep">
                                   {sub}
-                                  <button onClick={() => removeSubjectRow(sub)} className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={12}/></button>
+                                  <button onClick={() => removeSubjectRow(sub)} className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
                                 </td>
+                                
+                                <td 
+                                  className="border border-slate-300 p-0 align-middle text-center bg-white cursor-text"
+                                  onClick={(e) => {
+                                    if (e.target.tagName !== 'TEXTAREA') setEditingCell(`${sub}-textbook`);
+                                  }}
+                                >
+                                  {editingCell === `${sub}-textbook` ? (
+                                    <textarea 
+                                      value={termScheduler.textbooks[sub] || ''} 
+                                      onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
+                                      onBlur={() => setEditingCell(null)}
+                                      onInput={autoResize}
+                                      onFocus={autoResize}
+                                      autoFocus
+                                      rows={1}
+                                      className="w-full h-full min-h-[40px] p-1 outline-none font-bold text-center bg-transparent resize-none overflow-hidden text-slate-700 leading-tight align-middle" 
+                                    />
+                                  ) : (
+                                    <div className="w-full h-full min-h-[40px] flex flex-col items-center justify-center p-1 whitespace-pre-wrap font-bold text-slate-700">
+                                      {termScheduler.textbooks[sub] || '입력'}
+                                    </div>
+                                  )}
+                                </td>
+
                                 {chunk.map((d) => {
                                   const val = termScheduler.cells[`${sub}-${d.full}`] || '';
                                   const bg = getCellColor(val);
                                   const lines = val.split('\n').filter(l => l.trim() !== '');
+                                  const isEditing = editingCell === `${sub}-${d.full}`;
+                                  
                                   return (
-                                    <td key={`${sub}-${d.full}`} className="border border-slate-300 p-0 align-middle transition-colors relative min-h-[60px] text-center" style={{ backgroundColor: bg }}>
-                                      <div className="relative h-full w-full flex flex-col justify-center items-center py-2 text-center">
-                                        <textarea 
-                                          value={val} 
-                                          onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
-                                          onInput={autoResize} 
-                                          onFocus={() => setEditingCell(`${sub}-${d.full}`)}
-                                          onBlur={() => setEditingCell(null)}
-                                          className={`absolute inset-0 w-full h-full bg-transparent resize-none outline-none p-2 text-center font-bold z-20 transition-colors
-                                            ${editingCell === `${sub}-${d.full}` ? 'text-slate-800 bg-white/90' : 'text-transparent caret-transparent'} text-center`} 
-                                        />
-                                        {editingCell !== `${sub}-${d.full}` && lines.length > 0 && (
-                                          <div className="relative z-10 flex flex-col gap-1.5 w-full px-1.5 text-center">
-                                            {lines.map((line, idx) => (
-                                              <div key={idx} className="flex items-center justify-center gap-2 bg-white/70 rounded-lg px-2.5 py-1.5 shadow-sm border border-black/5 mx-1 text-center">
-                                                <span className="text-[9px] font-black text-slate-800 leading-tight text-center flex-1">{line}</span>
-                                                <input 
-                                                  type="checkbox" 
-                                                  checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
-                                                  onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
-                                                  className="w-4 h-4 cursor-pointer accent-indigo-600 flex-shrink-0 text-center text-center" 
-                                                />
-                                              </div>
-                                            ))}
+                                    <td 
+                                      key={`${sub}-${d.full}`} 
+                                      className="border border-slate-300 p-0 align-middle transition-colors relative text-center" 
+                                      style={{ backgroundColor: bg }}
+                                      onClick={(e) => {
+                                        if (!isEditing && e.target.type !== 'checkbox') setEditingCell(`${sub}-${d.full}`);
+                                      }}
+                                    >
+                                      <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[50px] cursor-text">
+                                        {isEditing ? (
+                                          <textarea 
+                                            autoFocus
+                                            value={val} 
+                                            onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
+                                            onInput={autoResize} 
+                                            onFocus={autoResize}
+                                            onBlur={() => setEditingCell(null)}
+                                            rows={1}
+                                            className="w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden min-h-[40px] align-middle leading-tight" 
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full flex flex-col gap-1.5 px-1 justify-center min-h-[40px]">
+                                            {val.trim() === '' ? (
+                                               <span className="text-transparent select-none w-full h-full block">.</span>
+                                            ) : (
+                                              lines.map((line, idx) => (
+                                                <div key={idx} className="flex items-center justify-center gap-1 bg-white/70 rounded px-1 py-1 shadow-sm border border-black/5 mx-auto w-[95%]">
+                                                  <span className="text-[9px] md:text-[10px] font-black text-slate-800 leading-tight text-center flex-1 break-words whitespace-pre-wrap">{line}</span>
+                                                  <input 
+                                                    type="checkbox" 
+                                                    checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
+                                                    onChange={(e) => { 
+                                                      e.stopPropagation(); 
+                                                      handleTermCheckToggle(sub, d.full, idx); 
+                                                    }} 
+                                                    onClick={(e) => e.stopPropagation()} 
+                                                    className="w-3 h-3 md:w-4 md:h-4 cursor-pointer accent-indigo-600 flex-shrink-0" 
+                                                  />
+                                                </div>
+                                              ))
+                                            )}
                                           </div>
                                         )}
                                       </div>
@@ -880,55 +956,98 @@ export default function App() {
                       );
                     })}
 
+                    {/* 요약(달성도) 테이블: 과목별, 교재(줄)별 독립적 달성도 분석 */}
                     {termScheduler.subjects.length > 0 && (
-                      <div className="text-left flex justify-start w-full text-center">
-                      <table className="w-full border-collapse text-[11px] max-w-7xl shadow-md rounded-2xl overflow-hidden border border-slate-200 text-left text-center">
-                        <thead>
-                          <tr className="bg-slate-100 font-black text-slate-800 text-center">
-                            <th className="border border-slate-200 w-32 py-4 text-center">과목</th>
-                            <th className="border border-slate-200 w-64 text-center">교재</th>
-                            <th className="border border-slate-200 w-64 text-center">시작</th>
-                            <th className="border border-slate-200 w-64 text-center">목표</th>
-                            <th className="border border-slate-200 w-80 text-center">달성도</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {termScheduler.subjects.map((sub) => {
-                            const allDates = getSchedulerDates();
-                            let firstData = "-";
-                            let lastData = "-";
-                            let totalItems = 0;
-                            let checkedItems = 0;
-                            for (let i = 0; i < allDates.length; i++) {
-                              const val = termScheduler.cells[`${sub}-${allDates[i].full}`] || "";
-                              if (val.trim() !== "") {
-                                const lines = val.split('\n').filter(l => l.trim() !== '');
-                                if (firstData === "-") firstData = lines[0];
-                                lastData = lines[lines.length - 1];
-                                totalItems += lines.length;
-                                lines.forEach((_, idx) => {
-                                  if (termScheduler.checks[`${sub}-${allDates[i].full}-${idx}`]) checkedItems++;
+                      <div className="text-left flex justify-center w-full text-center mt-6">
+                        <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
+                          <thead>
+                            <tr className="bg-slate-100 font-black text-slate-800 text-center">
+                              <th className="border border-slate-200 w-[15%] py-3 md:py-4 align-middle text-center">과목</th>
+                              <th className="border border-slate-200 w-[25%] align-middle text-center">교재 (목표 항목)</th>
+                              <th className="border border-slate-200 w-[20%] align-middle text-center">시작</th>
+                              <th className="border border-slate-200 w-[20%] align-middle text-center">목표</th>
+                              <th className="border border-slate-200 w-[20%] align-middle text-center">달성도</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {termScheduler.subjects.map((sub) => {
+                              const allDates = getSchedulerDates();
+                              const textbookVal = termScheduler.textbooks[sub] || '';
+                              const textbookLines = textbookVal.split('\n');
+                              
+                              let maxLines = textbookLines.length;
+                              allDates.forEach(d => {
+                                const val = termScheduler.cells[`${sub}-${d.full}`] || "";
+                                if (val.trim() !== "") {
+                                  const lines = val.split('\n');
+                                  if (lines.length > maxLines) maxLines = lines.length;
+                                }
+                              });
+
+                              if (maxLines === 0) maxLines = 1;
+
+                              const rowData = [];
+                              for (let idx = 0; idx < maxLines; idx++) {
+                                let firstData = "-";
+                                let lastData = "-";
+                                let totalItems = 0;
+                                let checkedItems = 0;
+
+                                for (let i = 0; i < allDates.length; i++) {
+                                  const val = termScheduler.cells[`${sub}-${allDates[i].full}`] || "";
+                                  if (val.trim() !== "") {
+                                    const lines = val.split('\n');
+                                    if (lines.length > idx) {
+                                      const lineText = lines[idx].trim();
+                                      if (lineText) {
+                                        if (firstData === "-") firstData = lineText;
+                                        lastData = lineText;
+                                        totalItems++;
+                                        if (termScheduler.checks[`${sub}-${allDates[i].full}-${idx}`]) checkedItems++;
+                                      }
+                                    }
+                                  }
+                                }
+
+                                const tbName = textbookLines[idx] && textbookLines[idx].trim() !== "" ? textbookLines[idx].trim() : "-";
+                                
+                                // 교재 이름도 없고 데이터도 비어있는 쓸데없는 초과 줄(엔터)은 렌더링 무시
+                                if (tbName === "-" && totalItems === 0 && idx > 0) continue;
+
+                                rowData.push({
+                                  tbName,
+                                  firstData,
+                                  lastData,
+                                  percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0,
                                 });
                               }
-                            }
-                            const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
-                            return (
-                              <tr key={`status-${sub}`} className="bg-white hover:bg-slate-50 transition-colors text-center text-center">
-                                <td className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 text-center text-center">{sub}</td>
-                                <td className="border border-slate-200 p-0 text-center text-center"><input value={termScheduler.textbooks[sub] || ''} onChange={(e) => handleTermTextbookChange(sub, e.target.value)} className="w-full h-full p-2 outline-none font-black text-center bg-transparent text-center" placeholder="학습 교재" /></td>
-                                <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-4 py-2 truncate max-w-[200px] text-indigo-700 text-center">{firstData}</td>
-                                <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-4 py-2 truncate max-w-[200px] text-rose-700 text-center">{lastData}</td>
-                                <td className="border border-slate-200 p-4 text-center text-center">
-                                  <div className="relative w-full h-8 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 text-center">
-                                    <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${percent}%` }} />
-                                    <span className="absolute left-4 inset-y-0 flex items-center text-[10px] font-black text-slate-800 drop-shadow-sm text-center">{percent}%</span>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+
+                              if (rowData.length === 0) {
+                                rowData.push({ tbName: "-", firstData: "-", lastData: "-", percent: 0 });
+                              }
+
+                              return rowData.map((data, index) => (
+                                <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center">
+                                  {/* 과목명은 맨 첫 줄에만 표시하고 아래로 병합 */}
+                                  {index === 0 && (
+                                    <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 align-middle">
+                                      {sub}
+                                    </td>
+                                  )}
+                                  <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap">{data.tbName}</td>
+                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 truncate text-indigo-700 align-middle">{data.firstData}</td>
+                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 truncate text-rose-700 align-middle">{data.lastData}</td>
+                                  <td className="border border-slate-200 p-2 md:p-3 text-center align-middle">
+                                    <div className="relative w-full h-5 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto max-w-[90%]">
+                                      <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
+                                      <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[9px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{data.percent}%</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ));
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>
