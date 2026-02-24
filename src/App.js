@@ -99,6 +99,46 @@ export default function App() {
     return slots;
   };
 
+  // =========================================================================
+  // 💡 [핵심 추가] 주간 시간표 자동 보정(Auto-Heal) 알고리즘
+  // 셀 병합 구조(span, hidden)가 충돌하여 표가 깨지는 현상을 수학적으로 검사하고 뼈대를 복원합니다.
+  // =========================================================================
+  const repairTimetable = (tt) => {
+    const defaultSlots = generateTimeSlots();
+    if (!Array.isArray(tt) || tt.length === 0) return defaultSlots;
+    
+    const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    let repaired = defaultSlots.map((def, idx) => {
+      const loaded = tt.find(r => r.id === def.id) || tt[idx] || {};
+      const merged = { ...def, ...loaded, id: def.id, time: def.time };
+      days.forEach(day => {
+        merged[day] = merged[day] || '';
+        merged[`${day}_span`] = Number(merged[`${day}_span`]) || 1;
+        merged[`${day}_hidden`] = Boolean(merged[`${day}_hidden`]);
+      });
+      return merged;
+    });
+
+    // 겹치거나 테이블 범위를 벗어나는 rowspan 구조를 완벽하게 정상화
+    days.forEach(day => {
+      let skipUntil = 0;
+      for (let i = 0; i < 32; i++) {
+        if (i < skipUntil) {
+          repaired[i][`${day}_hidden`] = true;
+          repaired[i][`${day}_span`] = 1;
+        } else {
+          repaired[i][`${day}_hidden`] = false;
+          let span = repaired[i][`${day}_span`];
+          if (span < 1) span = 1;
+          if (i + span > 32) span = 32 - i; // 테이블 바닥을 뚫고 나가지 않게 방어
+          repaired[i][`${day}_span`] = span;
+          skipUntil = i + span;
+        }
+      }
+    });
+    return repaired;
+  };
+
   const [timetable, setTimetable] = useState(generateTimeSlots());
   const [todos, setTodos] = useState([]);
   const [dDay, setDDay] = useState(null);
@@ -132,6 +172,20 @@ export default function App() {
     e.target.style.height = 'auto';
     e.target.style.height = e.target.scrollHeight + 'px';
   };
+
+  // 💡 [추가] 탭 변경이나 데이터 로드 시 빈칸 가려짐 방지를 위한 자동 높이 조절
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const textareas = document.querySelectorAll('textarea');
+      textareas.forEach(el => {
+        el.style.height = 'auto';
+        if (el.scrollHeight > 0) {
+          el.style.height = el.scrollHeight + 'px';
+        }
+      });
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [activeTab, view, currentDocId, loading]);
 
   const calculateDDay = (targetDate) => {
     if (!targetDate) return '';
@@ -191,22 +245,16 @@ export default function App() {
         if (docSnap.exists()) {
           setIsNotFound(false); 
           const data = docSnap.data();
-          if (Array.isArray(data.timetable)) {
-            const patchedTimetable = data.timetable.map((row) => ({
-              mon_span: 1, mon_hidden: false, tue_span: 1, tue_hidden: false,
-              wed_span: 1, wed_hidden: false, thu_span: 1, thu_hidden: false,
-              fri_span: 1, fri_hidden: false, sat_span: 1, sat_hidden: false,
-              sun_span: 1, sun_hidden: false, ...row,
-            }));
-            setTimetable(patchedTimetable);
-          } else { setTimetable(generateTimeSlots()); }
           
-          // =======================================================================
-          // [수정됨] 다른 학생 시트로 넘어갈 때 이전 학생의 값이 남아 전이되지 않도록 
-          // 값이 없으면 확실하게 기본값(null, 빈 문자열 등)으로 강제 초기화
-          // =======================================================================
+          // 💡 [개선] 데이터를 불러올 때 깨진 셀 구조를 즉시 복구 알고리즘으로 치유
+          if (Array.isArray(data.timetable)) {
+            setTimetable(repairTimetable(data.timetable));
+          } else { 
+            setTimetable(generateTimeSlots()); 
+          }
+          
           setTodos(data.todos || []);
-          setDDay(data.dDay || null); // D-Day 공유(전이) 현상 완벽 해결
+          setDDay(data.dDay || null); 
           setMemo(data.memo || '');
           setYearlyPlan(data.yearlyPlan || Array(12).fill(''));
           setMonthlyMemo(data.monthlyMemo || '');
@@ -296,30 +344,66 @@ export default function App() {
   const handleMouseUp = () => setIsDragging(false);
   useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
 
+  // 💡 [개선] 겹쳐서 병합할 때 데이터 날아감을 방지하고 구조를 복원하는 로직
   const mergeCells = () => {
     if (!selection.day || !selection.startId || !selection.endId) return;
     const start = Math.min(selection.startId, selection.endId);
     const end = Math.max(selection.startId, selection.endId);
     const spanCount = end - start + 1;
     if (spanCount <= 1) return;
-    const newTimetable = timetable.map((row) => {
-      if (row.id === start) return { ...row, [`${selection.day}_span`]: spanCount, [`${selection.day}_hidden`]: false };
-      else if (row.id > start && row.id <= end) return { ...row, [`${selection.day}_span`]: 1, [`${selection.day}_hidden`]: true, [selection.day]: '' };
-      return row;
-    });
-    setTimetable(newTimetable); setSelection({ day: null, startId: null, endId: null });
+    
+    let newTimetable = [...timetable];
+    const day = selection.day;
+    
+    for (let i = 1; i <= 32; i++) {
+      const rowIdx = i - 1;
+      if (i === start) {
+        newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: spanCount, [`${day}_hidden`]: false };
+      } else if (i > start && i <= end) {
+        // [중요] 기존 텍스트('') 초기화 로직을 제거하여, 실수로 병합해도 분할하면 데이터가 살아나게 유지!
+        newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: 1, [`${day}_hidden`]: true };
+      } else if (i < start) {
+        // 병합 위쪽 셀이 새 병합 범위를 침범하면 침범하지 못하도록 잘라냅니다
+        const priorSpan = newTimetable[rowIdx][`${day}_span`];
+        if (priorSpan > 1 && i + priorSpan - 1 >= start) {
+          newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: start - i };
+        }
+      }
+    }
+    
+    // 복구 알고리즘을 거쳐 안전하게 적용 (절대 깨지지 않음)
+    setTimetable(repairTimetable(newTimetable));
+    setSelection({ day: null, startId: null, endId: null });
   };
 
   const unmergeCells = () => {
-    if (!selection.day || !selection.startId) return;
-    const targetRow = timetable.find((r) => r.id === selection.startId);
-    if (!targetRow || (targetRow[`${selection.day}_span`] || 1) <= 1) return;
-    const span = targetRow[`${selection.day}_span`];
-    const newTimetable = timetable.map((row) => {
-      if (row.id >= selection.startId && row.id < selection.startId + span) return { ...row, [`${selection.day}_span`]: 1, [`${selection.day}_hidden`]: false };
-      return row;
-    });
-    setTimetable(newTimetable); setSelection({ day: null, startId: null, endId: null });
+    if (!selection.day || !selection.startId || !selection.endId) return;
+    const day = selection.day;
+    const start = Math.min(selection.startId, selection.endId);
+    const end = Math.max(selection.startId, selection.endId);
+
+    let newTimetable = [...timetable];
+
+    // 선택 범위와 겹치는 모든 병합 블록을 완전히 조각냅니다
+    for (let i = 0; i < 32; i++) {
+      const row = newTimetable[i];
+      if (!row[`${day}_hidden`]) {
+        const span = row[`${day}_span`] || 1;
+        const rowStart = row.id;
+        const rowEnd = row.id + span - 1;
+
+        if (rowStart <= end && rowEnd >= start) {
+          for (let j = 0; j < span; j++) {
+            if (i + j < 32) {
+              newTimetable[i + j] = { ...newTimetable[i + j], [`${day}_span`]: 1, [`${day}_hidden`]: false };
+            }
+          }
+        }
+      }
+    }
+
+    setTimetable(repairTimetable(newTimetable));
+    setSelection({ day: null, startId: null, endId: null });
   };
 
   const executeResetTimetable = () => {
@@ -487,18 +571,28 @@ export default function App() {
             const startIdx = timeToIndex(update.startTime);
             const endIdx = timeToIndex(update.endTime) - 1;
             
-            if (startIdx >= 0 && endIdx <= 31) {
-              newTimetable = newTimetable.map((row, idx) => {
-                if (idx === startIdx) {
-                  return { ...row, [`${update.day}_span`]: endIdx - startIdx + 1, [`${update.day}_hidden`]: false, [update.day]: update.content };
-                } else if (idx > startIdx && idx <= endIdx) {
-                  return { ...row, [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true, [update.day]: '' };
+            if (startIdx >= 0 && endIdx <= 31 && startIdx <= endIdx) {
+              const startId = startIdx + 1;
+              const endId = endIdx + 1;
+              const spanCount = endId - startId + 1;
+              
+              for (let i = 1; i <= 32; i++) {
+                const rowIdx = i - 1;
+                if (i === startId) {
+                  newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: spanCount, [`${update.day}_hidden`]: false, [update.day]: update.content };
+                } else if (i > startId && i <= endId) {
+                  newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true };
+                } else if (i < startId) {
+                  const priorSpan = newTimetable[rowIdx][`${update.day}_span`];
+                  if (priorSpan > 1 && i + priorSpan - 1 >= startId) {
+                    newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: startId - i };
+                  }
                 }
-                return row;
-              });
+              }
             }
           });
-          setTimetable(newTimetable); setAiFeedback('✅ 주간 시간표 반영 완료!');
+          setTimetable(repairTimetable(newTimetable)); 
+          setAiFeedback('✅ 주간 시간표 반영 완료!');
         } else if (aiResponse.type === 'UPDATE_TERM_SCHEDULER' && activeTab === 'MONTHLY') {
           const newCells = { ...termScheduler.cells };
           aiResponse.cells?.forEach(c => { 
@@ -666,7 +760,7 @@ export default function App() {
             <main className="max-w-full mx-auto p-2 md:p-6 pb-24 relative text-center min-h-screen">
               
               {/* ========================================================================= */}
-              {/* 주간 시트 (원본 변경 없이 유지) */}
+              {/* 주간 시트 */}
               {/* ========================================================================= */}
               {activeTab === 'WEEKLY' && (
                 <div className="animate-fade-in flex flex-col text-center">
@@ -763,7 +857,7 @@ export default function App() {
                                     >
                                       <div className="w-full h-full flex items-center justify-center p-0 md:p-0.5 text-center min-h-[24px] md:min-h-[28px]">
                                         <textarea 
-                                          value={row[day]} 
+                                          value={row[day] || ''} 
                                           onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} 
                                           onInput={autoResize} 
                                           onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} 
@@ -785,7 +879,7 @@ export default function App() {
               )}
 
               {/* ========================================================================= */}
-              {/* 월간 시트 (전면 개편 적용) */}
+              {/* 월간 시트 */}
               {/* ========================================================================= */}
               {activeTab === 'MONTHLY' && (
                 <div className="animate-fade-in flex flex-col gap-6 text-center w-full">
@@ -817,7 +911,6 @@ export default function App() {
                         <table key={blockIdx} className="w-full border-collapse mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
                           <thead>
                             <tr className="bg-slate-50 text-center">
-                              {/* 과목과 교재 열의 너비를 6%로 동일하게 맞춤 */}
                               <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2}>과목</th>
                               <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2}>교재</th>
                               {chunk.map((d, i) => {
@@ -866,7 +959,6 @@ export default function App() {
                                   <button onClick={() => removeSubjectRow(sub)} className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
                                 </td>
                                 
-                                {/* 상시 직접 입력이 가능하도록 텍스트 영역 고정 렌더링 */}
                                 <td className="border border-slate-300 p-0 align-middle text-center bg-white cursor-text">
                                   <div className="w-full h-full flex items-center justify-center p-1 min-h-[40px]">
                                     <textarea 
@@ -876,12 +968,6 @@ export default function App() {
                                       placeholder="입력"
                                       rows={1}
                                       className="w-full bg-transparent resize-none outline-none overflow-hidden font-bold text-center text-slate-700 leading-tight align-middle focus:ring-1 focus:ring-indigo-400/50 rounded placeholder:text-slate-300" 
-                                      ref={(el) => {
-                                        if (el && el.value) {
-                                          el.style.height = 'auto';
-                                          el.style.height = el.scrollHeight + 'px';
-                                        }
-                                      }}
                                     />
                                   </div>
                                 </td>
@@ -894,7 +980,6 @@ export default function App() {
                                   return (
                                     <td 
                                       key={`${sub}-${d.full}`} 
-                                      // ✅ 월간 시트 배경색 함수(getCellColor) 제거, 기본 스타일 지정
                                       className="border border-slate-300 p-0 align-middle transition-colors relative text-center hover:bg-slate-50" 
                                       onClick={(e) => {
                                         if (!isEditing && e.target.type !== 'checkbox') setEditingCell(`${sub}-${d.full}`);
@@ -904,7 +989,7 @@ export default function App() {
                                         {isEditing ? (
                                           <textarea 
                                             autoFocus
-                                            value={val} 
+                                            value={val || ''} 
                                             onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
                                             onInput={autoResize} 
                                             onFocus={autoResize}
@@ -946,13 +1031,12 @@ export default function App() {
                       );
                     })}
 
-                    {/* 요약(달성도) 테이블: 과목별, 교재명 키워드별 독립적 달성도 분석 */}
+                    {/* 요약(달성도) 테이블 */}
                     {termScheduler.subjects.length > 0 && (
                       <div className="text-left flex justify-center w-full text-center mt-6">
                         <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
                           <thead>
                             <tr className="bg-slate-100 font-black text-slate-800 text-center">
-                              {/* 과목 10%, 교재 10%, 시작 10%, 목표 10%, 달성도 60% */}
                               <th className="border border-slate-200 w-[10%] py-3 md:py-4 align-middle text-center break-keep">과목</th>
                               <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">교재</th>
                               <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">시작</th>
@@ -965,13 +1049,11 @@ export default function App() {
                               const allDates = getSchedulerDates();
                               const textbookVal = termScheduler.textbooks[sub] || '';
                               
-                              // 교재 열의 텍스트를 줄 단위로 읽어 유효한 교재 키워드 추출 (중복 제거)
                               const tbNames = Array.from(new Set(textbookVal.split('\n').map(t => t.trim()).filter(t => t !== '')));
 
                               const rowData = [];
 
                               if (tbNames.length === 0) {
-                                // 교재가 명시되지 않은 경우, 전체 일정 데이터를 합산하여 보여줌
                                 let firstData = "-";
                                 let lastData = "-";
                                 let totalItems = 0;
@@ -1012,7 +1094,6 @@ export default function App() {
                                       const lines = val.split('\n');
                                       lines.forEach((lineText, idx) => {
                                         const trimmedLine = lineText.trim();
-                                        // 계획의 텍스트가 해당 교재의 텍스트(키워드)를 포함하고 있는지 확인
                                         if (trimmedLine !== "" && trimmedLine.includes(tbName)) {
                                           if (firstData === "-") firstData = trimmedLine;
                                           lastData = trimmedLine;
@@ -1067,8 +1148,7 @@ export default function App() {
                     <div key={idx} className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
                       <h4 className="font-black text-indigo-600 mb-3 text-center text-center">{idx + 1}월 계획</h4>
                       <textarea 
-                        value={plan} 
-                        // ✅ 연간 시트 셀 배경색 함수(getCellColor) 제거
+                        value={plan || ''} 
                         onChange={(e) => handleYearlyChange(idx, e.target.value)} 
                         onInput={autoResize} 
                         placeholder={`${idx + 1}월 마일스톤`} 
