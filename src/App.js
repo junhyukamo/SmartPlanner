@@ -56,6 +56,9 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// 요일 인덱싱 배열 (다중 열 처리를 위한 상수)
+const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('LOADING');
@@ -99,19 +102,14 @@ export default function App() {
     return slots;
   };
 
-  // =========================================================================
-  // 💡 [핵심 추가] 주간 시간표 자동 보정(Auto-Heal) 알고리즘
-  // 셀 병합 구조(span, hidden)가 충돌하여 표가 깨지는 현상을 수학적으로 검사하고 뼈대를 복원합니다.
-  // =========================================================================
   const repairTimetable = (tt) => {
     const defaultSlots = generateTimeSlots();
     if (!Array.isArray(tt) || tt.length === 0) return defaultSlots;
     
-    const days = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
     let repaired = defaultSlots.map((def, idx) => {
       const loaded = tt.find(r => r.id === def.id) || tt[idx] || {};
       const merged = { ...def, ...loaded, id: def.id, time: def.time };
-      days.forEach(day => {
+      DAYS.forEach(day => {
         merged[day] = merged[day] || '';
         merged[`${day}_span`] = Number(merged[`${day}_span`]) || 1;
         merged[`${day}_hidden`] = Boolean(merged[`${day}_hidden`]);
@@ -119,8 +117,7 @@ export default function App() {
       return merged;
     });
 
-    // 겹치거나 테이블 범위를 벗어나는 rowspan 구조를 완벽하게 정상화
-    days.forEach(day => {
+    DAYS.forEach(day => {
       let skipUntil = 0;
       for (let i = 0; i < 32; i++) {
         if (i < skipUntil) {
@@ -130,7 +127,7 @@ export default function App() {
           repaired[i][`${day}_hidden`] = false;
           let span = repaired[i][`${day}_span`];
           if (span < 1) span = 1;
-          if (i + span > 32) span = 32 - i; // 테이블 바닥을 뚫고 나가지 않게 방어
+          if (i + span > 32) span = 32 - i; 
           repaired[i][`${day}_span`] = span;
           skipUntil = i + span;
         }
@@ -147,33 +144,42 @@ export default function App() {
   const [yearlyPlan, setYearlyPlan] = useState(Array(12).fill(''));
   const [monthlyMemo, setMonthlyMemo] = useState('');
   const [termScheduler, setTermScheduler] = useState({ 
-    cells: {}, 
-    status: {}, 
-    textbooks: {}, 
-    subjects: [], 
-    topNotes: {},
-    checks: {} 
+    cells: {}, status: {}, textbooks: {}, subjects: [], topNotes: {}, checks: {} 
   });
   
-  // 기준일: 2026년 2월 2일 (월요일)
   const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 2)); 
   const [colorRules, setColorRules] = useState([]);
   const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#bfdbfe' });
   const [studentList, setStudentList] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [selection, setSelection] = useState({ day: null, startId: null, endId: null });
+  
+  // 💡 선택 영역을 다중 열(2차원)까지 지원하도록 구조 변경
+  const [selection, setSelection] = useState({ startDay: null, endDay: null, startId: null, endId: null });
+  
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiFeedback, setAiFeedback] = useState('');
   const [editingCell, setEditingCell] = useState(null); 
 
+  // 선택 영역 범위 계산 헬퍼 함수
+  const getSelectionBounds = () => {
+    if (!selection.startDay || !selection.endDay || !selection.startId || !selection.endId) return null;
+    const d1 = DAYS.indexOf(selection.startDay);
+    const d2 = DAYS.indexOf(selection.endDay);
+    return {
+      minDayIdx: Math.min(d1, d2),
+      maxDayIdx: Math.max(d1, d2),
+      minId: Math.min(selection.startId, selection.endId),
+      maxId: Math.max(selection.startId, selection.endId)
+    };
+  };
+
   const autoResize = (e) => {
     e.target.style.height = 'auto';
     e.target.style.height = e.target.scrollHeight + 'px';
   };
 
-  // 💡 [추가] 탭 변경이나 데이터 로드 시 빈칸 가려짐 방지를 위한 자동 높이 조절
   useEffect(() => {
     const timer = setTimeout(() => {
       const textareas = document.querySelectorAll('textarea');
@@ -246,7 +252,6 @@ export default function App() {
           setIsNotFound(false); 
           const data = docSnap.data();
           
-          // 💡 [개선] 데이터를 불러올 때 깨진 셀 구조를 즉시 복구 알고리즘으로 치유
           if (Array.isArray(data.timetable)) {
             setTimetable(repairTimetable(data.timetable));
           } else { 
@@ -302,6 +307,208 @@ export default function App() {
     return () => unsubscribe();
   }, [user, view]);
 
+  // =========================================================================
+  // 💡 복사(Ctrl+C) / 붙여넣기(Ctrl+V) / 삭제(Delete, Backspace) 통합 이벤트 리스너
+  // =========================================================================
+  useEffect(() => {
+    const handleCopy = (e) => {
+      if (view !== 'PLANNER' || activeTab !== 'WEEKLY' || !selection.startDay || !selection.startId) return;
+      
+      // 사용자가 텍스트 일부를 드래그해서 일반 복사를 하려는 경우는 가로채지 않음
+      if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
+        if (document.activeElement.selectionStart !== document.activeElement.selectionEnd) return;
+      }
+      
+      const bounds = getSelectionBounds();
+      if (!bounds) return;
+
+      let tsv = "";
+      let copiedData = [];
+      for (let id = bounds.minId; id <= bounds.maxId; id++) {
+        const rowIdx = id - 1;
+        const row = timetable[rowIdx];
+        if (!row) continue;
+        let rowData = [];
+        let rowCopy = [];
+        for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
+          const day = DAYS[d];
+          // 화면에 숨겨진 셀은 빈칸 처리
+          rowData.push(row[`${day}_hidden`] ? "" : (row[day] || ""));
+          // 앱 내부 붙여넣기를 위해 병합 구조 정보까지 정밀하게 복사
+          rowCopy.push({ text: row[day] || '', span: row[`${day}_span`] || 1, hidden: row[`${day}_hidden`] || false });
+        }
+        tsv += rowData.join("\t");
+        if (id < bounds.maxId) tsv += "\n";
+        copiedData.push(rowCopy);
+      }
+      
+      // 클립보드에 단순 텍스트(엑셀 호환)와 JSON 뼈대 구조를 동시 저장
+      e.clipboardData.setData('text/plain', tsv);
+      e.clipboardData.setData('application/json', JSON.stringify(copiedData));
+      e.preventDefault();
+      
+      setAiFeedback('✅ 복사되었습니다.');
+      setTimeout(() => setAiFeedback(''), 1500);
+    };
+
+    const handlePaste = (e) => {
+      if (view !== 'PLANNER' || activeTab !== 'WEEKLY' || !selection.startDay || !selection.startId) return;
+      
+      const pastedText = (e.clipboardData || window.clipboardData).getData('text/plain');
+      const pastedJson = (e.clipboardData || window.clipboardData).getData('application/json');
+
+      if (!pastedText && !pastedJson) return;
+
+      const bounds = getSelectionBounds();
+      if (!bounds) return;
+
+      const isSingleCell = bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx;
+      
+      // JSON 구조 데이터를 확인 (우리 앱에서 복사한 경우 병합 구조를 가짐)
+      let hasStructure = false;
+      let parsedCopiedData = null;
+      if (pastedJson) {
+          try {
+              parsedCopiedData = JSON.parse(pastedJson);
+              if (parsedCopiedData.length > 1 || parsedCopiedData[0].length > 1 || parsedCopiedData[0][0].span > 1) {
+                  hasStructure = true;
+              }
+          } catch(err) {}
+      }
+
+      // 커서가 위치한 단일 셀에 일반 텍스트(표 형태 X)를 붙여넣을 경우 브라우저 기본 동작에 맡김
+      if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
+        if (!hasStructure && !pastedText.includes('\t') && !pastedText.includes('\n')) {
+            if (isSingleCell) return;
+        }
+      }
+
+      e.preventDefault();
+
+      setTimetable(prev => {
+        let newTimetable = [...prev];
+        const startDayIdx = bounds.minDayIdx;
+        const startId = bounds.minId;
+        const startRowIdx = startId - 1;
+
+        if (parsedCopiedData) {
+            // 1) 우리 앱에서 복사한 병합 구조를 완벽하게 덮어쓰기
+            const maxCIdx = parsedCopiedData[0].length;
+            
+            for (let c = 0; c < maxCIdx; c++) {
+                const targetDayIdx = startDayIdx + c;
+                if (targetDayIdx >= 7) continue;
+                const day = DAYS[targetDayIdx];
+                
+                // 붙여넣을 영역을 침범하고 있는 윗부분의 병합 셀들을 잘라냄
+                for (let i = 0; i < startRowIdx; i++) {
+                    const priorSpan = newTimetable[i][`${day}_span`];
+                    if (priorSpan > 1 && i + priorSpan > startRowIdx) {
+                        newTimetable[i] = { ...newTimetable[i], [`${day}_span`]: startRowIdx - i };
+                    }
+                }
+            }
+
+            parsedCopiedData.forEach((rowCopy, rIdx) => {
+                const targetId = startId + rIdx;
+                if (targetId > 32) return;
+                const ttRowIdx = targetId - 1;
+
+                rowCopy.forEach((cellCopy, cIdx) => {
+                    const targetDayIdx = startDayIdx + cIdx;
+                    if (targetDayIdx >= 7) return;
+                    const day = DAYS[targetDayIdx];
+
+                    newTimetable[ttRowIdx] = {
+                        ...newTimetable[ttRowIdx],
+                        [day]: cellCopy.text,
+                        [`${day}_span`]: cellCopy.span,
+                        [`${day}_hidden`]: cellCopy.hidden
+                    };
+                });
+            });
+        } else {
+            // 2) 엑셀이나 구글 시트 등 외부에서 복사한 일반 표 데이터 붙여넣기
+            const rows = pastedText.replace(/\r/g, '').split('\n');
+            if (rows[rows.length - 1] === '') rows.pop();
+
+            // 단일 텍스트를 넓은 다중 셀 영역 전체에 일괄 채우기 기능
+            if (rows.length === 1 && !rows[0].includes('\t') && !isSingleCell) {
+                const val = rows[0];
+                for (let id = bounds.minId; id <= bounds.maxId; id++) {
+                    const rowIdx = id - 1;
+                    for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
+                        const day = DAYS[d];
+                        if (!newTimetable[rowIdx][`${day}_hidden`]) {
+                            newTimetable[rowIdx] = { ...newTimetable[rowIdx], [day]: val };
+                        }
+                    }
+                }
+            } else {
+                // 표 형태의 데이터를 각 셀에 알맞게 분배
+                rows.forEach((rowStr, i) => {
+                  const cols = rowStr.split('\t');
+                  const rIdx = startRowIdx + i;
+                  if (rIdx < 32) {
+                    cols.forEach((colStr, j) => {
+                      const cIdx = startDayIdx + j;
+                      if (cIdx < 7) {
+                        const day = DAYS[cIdx];
+                        if (!newTimetable[rIdx][`${day}_hidden`]) {
+                            newTimetable[rIdx] = { ...newTimetable[rIdx], [day]: colStr };
+                        }
+                      }
+                    });
+                  }
+                });
+            }
+        }
+        return repairTimetable(newTimetable);
+      });
+      setAiFeedback('✅ 붙여넣기 되었습니다.');
+      setTimeout(() => setAiFeedback(''), 1500);
+    };
+
+    const handleKeyDown = (e) => {
+      if (view !== 'PLANNER' || activeTab !== 'WEEKLY' || !selection.startDay || !selection.startId) return;
+      
+      const bounds = getSelectionBounds();
+      if (!bounds) return;
+      const isSingleCell = bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx;
+
+      // 글을 작성 중일 땐 글자 지우기를 허용 (전체 셀 삭제 가로채기 X)
+      if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
+          if (isSingleCell) return; 
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        setTimetable(prev => {
+          let newTimetable = [...prev];
+          for (let id = bounds.minId; id <= bounds.maxId; id++) {
+            const rowIdx = id - 1;
+            for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
+              const day = DAYS[d];
+              if (!newTimetable[rowIdx][`${day}_hidden`]) {
+                newTimetable[rowIdx] = { ...newTimetable[rowIdx], [day]: '' };
+              }
+            }
+          }
+          return newTimetable;
+        });
+      }
+    };
+
+    document.addEventListener('copy', handleCopy);
+    document.addEventListener('paste', handlePaste);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('copy', handleCopy);
+      document.removeEventListener('paste', handlePaste);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeTab, view, selection, timetable]);
+
   const saveGlobalAiKey = async () => {
     try {
       const globalRef = doc(db, 'settings', 'global');
@@ -339,71 +546,85 @@ export default function App() {
     setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000);
   };
 
-  const handleMouseDown = (day, id) => { setIsDragging(true) ; setSelection({ day, startId: id, endId: id }); };
-  const handleMouseEnter = (day, id) => { if (isDragging && selection.day === day) setSelection((prev) => ({ ...prev, endId: id })); };
+  // 💡 Shift 클릭 다중 연속 선택 지원 
+  const handleMouseDown = (e, day, id) => {
+    setIsDragging(true); 
+    if (e.shiftKey && selection.startDay && selection.startId) {
+      e.preventDefault(); // 텍스트 블록 드래그 방해를 막아줌
+      setSelection(prev => ({ ...prev, endDay: day, endId: id }));
+    } else {
+      setSelection({ startDay: day, endDay: day, startId: id, endId: id });
+    }
+  };
+
+  const handleMouseEnter = (day, id) => { 
+    if (isDragging) {
+      setSelection((prev) => ({ ...prev, endDay: day, endId: id })); 
+    }
+  };
+
   const handleMouseUp = () => setIsDragging(false);
   useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
 
-  // 💡 [개선] 겹쳐서 병합할 때 데이터 날아감을 방지하고 구조를 복원하는 로직
+  // 💡 여러 열 일괄 병합 지원 (구글 시트처럼 각각의 요일별로 세로 병합 수행)
   const mergeCells = () => {
-    if (!selection.day || !selection.startId || !selection.endId) return;
-    const start = Math.min(selection.startId, selection.endId);
-    const end = Math.max(selection.startId, selection.endId);
-    const spanCount = end - start + 1;
+    const bounds = getSelectionBounds();
+    if (!bounds) return;
+    const { minDayIdx, maxDayIdx, minId, maxId } = bounds;
+    const spanCount = maxId - minId + 1;
     if (spanCount <= 1) return;
     
     let newTimetable = [...timetable];
-    const day = selection.day;
     
-    for (let i = 1; i <= 32; i++) {
-      const rowIdx = i - 1;
-      if (i === start) {
-        newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: spanCount, [`${day}_hidden`]: false };
-      } else if (i > start && i <= end) {
-        // [중요] 기존 텍스트('') 초기화 로직을 제거하여, 실수로 병합해도 분할하면 데이터가 살아나게 유지!
-        newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: 1, [`${day}_hidden`]: true };
-      } else if (i < start) {
-        // 병합 위쪽 셀이 새 병합 범위를 침범하면 침범하지 못하도록 잘라냅니다
-        const priorSpan = newTimetable[rowIdx][`${day}_span`];
-        if (priorSpan > 1 && i + priorSpan - 1 >= start) {
-          newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: start - i };
+    for (let d = minDayIdx; d <= maxDayIdx; d++) {
+      const day = DAYS[d];
+      for (let i = 1; i <= 32; i++) {
+        const rowIdx = i - 1;
+        if (i === minId) {
+          newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: spanCount, [`${day}_hidden`]: false };
+        } else if (i > minId && i <= maxId) {
+          newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: 1, [`${day}_hidden`]: true };
+        } else if (i < minId) {
+          const priorSpan = newTimetable[rowIdx][`${day}_span`];
+          if (priorSpan > 1 && i + priorSpan - 1 >= minId) {
+            newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${day}_span`]: minId - i };
+          }
         }
       }
     }
-    
-    // 복구 알고리즘을 거쳐 안전하게 적용 (절대 깨지지 않음)
     setTimetable(repairTimetable(newTimetable));
-    setSelection({ day: null, startId: null, endId: null });
+    setSelection({ startDay: null, endDay: null, startId: null, endId: null });
   };
 
+  // 💡 여러 열 일괄 분할 지원
   const unmergeCells = () => {
-    if (!selection.day || !selection.startId || !selection.endId) return;
-    const day = selection.day;
-    const start = Math.min(selection.startId, selection.endId);
-    const end = Math.max(selection.startId, selection.endId);
+    const bounds = getSelectionBounds();
+    if (!bounds) return;
+    const { minDayIdx, maxDayIdx, minId, maxId } = bounds;
 
     let newTimetable = [...timetable];
 
-    // 선택 범위와 겹치는 모든 병합 블록을 완전히 조각냅니다
-    for (let i = 0; i < 32; i++) {
-      const row = newTimetable[i];
-      if (!row[`${day}_hidden`]) {
-        const span = row[`${day}_span`] || 1;
-        const rowStart = row.id;
-        const rowEnd = row.id + span - 1;
+    for (let d = minDayIdx; d <= maxDayIdx; d++) {
+      const day = DAYS[d];
+      for (let i = 0; i < 32; i++) {
+        const row = newTimetable[i];
+        if (!row[`${day}_hidden`]) {
+          const span = row[`${day}_span`] || 1;
+          const rowStart = row.id;
+          const rowEnd = row.id + span - 1;
 
-        if (rowStart <= end && rowEnd >= start) {
-          for (let j = 0; j < span; j++) {
-            if (i + j < 32) {
-              newTimetable[i + j] = { ...newTimetable[i + j], [`${day}_span`]: 1, [`${day}_hidden`]: false };
+          if (rowStart <= maxId && rowEnd >= minId) {
+            for (let j = 0; j < span; j++) {
+              if (i + j < 32) {
+                newTimetable[i + j] = { ...newTimetable[i + j], [`${day}_span`]: 1, [`${day}_hidden`]: false };
+              }
             }
           }
         }
       }
     }
-
     setTimetable(repairTimetable(newTimetable));
-    setSelection({ day: null, startId: null, endId: null });
+    setSelection({ startDay: null, endDay: null, startId: null, endId: null });
   };
 
   const executeResetTimetable = () => {
@@ -412,7 +633,7 @@ export default function App() {
     } else if (activeTab === 'MONTHLY') {
       setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
     }
-    setSelection({ day: null, startId: null, endId: null });
+    setSelection({ startDay: null, endDay: null, startId: null, endId: null });
     setShowResetConfirm(false); 
   };
 
@@ -429,7 +650,6 @@ export default function App() {
     return rule ? rule.color : null;
   };
 
-  // 정확히 4주(28일) 이동 로직
   const getSchedulerDates = () => {
     const days = [];
     const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
@@ -447,7 +667,6 @@ export default function App() {
     return days;
   };
 
-  // 좌우 버튼: 정확히 28일씩 증감
   const handlePrev4Weeks = () => {
     setCurrentDate(prev => {
       const d = new Date(prev);
@@ -648,6 +867,10 @@ export default function App() {
     </div>
   );
 
+  // 현재 선택 범위 계산 (UI 렌더링 및 버튼 표시용)
+  const bounds = getSelectionBounds();
+  const isMultiSelected = bounds && (bounds.minId !== bounds.maxId || bounds.minDayIdx !== bounds.maxDayIdx);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 transition-colors duration-300">
       <div className="w-full mx-auto">
@@ -803,7 +1026,13 @@ export default function App() {
                             </div>
                           )}
                           <div className="h-5 md:h-8 w-px mx-0.5 md:mx-1 bg-slate-200 text-center"></div>
-                          {selection.day && selection.startId !== selection.endId ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
+
+                          {/* 기능 안내 팁 뱃지 */}
+                          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold whitespace-nowrap mr-1">
+                            <Sparkles size={12}/> 다중 영역 Shift+클릭 / Ctrl+C, V 지원
+                          </div>
+
+                          {isMultiSelected ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
                           <button onClick={unmergeCells} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">분할</span></button>
                           <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold transition-colors ml-0 md:ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">초기화</span></button>
                         </div>
@@ -818,7 +1047,7 @@ export default function App() {
                                 <span className="md:hidden">시간</span>
                                 <span className="hidden md:inline">Time</span>
                               </th>
-                              {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((d, i) => {
+                              {DAYS.map((d, i) => {
                                 const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
                                 const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
                                 let textColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : '';
@@ -837,22 +1066,29 @@ export default function App() {
                                 <td className="p-0 w-10 md:w-16 border border-slate-200 align-middle bg-slate-50/50 transition-colors select-none">
                                   <div className="flex flex-col items-center justify-center h-full text-[8px] md:text-[10px] font-medium text-slate-400"><span>{row.time}</span></div>
                                 </td>
-                                {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => {
+                                {DAYS.map((day) => {
                                   if (row[`${day}_hidden`]) return null;
-                                  const isSelected = selection.day === day && row.id >= Math.min(selection.startId, selection.endId) && row.id <= Math.max(selection.startId, selection.endId);
+                                  
+                                  const dayIdx = DAYS.indexOf(day);
+                                  const isSelected = bounds && row.id >= bounds.minId && row.id <= bounds.maxId && dayIdx >= bounds.minDayIdx && dayIdx <= bounds.maxDayIdx;
+                                  
                                   const keywordColor = getCellColor(row[day]);
                                   const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
+                                  
                                   return (
                                     <td 
                                       key={day} 
                                       className={`p-0 relative align-middle border border-slate-200 transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 cursor-text`} 
                                       style={{ backgroundColor: bgColor }} 
                                       rowSpan={row[`${day}_span`] || 1} 
-                                      onMouseDown={() => handleMouseDown(day, row.id)} 
+                                      onMouseDown={(e) => handleMouseDown(e, day, row.id)} 
                                       onMouseEnter={() => handleMouseEnter(day, row.id)}
                                       onClick={(e) => {
-                                        const area = e.currentTarget.querySelector('textarea');
-                                        if (area) area.focus();
+                                        // Shift 클릭 시에는 텍스트 편집 모드(포커스) 방지
+                                        if (!e.shiftKey) {
+                                          const area = e.currentTarget.querySelector('textarea');
+                                          if (area) area.focus();
+                                        }
                                       }}
                                     >
                                       <div className="w-full h-full flex items-center justify-center p-0 md:p-0.5 text-center min-h-[24px] md:min-h-[28px]">
@@ -1028,120 +1264,15 @@ export default function App() {
                             ))}
                           </tbody>
                         </table>
-                      );
-                    })}
-
-                    {/* 요약(달성도) 테이블 */}
-                    {termScheduler.subjects.length > 0 && (
-                      <div className="text-left flex justify-center w-full text-center mt-6">
-                        <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
-                          <thead>
-                            <tr className="bg-slate-100 font-black text-slate-800 text-center">
-                              <th className="border border-slate-200 w-[10%] py-3 md:py-4 align-middle text-center break-keep">과목</th>
-                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">교재</th>
-                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">시작</th>
-                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">목표</th>
-                              <th className="border border-slate-200 w-[60%] align-middle text-center break-keep">달성도</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {termScheduler.subjects.map((sub) => {
-                              const allDates = getSchedulerDates();
-                              const textbookVal = termScheduler.textbooks[sub] || '';
-                              
-                              const tbNames = Array.from(new Set(textbookVal.split('\n').map(t => t.trim()).filter(t => t !== '')));
-
-                              const rowData = [];
-
-                              if (tbNames.length === 0) {
-                                let firstData = "-";
-                                let lastData = "-";
-                                let totalItems = 0;
-                                let checkedItems = 0;
-
-                                allDates.forEach(d => {
-                                  const val = termScheduler.cells[`${sub}-${d.full}`] || "";
-                                  if (val.trim() !== "") {
-                                    const lines = val.split('\n');
-                                    lines.forEach((lineText, idx) => {
-                                      const trimmedLine = lineText.trim();
-                                      if (trimmedLine !== "") {
-                                        if (firstData === "-") firstData = trimmedLine;
-                                        lastData = trimmedLine;
-                                        totalItems++;
-                                        if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
-                                      }
-                                    });
-                                  }
-                                });
-
-                                rowData.push({
-                                  tbName: "-",
-                                  firstData,
-                                  lastData,
-                                  percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0,
-                                });
-                              } else {
-                                tbNames.forEach((tbName) => {
-                                  let firstData = "-";
-                                  let lastData = "-";
-                                  let totalItems = 0;
-                                  let checkedItems = 0;
-
-                                  allDates.forEach(d => {
-                                    const val = termScheduler.cells[`${sub}-${d.full}`] || "";
-                                    if (val.trim() !== "") {
-                                      const lines = val.split('\n');
-                                      lines.forEach((lineText, idx) => {
-                                        const trimmedLine = lineText.trim();
-                                        if (trimmedLine !== "" && trimmedLine.includes(tbName)) {
-                                          if (firstData === "-") firstData = trimmedLine;
-                                          lastData = trimmedLine;
-                                          totalItems++;
-                                          if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) {
-                                            checkedItems++;
-                                          }
-                                        }
-                                      });
-                                    }
-                                  });
-
-                                  rowData.push({
-                                    tbName,
-                                    firstData,
-                                    lastData,
-                                    percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0,
-                                  });
-                                });
-                              }
-
-                              return rowData.map((data, index) => (
-                                <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center">
-                                  {index === 0 && (
-                                    <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 align-middle">
-                                      {sub}
-                                    </td>
-                                  )}
-                                  <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap">{data.tbName}</td>
-                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap">{data.firstData}</td>
-                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-rose-700 align-middle break-words whitespace-pre-wrap">{data.lastData}</td>
-                                  <td className="border border-slate-200 p-2 md:p-3 text-center align-middle">
-                                    <div className="relative w-full h-5 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
-                                      <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
-                                      <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[9px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{data.percent}%</span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ));
-                            })}
-                          </tbody>
-                        </table>
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
+              {/* ========================================================================= */}
+              {/* 연간 시트 */}
+              {/* ========================================================================= */}
               {activeTab === 'YEARLY' && (
                 <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-center text-center">
                   {yearlyPlan.map((plan, idx) => (
