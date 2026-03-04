@@ -1,47 +1,14 @@
 /* eslint-disable */
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Check,
-  Trash2,
-  Plus,
-  Clock,
-  BookOpen,
-  Calendar,
-  X,
-  Users,
-  ChevronLeft,
-  LogOut,
-  Sparkles,
-  Send,
-  MousePointer2,
-  Merge,
-  Split,
-  Palette,
-  AlertCircle,
-  Key,
-  Settings,
-  ChevronRight,
-  UserPlus,
-  Link as LinkIcon
+  Check, Trash2, Plus, Clock, BookOpen, Calendar, X, Users,
+  ChevronLeft, LogOut, Sparkles, Send, MousePointer2, Merge, Split,
+  Palette, AlertCircle, Key, Settings, ChevronRight, UserPlus, Link as LinkIcon
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
-import {
-  getAuth,
-  signInAnonymously,
-  onAuthStateChanged
-} from 'firebase/auth';
-import {
-  getFirestore,
-  doc,
-  setDoc,
-  onSnapshot,
-  collection,
-  deleteDoc
-} from 'firebase/firestore';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc } from 'firebase/firestore';
 
-// ==================================================================================
-// Firebase 설정
-// ==================================================================================
 const firebaseConfig = {
   apiKey: "AIzaSyDyaqBB-JmsCK4kyzU_uA-4CFmQTi45fAo",
   authDomain: "ai-term-scheduler.firebaseapp.com",
@@ -56,7 +23,6 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// 요일 인덱싱 배열 (다중 열 처리를 위한 상수)
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 export default function App() {
@@ -84,17 +50,12 @@ export default function App() {
     let idCounter = 1;
     for (let hour = 8; hour < 24; hour++) {
       for (let min = 0; min < 60; min += 30) {
-        const timeStr = `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
         slots.push({
-          id: idCounter++,
-          time: timeStr,
+          id: idCounter++, time: `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`,
           mon: '', tue: '', wed: '', thu: '', fri: '', sat: '', sun: '',
-          mon_span: 1, mon_hidden: false,
-          tue_span: 1, tue_hidden: false,
-          wed_span: 1, wed_hidden: false,
-          thu_span: 1, thu_hidden: false,
-          fri_span: 1, fri_hidden: false,
-          sat_span: 1, sat_hidden: false,
+          mon_span: 1, mon_hidden: false, tue_span: 1, tue_hidden: false,
+          wed_span: 1, wed_hidden: false, thu_span: 1, thu_hidden: false,
+          fri_span: 1, fri_hidden: false, sat_span: 1, sat_hidden: false,
           sun_span: 1, sun_hidden: false,
         });
       }
@@ -105,7 +66,6 @@ export default function App() {
   const repairTimetable = (tt) => {
     const defaultSlots = generateTimeSlots();
     if (!Array.isArray(tt) || tt.length === 0) return defaultSlots;
-    
     let repaired = defaultSlots.map((def, idx) => {
       const loaded = tt.find(r => r.id === def.id) || tt[idx] || {};
       const merged = { ...def, ...loaded, id: def.id, time: def.time };
@@ -143,35 +103,27 @@ export default function App() {
   const [memo, setMemo] = useState('');
   const [yearlyPlan, setYearlyPlan] = useState(Array(12).fill(''));
   const [monthlyMemo, setMonthlyMemo] = useState('');
-  const [termScheduler, setTermScheduler] = useState({ 
-    cells: {}, status: {}, textbooks: {}, subjects: [], topNotes: {}, checks: {} 
-  });
+  const [termScheduler, setTermScheduler] = useState({ cells: {}, status: {}, textbooks: {}, subjects: [], topNotes: {}, checks: {} });
   
   const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 2)); 
   const [colorRules, setColorRules] = useState([]);
   const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#bfdbfe' });
   const [studentList, setStudentList] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
-  
-  // 💡 선택 영역을 다중 열(2차원)까지 지원하도록 구조 변경
   const [selection, setSelection] = useState({ startDay: null, endDay: null, startId: null, endId: null });
-  
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [aiFeedback, setAiFeedback] = useState('');
   const [editingCell, setEditingCell] = useState(null); 
 
-  // 선택 영역 범위 계산 헬퍼 함수
   const getSelectionBounds = () => {
     if (!selection.startDay || !selection.endDay || !selection.startId || !selection.endId) return null;
     const d1 = DAYS.indexOf(selection.startDay);
     const d2 = DAYS.indexOf(selection.endDay);
     return {
-      minDayIdx: Math.min(d1, d2),
-      maxDayIdx: Math.max(d1, d2),
-      minId: Math.min(selection.startId, selection.endId),
-      maxId: Math.max(selection.startId, selection.endId)
+      minDayIdx: Math.min(d1, d2), maxDayIdx: Math.max(d1, d2),
+      minId: Math.min(selection.startId, selection.endId), maxId: Math.max(selection.startId, selection.endId)
     };
   };
 
@@ -185,9 +137,7 @@ export default function App() {
       const textareas = document.querySelectorAll('textarea');
       textareas.forEach(el => {
         el.style.height = 'auto';
-        if (el.scrollHeight > 0) {
-          el.style.height = el.scrollHeight + 'px';
-        }
+        if (el.scrollHeight > 0) el.style.height = el.scrollHeight + 'px';
       });
     }, 100);
     return () => clearTimeout(timer);
@@ -195,10 +145,8 @@ export default function App() {
 
   const calculateDDay = (targetDate) => {
     if (!targetDate) return '';
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const target = new Date(targetDate);
-    target.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const target = new Date(targetDate); target.setHours(0, 0, 0, 0);
     const diff = target.getTime() - today.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     if (days === 0) return 'D-Day';
@@ -213,9 +161,7 @@ export default function App() {
         const sid = params.get('sid');
         
         if (sid) {
-          setCurrentDocId(sid); 
-          setRole('student'); 
-          setView('PLANNER'); 
+          setCurrentDocId(sid); setRole('student'); setView('PLANNER'); 
         } else {
           const savedRole = localStorage.getItem('planner_role');
           const savedName = localStorage.getItem('planner_name');
@@ -227,15 +173,11 @@ export default function App() {
             setView('LANDING');
           }
         }
-
         const globalRef = doc(db, 'settings', 'global');
         onSnapshot(globalRef, (snap) => {
           if (snap.exists()) setGlobalAiKey(snap.data().aiKey || '');
         });
-      } catch (error) {
-        console.error("로그인 실패:", error);
-        setCriticalError('AUTH_CONFIG_MISSING');
-      }
+      } catch (error) { setCriticalError('AUTH_CONFIG_MISSING'); }
     };
     initAuth();
     onAuthStateChanged(auth, setUser);
@@ -251,29 +193,20 @@ export default function App() {
         if (docSnap.exists()) {
           setIsNotFound(false); 
           const data = docSnap.data();
-          
           if (Array.isArray(data.timetable)) {
             setTimetable(repairTimetable(data.timetable));
-          } else { 
-            setTimetable(generateTimeSlots()); 
-          }
+          } else { setTimetable(generateTimeSlots()); }
           
           setTodos(data.todos || []);
           setDDay(data.dDay || null); 
           setMemo(data.memo || '');
           setYearlyPlan(data.yearlyPlan || Array(12).fill(''));
           setMonthlyMemo(data.monthlyMemo || '');
-          setTermScheduler({
-            subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {},
-            ...(data.termScheduler || {})
-          });
+          setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {}, ...(data.termScheduler || {}) });
           setColorRules(data.colorRules || []);
           setStudentName(data.studentName || '');
-          
-        } else {
-          setIsNotFound(true);
-        }
-      } catch (e) { console.error("데이터 로드 에러:", e); } finally { setLoading(false); }
+        } else { setIsNotFound(true); }
+      } catch (e) { console.error(e); } finally { setLoading(false); }
     });
     return () => unsubscribe();
   }, [user, currentDocId, view]);
@@ -287,8 +220,7 @@ export default function App() {
       const isActuallyName = studentName && studentName !== currentDocId;
       await setDoc(docRef, {
         timetable, todos, dDay, memo, yearlyPlan, monthlyMemo, termScheduler, colorRules,
-        lastUpdated: new Date().toISOString(),
-        ...(isActuallyName && { studentName: studentName })
+        lastUpdated: new Date().toISOString(), ...(isActuallyName && { studentName })
       }, { merge: true });
     };
     const timeoutId = setTimeout(saveData, 1000);
@@ -307,18 +239,12 @@ export default function App() {
     return () => unsubscribe();
   }, [user, view]);
 
-  // =========================================================================
-  // 💡 복사(Ctrl+C) / 붙여넣기(Ctrl+V) / 삭제(Delete, Backspace) 통합 이벤트 리스너
-  // =========================================================================
   useEffect(() => {
     const handleCopy = (e) => {
       if (view !== 'PLANNER' || activeTab !== 'WEEKLY' || !selection.startDay || !selection.startId) return;
-      
-      // 사용자가 텍스트 일부를 드래그해서 일반 복사를 하려는 경우는 가로채지 않음
       if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
         if (document.activeElement.selectionStart !== document.activeElement.selectionEnd) return;
       }
-      
       const bounds = getSelectionBounds();
       if (!bounds) return;
 
@@ -332,39 +258,30 @@ export default function App() {
         let rowCopy = [];
         for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
           const day = DAYS[d];
-          // 화면에 숨겨진 셀은 빈칸 처리
           rowData.push(row[`${day}_hidden`] ? "" : (row[day] || ""));
-          // 앱 내부 붙여넣기를 위해 병합 구조 정보까지 정밀하게 복사
           rowCopy.push({ text: row[day] || '', span: row[`${day}_span`] || 1, hidden: row[`${day}_hidden`] || false });
         }
         tsv += rowData.join("\t");
         if (id < bounds.maxId) tsv += "\n";
         copiedData.push(rowCopy);
       }
-      
-      // 클립보드에 단순 텍스트(엑셀 호환)와 JSON 뼈대 구조를 동시 저장
       e.clipboardData.setData('text/plain', tsv);
       e.clipboardData.setData('application/json', JSON.stringify(copiedData));
       e.preventDefault();
-      
       setAiFeedback('✅ 복사되었습니다.');
       setTimeout(() => setAiFeedback(''), 1500);
     };
 
     const handlePaste = (e) => {
       if (view !== 'PLANNER' || activeTab !== 'WEEKLY' || !selection.startDay || !selection.startId) return;
-      
-      const pastedText = (e.clipboardData || window.clipboardData).getData('text/plain');
-      const pastedJson = (e.clipboardData || window.clipboardData).getData('application/json');
+      const pastedText = e.clipboardData?.getData('text/plain') || window.clipboardData?.getData('text/plain');
+      const pastedJson = e.clipboardData?.getData('application/json') || window.clipboardData?.getData('application/json');
 
       if (!pastedText && !pastedJson) return;
-
       const bounds = getSelectionBounds();
       if (!bounds) return;
 
       const isSingleCell = bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx;
-      
-      // JSON 구조 데이터를 확인 (우리 앱에서 복사한 경우 병합 구조를 가짐)
       let hasStructure = false;
       let parsedCopiedData = null;
       if (pastedJson) {
@@ -376,7 +293,6 @@ export default function App() {
           } catch(err) {}
       }
 
-      // 커서가 위치한 단일 셀에 일반 텍스트(표 형태 X)를 붙여넣을 경우 브라우저 기본 동작에 맡김
       if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
         if (!hasStructure && !pastedText.includes('\t') && !pastedText.includes('\n')) {
             if (isSingleCell) return;
@@ -392,15 +308,11 @@ export default function App() {
         const startRowIdx = startId - 1;
 
         if (parsedCopiedData) {
-            // 1) 우리 앱에서 복사한 병합 구조를 완벽하게 덮어쓰기
             const maxCIdx = parsedCopiedData[0].length;
-            
             for (let c = 0; c < maxCIdx; c++) {
                 const targetDayIdx = startDayIdx + c;
                 if (targetDayIdx >= 7) continue;
                 const day = DAYS[targetDayIdx];
-                
-                // 붙여넣을 영역을 침범하고 있는 윗부분의 병합 셀들을 잘라냄
                 for (let i = 0; i < startRowIdx; i++) {
                     const priorSpan = newTimetable[i][`${day}_span`];
                     if (priorSpan > 1 && i + priorSpan > startRowIdx) {
@@ -408,17 +320,14 @@ export default function App() {
                     }
                 }
             }
-
             parsedCopiedData.forEach((rowCopy, rIdx) => {
                 const targetId = startId + rIdx;
                 if (targetId > 32) return;
                 const ttRowIdx = targetId - 1;
-
                 rowCopy.forEach((cellCopy, cIdx) => {
                     const targetDayIdx = startDayIdx + cIdx;
                     if (targetDayIdx >= 7) return;
                     const day = DAYS[targetDayIdx];
-
                     newTimetable[ttRowIdx] = {
                         ...newTimetable[ttRowIdx],
                         [day]: cellCopy.text,
@@ -428,11 +337,9 @@ export default function App() {
                 });
             });
         } else {
-            // 2) 엑셀이나 구글 시트 등 외부에서 복사한 일반 표 데이터 붙여넣기
             const rows = pastedText.replace(/\r/g, '').split('\n');
             if (rows[rows.length - 1] === '') rows.pop();
 
-            // 단일 텍스트를 넓은 다중 셀 영역 전체에 일괄 채우기 기능
             if (rows.length === 1 && !rows[0].includes('\t') && !isSingleCell) {
                 const val = rows[0];
                 for (let id = bounds.minId; id <= bounds.maxId; id++) {
@@ -445,7 +352,6 @@ export default function App() {
                     }
                 }
             } else {
-                // 표 형태의 데이터를 각 셀에 알맞게 분배
                 rows.forEach((rowStr, i) => {
                   const cols = rowStr.split('\t');
                   const rIdx = startRowIdx + i;
@@ -471,12 +377,10 @@ export default function App() {
 
     const handleKeyDown = (e) => {
       if (view !== 'PLANNER' || activeTab !== 'WEEKLY' || !selection.startDay || !selection.startId) return;
-      
       const bounds = getSelectionBounds();
       if (!bounds) return;
       const isSingleCell = bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx;
 
-      // 글을 작성 중일 땐 글자 지우기를 허용 (전체 셀 삭제 가로채기 X)
       if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
           if (isSingleCell) return; 
       }
@@ -514,9 +418,9 @@ export default function App() {
       const globalRef = doc(db, 'settings', 'global');
       await setDoc(globalRef, { aiKey: globalAiKey }, { merge: true });
       setShowGlobalKeyInput(false);
-      setAiFeedback('✅ 공용 API 키가 업데이트되었습니다.');
+      setAiFeedback('✅ 공용 API 키가 저장되었습니다.');
       setTimeout(() => setAiFeedback(''), 3000);
-    } catch (e) { console.error(e); setAiFeedback('❌ 저장 실패'); }
+    } catch (e) { setAiFeedback('❌ 저장 실패'); }
   };
 
   const createNewStudentSheet = async () => {
@@ -533,9 +437,9 @@ export default function App() {
         yearlyPlan: Array(12).fill(''),
         createdAt: new Date().toISOString()
       });
-      setAiFeedback(`✅ '${name}' 학생의 시트가 생성되었습니다.`);
+      setAiFeedback(`✅ '${name}' 학생 생성됨.`);
       setTimeout(() => setAiFeedback(''), 3000);
-    } catch (e) { console.error(e); setAiFeedback('❌ 생성 실패'); } finally { setLoading(false); }
+    } catch (e) { setAiFeedback('❌ 생성 실패'); } finally { setLoading(false); }
   };
 
   const copyStudentLink = (sid) => {
@@ -546,11 +450,10 @@ export default function App() {
     setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000);
   };
 
-  // 💡 Shift 클릭 다중 연속 선택 지원 
   const handleMouseDown = (e, day, id) => {
     setIsDragging(true); 
     if (e.shiftKey && selection.startDay && selection.startId) {
-      e.preventDefault(); // 텍스트 블록 드래그 방해를 막아줌
+      e.preventDefault(); 
       setSelection(prev => ({ ...prev, endDay: day, endId: id }));
     } else {
       setSelection({ startDay: day, endDay: day, startId: id, endId: id });
@@ -558,15 +461,12 @@ export default function App() {
   };
 
   const handleMouseEnter = (day, id) => { 
-    if (isDragging) {
-      setSelection((prev) => ({ ...prev, endDay: day, endId: id })); 
-    }
+    if (isDragging) setSelection(prev => ({ ...prev, endDay: day, endId: id })); 
   };
 
   const handleMouseUp = () => setIsDragging(false);
   useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
 
-  // 💡 여러 열 일괄 병합 지원 (구글 시트처럼 각각의 요일별로 세로 병합 수행)
   const mergeCells = () => {
     const bounds = getSelectionBounds();
     if (!bounds) return;
@@ -575,7 +475,6 @@ export default function App() {
     if (spanCount <= 1) return;
     
     let newTimetable = [...timetable];
-    
     for (let d = minDayIdx; d <= maxDayIdx; d++) {
       const day = DAYS[d];
       for (let i = 1; i <= 32; i++) {
@@ -596,12 +495,10 @@ export default function App() {
     setSelection({ startDay: null, endDay: null, startId: null, endId: null });
   };
 
-  // 💡 여러 열 일괄 분할 지원
   const unmergeCells = () => {
     const bounds = getSelectionBounds();
     if (!bounds) return;
     const { minDayIdx, maxDayIdx, minId, maxId } = bounds;
-
     let newTimetable = [...timetable];
 
     for (let d = minDayIdx; d <= maxDayIdx; d++) {
@@ -612,12 +509,9 @@ export default function App() {
           const span = row[`${day}_span`] || 1;
           const rowStart = row.id;
           const rowEnd = row.id + span - 1;
-
           if (rowStart <= maxId && rowEnd >= minId) {
             for (let j = 0; j < span; j++) {
-              if (i + j < 32) {
-                newTimetable[i + j] = { ...newTimetable[i + j], [`${day}_span`]: 1, [`${day}_hidden`]: false };
-              }
+              if (i + j < 32) newTimetable[i + j] = { ...newTimetable[i + j], [`${day}_span`]: 1, [`${day}_hidden`]: false };
             }
           }
         }
@@ -643,7 +537,6 @@ export default function App() {
     setNewColorRule({ ...newColorRule, keyword: '' });
   };
   const removeColorRule = (id) => setColorRules(colorRules.filter((rule) => rule.id !== id));
-  
   const getCellColor = (text) => {
     if (!text || typeof text !== 'string') return null;
     const rule = colorRules.find((r) => text.includes(r.keyword));
@@ -658,77 +551,31 @@ export default function App() {
       dateObj.setDate(currentDate.getDate() + i);
       days.push({
         full: `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`,
-        label: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`,
-        day: dayLabels[dateObj.getDay()],
-        isWeekend: dateObj.getDay() === 0 || dateObj.getDay() === 6,
-        isSat: dateObj.getDay() === 6
+        label: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`, day: dayLabels[dateObj.getDay()],
+        isWeekend: dateObj.getDay() === 0 || dateObj.getDay() === 6, isSat: dateObj.getDay() === 6
       });
     }
     return days;
   };
 
-  const handlePrev4Weeks = () => {
-    setCurrentDate(prev => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() - 28);
-      return d;
-    });
-  };
+  const handlePrev4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 28); return d; });
+  const handleNext4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 28); return d; });
 
-  const handleNext4Weeks = () => {
-    setCurrentDate(prev => {
-      const d = new Date(prev);
-      d.setDate(d.getDate() + 28);
-      return d;
-    });
-  };
-
-  const handleTermCellChange = (subject, dateKey, value) => {
-    setTermScheduler(prev => ({
-      ...prev,
-      cells: { ...prev.cells, [`${subject}-${dateKey}`]: value }
-    }));
-  };
-
+  const handleTermCellChange = (subject, dateKey, value) => setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: value } }));
   const handleTermCheckToggle = (subject, dateKey, index) => {
     const key = `${subject}-${dateKey}-${index}`;
-    setTermScheduler(prev => ({
-      ...prev,
-      checks: { ...prev.checks, [key]: !prev.checks[key] }
-    }));
+    setTermScheduler(prev => ({ ...prev, checks: { ...prev.checks, [key]: !prev.checks[key] } }));
   };
-
-  const handleTopNoteChange = (dateKey, value) => {
-    setTermScheduler(prev => ({
-      ...prev,
-      topNotes: { ...prev.topNotes, [dateKey]: value }
-    }));
-  };
-
-  const handleTermTextbookChange = (subject, value) => {
-    setTermScheduler(prev => ({
-      ...prev,
-      textbooks: { ...prev.textbooks, [subject]: value }
-    }));
-  };
-
+  const handleTopNoteChange = (dateKey, value) => setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: value } }));
+  const handleTermTextbookChange = (subject, value) => setTermScheduler(prev => ({ ...prev, textbooks: { ...prev.textbooks, [subject]: value } }));
   const addSubjectRow = (name) => {
     if (!name || termScheduler.subjects.includes(name)) return;
-    setTermScheduler(prev => ({
-      ...prev,
-      subjects: [...prev.subjects, name]
-    }));
+    setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] }));
   };
-
-  const removeSubjectRow = (name) => {
-    setTermScheduler(prev => ({
-      ...prev,
-      subjects: prev.subjects.filter(s => s !== name)
-    }));
-  };
+  const removeSubjectRow = (name) => setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) }));
 
   const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
-    if (!globalAiKey) { setAiFeedback('⚠️ 공용 API 키가 등록되지 않았습니다 (관리자 문의).'); return null; }
+    if (!globalAiKey) { setAiFeedback('⚠️ API 키가 없습니다.'); return null; }
     for (let i = 0; i < retries; i++) {
       try {
         const response = await fetch(
@@ -739,21 +586,16 @@ export default function App() {
         if (result.error) {
           if (result.error.code === 429) {
             if (i < retries - 1) {
-              const delay = Math.pow(2, i) * 2000;
-              setAiFeedback(`⚠️ 사용량 초과. ${delay/1000}초 후 자동 재시도... (${i + 1}/${retries})`);
-              await new Promise(resolve => setTimeout(resolve, delay));
+              await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 2000));
               continue;
             }
-            throw new Error("AI 사용 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.");
+            throw new Error("AI 사용 한도를 초과했습니다.");
           }
           throw new Error(result.error.message);
         }
         return result.candidates?.[0]?.content?.parts?.[0]?.text;
       } catch (error) {
-        if (i === retries - 1) {
-          setAiFeedback(`❌ AI 오류: ${error.message}`);
-          return null;
-        }
+        if (i === retries - 1) { setAiFeedback(`❌ AI 오류: ${error.message}`); return null; }
       }
     }
     return null;
@@ -763,19 +605,14 @@ export default function App() {
     e.preventDefault();
     if (!aiPrompt.trim()) return;
     setIsAiProcessing(true);
-    setAiFeedback('AI 조교가 요청을 처리 중입니다...');
+    setAiFeedback('AI 조교가 처리 중입니다...');
     const schedulerDates = getSchedulerDates().map(d => d.full);
     const systemPrompts = {
-      WEEKLY: `당신은 주간 학습 플래너 전문가입니다. 사용자의 요청을 08:00~24:00 일정표에 분배하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon|tue|wed|thu|fri|sat|sun", "startTime": "HH:MM", "endTime": "HH:MM", "content": "내용" }] }`,
-      MONTHLY: `당신은 '팀 스케줄러' 데이터 채우기 전문가입니다. 
-               중요: 현재 등록된 과목 리스트: [${termScheduler.subjects.join(', ')}]. 
-               사용자가 특정 과목의 학습 계획을 말하면 해당 과목의 행을 찾아 날짜별로 내용을 채우세요.
-               절대 기존 데이터를 지우지 말고, 새롭게 추가되는 형식으로 응답하세요.
-               항목이 여러 개라면 줄바꿈(\\n)으로 구분하여 작성하세요. 각 줄은 자동으로 체크박스가 생성됩니다.
-               JSON 구조: { "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "추가될내용" }] }`,
-      YEARLY: `당신은 연간 로드맵 전문가입니다. 1월부터 12월까지 학습 흐름을 구성하세요. JSON 형식으로만 응답하세요. 구조: { "type": "UPDATE_YEARLY", "plans": ["1월내용", ..., "12월내용"] }`
+      WEEKLY: `당신은 플래너 전문가입니다. 사용자의 요청을 일정표에 분배하세요. JSON 형식으로만 응답하세요. { "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon|tue|wed|thu|fri|sat|sun", "startTime": "HH:MM", "endTime": "HH:MM", "content": "내용" }] }`,
+      MONTHLY: `데이터 채우기 전문가입니다. 과목 리스트: [${termScheduler.subjects.join(', ')}]. JSON 구조: { "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용" }] }`,
+      YEARLY: `연간 전문가입니다. JSON 구조: { "type": "UPDATE_YEARLY", "plans": ["1월", ..., "12월"] }`
     };
-    const text = await callGeminiAPI(systemPrompts[activeTab], `사용자 요청: "${aiPrompt}" / 현재 사용 가능한 날짜 리스트: ${JSON.stringify(schedulerDates)}`);
+    const text = await callGeminiAPI(systemPrompts[activeTab], `요청: "${aiPrompt}" / 날짜: ${JSON.stringify(schedulerDates)}`);
     if (text) {
       try {
         const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -783,35 +620,23 @@ export default function App() {
         if (aiResponse.type === 'UPDATE_TIMETABLE' && activeTab === 'WEEKLY') {
           let newTimetable = [...timetable];
           aiResponse.updates.forEach((update) => {
-            const timeToIndex = (t) => { 
-              const [h, m] = t.split(':').map(Number); 
-              return (h - 8) * 2 + (m === 30 ? 1 : 0); 
-            };
+            const timeToIndex = (t) => { const [h, m] = t.split(':').map(Number); return (h - 8) * 2 + (m === 30 ? 1 : 0); };
             const startIdx = timeToIndex(update.startTime);
             const endIdx = timeToIndex(update.endTime) - 1;
-            
             if (startIdx >= 0 && endIdx <= 31 && startIdx <= endIdx) {
-              const startId = startIdx + 1;
-              const endId = endIdx + 1;
-              const spanCount = endId - startId + 1;
-              
+              const startId = startIdx + 1; const endId = endIdx + 1; const spanCount = endId - startId + 1;
               for (let i = 1; i <= 32; i++) {
                 const rowIdx = i - 1;
-                if (i === startId) {
-                  newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: spanCount, [`${update.day}_hidden`]: false, [update.day]: update.content };
-                } else if (i > startId && i <= endId) {
-                  newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true };
-                } else if (i < startId) {
+                if (i === startId) newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: spanCount, [`${update.day}_hidden`]: false, [update.day]: update.content };
+                else if (i > startId && i <= endId) newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true };
+                else if (i < startId) {
                   const priorSpan = newTimetable[rowIdx][`${update.day}_span`];
-                  if (priorSpan > 1 && i + priorSpan - 1 >= startId) {
-                    newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: startId - i };
-                  }
+                  if (priorSpan > 1 && i + priorSpan - 1 >= startId) newTimetable[rowIdx] = { ...newTimetable[rowIdx], [`${update.day}_span`]: startId - i };
                 }
               }
             }
           });
-          setTimetable(repairTimetable(newTimetable)); 
-          setAiFeedback('✅ 주간 시간표 반영 완료!');
+          setTimetable(repairTimetable(newTimetable)); setAiFeedback('✅ 주간 반영 완료!');
         } else if (aiResponse.type === 'UPDATE_TERM_SCHEDULER' && activeTab === 'MONTHLY') {
           const newCells = { ...termScheduler.cells };
           aiResponse.cells?.forEach(c => { 
@@ -820,10 +645,9 @@ export default function App() {
               newCells[`${c.subject}-${c.date}`] = existing ? `${existing}\n${c.content}` : c.content;
             }
           });
-          setTermScheduler(prev => ({ ...prev, cells: newCells }));
-          setAiFeedback('✅ 월간 데이터 추가 완료!');
+          setTermScheduler(prev => ({ ...prev, cells: newCells })); setAiFeedback('✅ 월간 추가 완료!');
         } else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') {
-          setYearlyPlan(aiResponse.plans); setAiFeedback('✅ 연간 로드맵 반영 완료!');
+          setYearlyPlan(aiResponse.plans); setAiFeedback('✅ 연간 반영 완료!');
         }
       } catch (e) { setAiFeedback('❌ 데이터 해석 실패.'); }
     }
@@ -867,7 +691,6 @@ export default function App() {
     </div>
   );
 
-  // 현재 선택 범위 계산 (UI 렌더링 및 버튼 표시용)
   const bounds = getSelectionBounds();
   const isMultiSelected = bounds && (bounds.minId !== bounds.maxId || bounds.minDayIdx !== bounds.maxDayIdx);
 
@@ -982,9 +805,6 @@ export default function App() {
 
             <main className="max-w-full mx-auto p-2 md:p-6 pb-24 relative text-center min-h-screen">
               
-              {/* ========================================================================= */}
-              {/* 주간 시트 */}
-              {/* ========================================================================= */}
               {activeTab === 'WEEKLY' && (
                 <div className="animate-fade-in flex flex-col text-center">
                   <div className="space-y-2 md:space-y-4 flex-1 flex flex-col">
@@ -1027,9 +847,8 @@ export default function App() {
                           )}
                           <div className="h-5 md:h-8 w-px mx-0.5 md:mx-1 bg-slate-200 text-center"></div>
 
-                          {/* 기능 안내 팁 뱃지 */}
                           <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold whitespace-nowrap mr-1">
-                            <Sparkles size={12}/> 다중 영역 Shift+클릭 / Ctrl+C, V 지원
+                            <Sparkles size={12}/> Shift+클릭 다중선택 / Ctrl+C, V 호환
                           </div>
 
                           {isMultiSelected ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
@@ -1084,7 +903,6 @@ export default function App() {
                                       onMouseDown={(e) => handleMouseDown(e, day, row.id)} 
                                       onMouseEnter={() => handleMouseEnter(day, row.id)}
                                       onClick={(e) => {
-                                        // Shift 클릭 시에는 텍스트 편집 모드(포커스) 방지
                                         if (!e.shiftKey) {
                                           const area = e.currentTarget.querySelector('textarea');
                                           if (area) area.focus();
@@ -1114,9 +932,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* ========================================================================= */}
-              {/* 월간 시트 */}
-              {/* ========================================================================= */}
               {activeTab === 'MONTHLY' && (
                 <div className="animate-fade-in flex flex-col gap-6 text-center w-full">
                   <div className="p-2 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm w-full text-center">
@@ -1264,15 +1079,117 @@ export default function App() {
                             ))}
                           </tbody>
                         </table>
+                      );
+                    })}
+
+                    {termScheduler.subjects.length > 0 && (
+                      <div className="text-left flex justify-center w-full text-center mt-6">
+                        <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
+                          <thead>
+                            <tr className="bg-slate-100 font-black text-slate-800 text-center">
+                              <th className="border border-slate-200 w-[10%] py-3 md:py-4 align-middle text-center break-keep">과목</th>
+                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">교재</th>
+                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">시작</th>
+                              <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">목표</th>
+                              <th className="border border-slate-200 w-[60%] align-middle text-center break-keep">달성도</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {termScheduler.subjects.map((sub) => {
+                              const allDates = getSchedulerDates();
+                              const textbookVal = termScheduler.textbooks[sub] || '';
+                              const tbNames = Array.from(new Set(textbookVal.split('\n').map(t => t.trim()).filter(t => t !== '')));
+                              const rowData = [];
+
+                              if (tbNames.length === 0) {
+                                let firstData = "-";
+                                let lastData = "-";
+                                let totalItems = 0;
+                                let checkedItems = 0;
+
+                                allDates.forEach(d => {
+                                  const val = termScheduler.cells[`${sub}-${d.full}`] || "";
+                                  if (val.trim() !== "") {
+                                    const lines = val.split('\n');
+                                    lines.forEach((lineText, idx) => {
+                                      const trimmedLine = lineText.trim();
+                                      if (trimmedLine !== "") {
+                                        if (firstData === "-") firstData = trimmedLine;
+                                        lastData = trimmedLine;
+                                        totalItems++;
+                                        if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
+                                      }
+                                    });
+                                  }
+                                });
+
+                                rowData.push({
+                                  tbName: "-",
+                                  firstData,
+                                  lastData,
+                                  percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0,
+                                });
+                              } else {
+                                tbNames.forEach((tbName) => {
+                                  let firstData = "-";
+                                  let lastData = "-";
+                                  let totalItems = 0;
+                                  let checkedItems = 0;
+
+                                  allDates.forEach(d => {
+                                    const val = termScheduler.cells[`${sub}-${d.full}`] || "";
+                                    if (val.trim() !== "") {
+                                      const lines = val.split('\n');
+                                      lines.forEach((lineText, idx) => {
+                                        const trimmedLine = lineText.trim();
+                                        if (trimmedLine !== "" && trimmedLine.includes(tbName)) {
+                                          if (firstData === "-") firstData = trimmedLine;
+                                          lastData = trimmedLine;
+                                          totalItems++;
+                                          if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) {
+                                            checkedItems++;
+                                          }
+                                        }
+                                      });
+                                    }
+                                  });
+
+                                  rowData.push({
+                                    tbName,
+                                    firstData,
+                                    lastData,
+                                    percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0,
+                                  });
+                                });
+                              }
+
+                              return rowData.map((data, index) => (
+                                <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center">
+                                  {index === 0 && (
+                                    <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 align-middle">
+                                      {sub}
+                                    </td>
+                                  )}
+                                  <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap">{data.tbName}</td>
+                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap">{data.firstData}</td>
+                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-rose-700 align-middle break-words whitespace-pre-wrap">{data.lastData}</td>
+                                  <td className="border border-slate-200 p-2 md:p-3 text-center align-middle">
+                                    <div className="relative w-full h-5 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
+                                      <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
+                                      <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[9px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{data.percent}%</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ));
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {/* ========================================================================= */}
-              {/* 연간 시트 */}
-              {/* ========================================================================= */}
               {activeTab === 'YEARLY' && (
                 <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-center text-center">
                   {yearlyPlan.map((plan, idx) => (
