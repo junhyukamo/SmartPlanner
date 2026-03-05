@@ -113,18 +113,18 @@ export default function App() {
   const [colorRules, setColorRules] = useState([]);
   const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#bfdbfe' });
   const [studentList, setStudentList] = useState([]);
-  const [editingCell, setEditingCell] = useState(null); 
 
   // =========================================================================
-  // 💡 선택 상태 (주간 / 월간)
+  // 💡 선택 상태 & 구글 시트 에디터 모드 (핵심)
   // =========================================================================
   const [isDragging, setIsDragging] = useState(false);
   const [selection, setSelection] = useState({ startDay: null, endDay: null, startId: null, endId: null });
   const [monthlySelection, setMonthlySelection] = useState({ r1: null, c1: null, r2: null, c2: null });
   const isMonthlyDragging = useRef(false);
+  const [editingCell, setEditingCell] = useState(null); // null 이면 선택모드, string이면 입력모드
 
   // =========================================================================
-  // 💡 Undo / Redo 히스토리 시스템
+  // 💡 스마트 Undo / Redo 시스템
   // =========================================================================
   const historyRef = useRef({ past: [], future: [] });
   const currentStateRef = useRef({ timetable, termScheduler, yearlyPlan });
@@ -145,7 +145,6 @@ export default function App() {
     historyRef.current.future.push(JSON.stringify(currentStateRef.current));
     const prevSnap = JSON.parse(historyRef.current.past.pop());
     setTimetable(prevSnap.timetable); setTermScheduler(prevSnap.termScheduler); setYearlyPlan(prevSnap.yearlyPlan);
-    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
     setEditingCell(null); setAiFeedback('↩️ 실행 취소'); setTimeout(() => setAiFeedback(''), 1000);
   };
 
@@ -154,13 +153,12 @@ export default function App() {
     historyRef.current.past.push(JSON.stringify(currentStateRef.current));
     const nextSnap = JSON.parse(historyRef.current.future.pop());
     setTimetable(nextSnap.timetable); setTermScheduler(nextSnap.termScheduler); setYearlyPlan(nextSnap.yearlyPlan);
-    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
     setEditingCell(null); setAiFeedback('↪️ 다시 실행'); setTimeout(() => setAiFeedback(''), 1000);
   };
 
   const handleFocus = (e) => {
     if(e && e.target) autoResize(e);
-    focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
+    if (!focusSnapshotRef.current) focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
   };
 
   const handleBlur = () => {
@@ -174,8 +172,6 @@ export default function App() {
     }
     focusSnapshotRef.current = null; setEditingCell(null);
   };
-
-  // =========================================================================
 
   const getSelectionBounds = () => {
     if (!selection.startDay || !selection.endDay || !selection.startId || !selection.endId) return null;
@@ -203,7 +199,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => { document.querySelectorAll('textarea').forEach(el => { el.style.height = 'auto'; if (el.scrollHeight > 0) el.style.height = el.scrollHeight + 'px'; }); }, 100);
     return () => clearTimeout(timer);
-  }, [activeTab, view, currentDocId, loading]);
+  }, [activeTab, view, currentDocId, loading, editingCell]);
 
   const calculateDDay = (targetDate) => {
     if (!targetDate) return '';
@@ -271,12 +267,12 @@ export default function App() {
   }, [user, view]);
 
   // =========================================================================
-  // 💡 글로벌 단축키 (Copy, Paste, Delete, Undo, Redo)
+  // 💡 글로벌 단축키 (Copy/Paste, Undo/Redo, 즉시 타이핑)
   // =========================================================================
   useEffect(() => {
     const handleCopy = (e) => {
-      if (view !== 'PLANNER') return;
-      if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') { if (document.activeElement.selectionStart !== document.activeElement.selectionEnd) return; }
+      if (view !== 'PLANNER' || editingCell !== null) return;
+      const activeTag = document.activeElement?.tagName; if (activeTag === 'TEXTAREA' || activeTag === 'INPUT') return;
       let tsv = "";
       if (activeTab === 'WEEKLY' && selection.startDay) {
         const bounds = getSelectionBounds(); if (!bounds) return;
@@ -311,19 +307,19 @@ export default function App() {
     };
 
     const handlePaste = (e) => {
-      if (view !== 'PLANNER') return;
+      if (view !== 'PLANNER' || editingCell !== null) return;
+      const activeTag = document.activeElement?.tagName; if (activeTag === 'TEXTAREA' || activeTag === 'INPUT') return;
+      
       const pastedText = e.clipboardData?.getData('text/plain') || window.clipboardData?.getData('text/plain');
       const pastedJsonStr = e.clipboardData?.getData('application/json') || window.clipboardData?.getData('application/json');
       if (!pastedText && !pastedJsonStr) return;
 
-      let parsedData = null; let pastedType = null; let hasStructure = false;
-      if (pastedJsonStr) { try { const obj = JSON.parse(pastedJsonStr); if (obj.data) { parsedData = obj.data; pastedType = obj.tab; if (parsedData.length > 1 || parsedData[0].length > 1 || (parsedData[0][0].span && parsedData[0][0].span > 1)) hasStructure = true; } } catch(err) {} }
+      let parsedData = null; let pastedType = null;
+      if (pastedJsonStr) { try { const obj = JSON.parse(pastedJsonStr); if (obj.data) { parsedData = obj.data; pastedType = obj.tab; } } catch(err) {} }
 
       if (activeTab === 'WEEKLY' && selection.startDay) {
         const bounds = getSelectionBounds(); if (!bounds) return;
         const isSingleCell = bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx;
-        if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') { if (pastedType !== 'WEEKLY' && !pastedText.includes('\t') && !pastedText.includes('\n') && isSingleCell) return; }
-        
         e.preventDefault(); saveToHistory();
         setTimetable(prev => {
           let newTt = [...prev]; const startRowIdx = bounds.minId - 1;
@@ -354,8 +350,6 @@ export default function App() {
       } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
         const mb = getMonthlyBounds(); if (!mb) return;
         const isSingleCell = mb.minR === mb.maxR && mb.minC === mb.maxC;
-        if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') { if (pastedType !== 'MONTHLY' && !pastedText.includes('\t') && !pastedText.includes('\n') && isSingleCell) return; }
-        
         e.preventDefault(); saveToHistory();
         setTermScheduler(prev => {
           let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes };
@@ -393,42 +387,76 @@ export default function App() {
     };
 
     const handleKeyDown = (e) => {
-      if (view !== 'PLANNER') return;
-      const isTyping = document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT';
-      const isCtrl = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? e.metaKey : e.ctrlKey;
+      if (view !== 'PLANNER' || editingCell !== null) return; 
+      const activeTag = document.activeElement?.tagName; if (activeTag === 'TEXTAREA' || activeTag === 'INPUT') return;
 
-      if (isCtrl && e.key.toLowerCase() === 'z') { if (!isTyping) { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; } }
-      if (isCtrl && e.key.toLowerCase() === 'y') { if (!isTyping) { e.preventDefault(); handleRedo(); return; } }
+      const isCtrl = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? e.metaKey : e.ctrlKey;
+      
+      if (isCtrl && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; }
+      if (isCtrl && e.key.toLowerCase() === 'y') { e.preventDefault(); handleRedo(); return; }
+
+      if (e.key === 'Enter' && activeTag === 'BUTTON') return;
+
+      const wBounds = getSelectionBounds();
+      const isWSingle = activeTab === 'WEEKLY' && wBounds && wBounds.minId === wBounds.maxId && wBounds.minDayIdx === wBounds.maxDayIdx;
+      const wSingleKey = isWSingle ? `W-${wBounds.minId}-${DAYS[wBounds.minDayIdx]}` : null;
+
+      const mBounds = getMonthlyBounds();
+      const isMSingle = activeTab === 'MONTHLY' && mBounds && mBounds.minR === mBounds.maxR && mBounds.minC === mBounds.maxC;
+      const mSingleKey = isMSingle ? (mBounds.minR === 0 ? `note-${allDates[mBounds.minC].full}` : `${termScheduler.subjects[mBounds.minR - 1]}-${allDates[mBounds.minC].full}`) : null;
+
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (wSingleKey) setEditingCell(wSingleKey); else if (mSingleKey) setEditingCell(mSingleKey);
+        return;
+      }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (activeTab === 'WEEKLY' && selection.startDay) {
-          const bounds = getSelectionBounds(); if (!bounds) return;
-          if (isTyping && bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx) return; 
+        if (activeTab === 'WEEKLY' && wBounds) {
           e.preventDefault(); saveToHistory();
           setTimetable(prev => {
             let newTt = [...prev];
-            for (let id = bounds.minId; id <= bounds.maxId; id++) { for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { if (!newTt[id - 1][`${DAYS[d]}_hidden`]) newTt[id - 1] = { ...newTt[id - 1], [DAYS[d]]: '' }; } }
+            for (let id = wBounds.minId; id <= wBounds.maxId; id++) { for (let d = wBounds.minDayIdx; d <= wBounds.maxDayIdx; d++) { if (!newTt[id - 1][`${DAYS[d]}_hidden`]) newTt[id - 1] = { ...newTt[id - 1], [DAYS[d]]: '' }; } }
             return newTt;
           });
-        } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
-          const mb = getMonthlyBounds(); if (!mb) return;
-          if (isTyping && mb.minR === mb.maxR && mb.minC === mb.maxC) return;
+        } else if (activeTab === 'MONTHLY' && mBounds) {
           e.preventDefault(); saveToHistory();
           setTermScheduler(prev => {
             let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes };
-            for (let r = mb.minR; r <= mb.maxR; r++) {
+            for (let r = mBounds.minR; r <= mBounds.maxR; r++) {
               const sub = r === 0 ? null : prev.subjects[r - 1];
-              for (let c = mb.minC; c <= mb.maxC; c++) { const date = allDates[c].full; if (r === 0) newTopNotes[date] = ''; else newCells[`${sub}-${date}`] = ''; }
+              for (let c = mBounds.minC; c <= mBounds.maxC; c++) { const date = allDates[c].full; if (r === 0) newTopNotes[date] = ''; else newCells[`${sub}-${date}`] = ''; }
             }
             return { ...prev, cells: newCells, topNotes: newTopNotes };
           });
+        }
+        return;
+      }
+
+      if ((e.key.length === 1 || e.key === 'Process') && !isCtrl && !e.altKey && !e.metaKey) {
+        if (wSingleKey) {
+           focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
+           const day = DAYS[wBounds.minDayIdx]; const charToSet = e.key === 'Process' ? '' : e.key;
+           setTimetable(prev => { let newTt = [...prev]; newTt[wBounds.minId - 1] = { ...newTt[wBounds.minId - 1], [day]: charToSet }; return newTt; });
+           setEditingCell(wSingleKey);
+           if (e.key !== 'Process') e.preventDefault();
+        } else if (mSingleKey) {
+           focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
+           const rIdx = mBounds.minR; const date = allDates[mBounds.minC].full; const charToSet = e.key === 'Process' ? '' : e.key;
+           setTermScheduler(prev => {
+              let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes };
+              if (rIdx === 0) newTopNotes[date] = charToSet; else newCells[`${prev.subjects[rIdx - 1]}-${date}`] = charToSet;
+              return { ...prev, cells: newCells, topNotes: newTopNotes };
+           });
+           setEditingCell(mSingleKey);
+           if (e.key !== 'Process') e.preventDefault();
         }
       }
     };
 
     document.addEventListener('copy', handleCopy); document.addEventListener('paste', handlePaste); document.addEventListener('keydown', handleKeyDown);
     return () => { document.removeEventListener('copy', handleCopy); document.removeEventListener('paste', handlePaste); document.removeEventListener('keydown', handleKeyDown); };
-  }, [activeTab, view, selection, monthlySelection, timetable, termScheduler]); 
+  }, [activeTab, view, selection, monthlySelection, timetable, termScheduler, editingCell]); 
 
   // =========================================================================
 
@@ -437,15 +465,22 @@ export default function App() {
   const copyStudentLink = (sid) => { const el = document.createElement('textarea'); el.value = `${window.location.origin}${window.location.pathname}?sid=${sid}`; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000); };
 
   const handleMouseDown = (e, day, id) => {
+    if (e.target.tagName === 'TEXTAREA') return;
+    if (editingCell) setEditingCell(null);
     setIsDragging(true); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
-    if (e.shiftKey && selection.startDay) { e.preventDefault(); setSelection(prev => ({ ...prev, endDay: day, endId: id })); } else { setSelection({ startDay: day, endDay: day, startId: id, endId: id }); }
+    if (e.currentTarget && e.currentTarget.focus) e.currentTarget.focus();
+    if (e.shiftKey && selection.startDay) { e.preventDefault(); setSelection(prev => ({ ...prev, endDay: day, endId: id })); } 
+    else { setSelection({ startDay: day, endDay: day, startId: id, endId: id }); }
   };
   const handleMouseEnter = (day, id) => { if (isDragging && activeTab === 'WEEKLY') setSelection(prev => ({ ...prev, endDay: day, endId: id })); };
 
   const handleMonthlyMouseDown = (e, rIdx, cIdx) => {
-    if (e.target.type === 'checkbox') return;
+    if (e.target.tagName === 'TEXTAREA' || e.target.type === 'checkbox') return;
+    if (editingCell) setEditingCell(null);
     isMonthlyDragging.current = true; setSelection({ startDay: null, endDay: null, startId: null, endId: null });
-    if (e.shiftKey && monthlySelection.r1 !== null) { e.preventDefault(); setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); } else { setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+    if (e.currentTarget && e.currentTarget.focus) e.currentTarget.focus();
+    if (e.shiftKey && monthlySelection.r1 !== null) { e.preventDefault(); setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); } 
+    else { setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
   };
   const handleMonthlyMouseEnter = (rIdx, cIdx) => { if (isMonthlyDragging.current && activeTab === 'MONTHLY') setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); };
   const handleMouseUp = () => { setIsDragging(false); isMonthlyDragging.current = false; };
@@ -566,13 +601,12 @@ export default function App() {
               <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-10 text-center relative overflow-hidden">
                 <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner"><BookOpen className="w-10 h-10 text-white" /></div>
                 <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">스마트 학습 플래너</h1>
-                <p className="text-indigo-100 font-medium">개별 맞춤형 스케줄 시스템</p>
               </div>
               <div className="p-8 space-y-4 bg-white text-center">
-                <p className="text-slate-500 text-sm mb-4">전달받은 고유 링크로 다시 접속해주세요.</p>
+                <p className="text-slate-500 text-sm mb-4">고유 링크로 접속해주세요.</p>
                 <button onClick={() => setView('TEACHER_LOGIN')} className="w-full p-5 rounded-2xl border-2 border-slate-100 hover:border-slate-500 hover:bg-slate-50 flex items-center gap-5 group transition-all shadow-sm">
                   <div className="p-4 bg-slate-100 text-slate-600 rounded-xl group-hover:bg-slate-700 group-hover:text-white transition-colors"><Users size={24} /></div>
-                  <div className="text-left"><div className="font-extrabold text-lg text-slate-800">관리자 로그인</div><div className="text-sm text-slate-500 mt-1">통합 대시보드 관리</div></div>
+                  <div className="text-left"><div className="font-extrabold text-lg text-slate-800">관리자 로그인</div></div>
                 </button>
               </div>
             </div>
@@ -582,15 +616,14 @@ export default function App() {
         {view === 'TEACHER_LOGIN' && (
           <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
             <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
-              <button onClick={() => setView('LANDING')} className="text-slate-400 mb-8 flex items-center gap-2 text-sm font-medium hover:text-slate-700 transition-colors bg-slate-50 px-4 py-2 rounded-lg w-fit"><ChevronLeft className="w-4 h-4" /> 뒤로가기</button>
+              <button onClick={() => setView('LANDING')} className="text-slate-400 mb-8 flex items-center gap-2 text-sm font-medium hover:text-slate-700 transition-colors bg-slate-50 px-4 py-2 rounded-lg w-fit"><ChevronLeft className="w-4 h-4" /> 뒤로</button>
               <div className="mb-8"><h2 className="text-3xl font-extrabold text-slate-800 mb-2">관리자 로그인</h2></div>
               <form onSubmit={handleTeacherLogin} className="space-y-6">
                 <div className="space-y-2 text-center">
-                  <label className="text-sm font-bold text-slate-700 ml-1">비밀번호</label>
-                  <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="비밀번호 입력" className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-lg font-medium text-center" autoFocus />
+                  <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="비밀번호" className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:ring-4 focus:border-indigo-500 transition-all text-lg font-medium text-center" autoFocus />
                 </div>
                 {errorMsg && <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 justify-center"><AlertCircle size={16}/> {errorMsg}</div>}
-                <button type="submit" className="w-full text-white p-5 rounded-2xl font-extrabold text-lg transition-all transform hover:-translate-y-1 shadow-lg bg-slate-800 hover:bg-slate-900">대시보드 접속</button>
+                <button type="submit" className="w-full text-white p-5 rounded-2xl font-extrabold text-lg transition-all shadow-lg bg-slate-800 hover:bg-slate-900">접속</button>
               </form>
             </div>
           </div>
@@ -605,16 +638,16 @@ export default function App() {
                   <p className="text-slate-500 font-medium text-center">총 {studentList.length}명</p>
                 </div>
                 <div className="flex flex-wrap gap-3 mt-4 md:mt-0 justify-center">
-                  <button onClick={createNewStudentSheet} className="text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><UserPlus className="w-5 h-5" /> 새 학생 추가</button>
-                  <button onClick={() => setShowGlobalKeyInput(!showGlobalKeyInput)} className="text-white bg-slate-800 hover:bg-slate-900 px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><Settings className="w-5 h-5" /> AI 공용 키 설정</button>
+                  <button onClick={createNewStudentSheet} className="text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><UserPlus className="w-5 h-5" /> 학생 추가</button>
+                  <button onClick={() => setShowGlobalKeyInput(!showGlobalKeyInput)} className="text-white bg-slate-800 hover:bg-slate-900 px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><Settings className="w-5 h-5" /> AI 키</button>
                   <button onClick={handleLogout} className="text-slate-500 hover:text-red-600 hover:bg-red-50 px-5 py-3 rounded-xl font-bold flex items-center gap-2 bg-slate-100"><LogOut className="w-5 h-5" /> 로그아웃</button>
                 </div>
               </header>
               {showGlobalKeyInput && (
                 <div className="mb-10 p-8 bg-indigo-50 rounded-3xl border-2 border-indigo-100 animate-fade-in shadow-inner text-center">
-                  <h3 className="text-lg font-black text-indigo-900 mb-4 flex items-center justify-center gap-2"><Key className="w-5 h-5"/> AI 공용 API 키 설정</h3>
+                  <h3 className="text-lg font-black text-indigo-900 mb-4 flex items-center justify-center gap-2"><Key className="w-5 h-5"/> AI API 키</h3>
                   <div className="flex flex-col md:flex-row gap-4 justify-center">
-                    <input type="password" value={globalAiKey} onChange={(e) => setGlobalAiKey(e.target.value)} placeholder="Gemini API Key" className="flex-1 max-w-lg p-4 rounded-2xl border-2 border-indigo-200 outline-none focus:border-indigo-500 text-lg font-mono text-center" />
+                    <input type="password" value={globalAiKey} onChange={(e) => setGlobalAiKey(e.target.value)} className="flex-1 max-w-lg p-4 rounded-2xl border-2 border-indigo-200 outline-none focus:border-indigo-500 text-lg font-mono text-center" />
                     <button onClick={saveGlobalAiKey} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-extrabold text-lg shadow-lg">저장</button>
                   </div>
                 </div>
@@ -625,12 +658,11 @@ export default function App() {
                     <div className="flex justify-between items-start">
                       <div onClick={() => { setCurrentDocId(student.id); setView('PLANNER'); setRole('teacher'); }} className="cursor-pointer text-center w-full">
                         <span className="text-xl font-extrabold text-slate-800 block mb-1">{student.studentName || '이름 없음'}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">{student.id.substring(0, 13)}...</span>
                       </div>
                       <button onClick={(e) => handleDeleteStudent(e, student.id)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18} /></button>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={() => copyStudentLink(student.id)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${copyFeedback === student.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{copyFeedback === student.id ? <><Check size={14}/> 복사됨</> : <><LinkIcon size={14}/> 링크 복사</>}</button>
+                      <button onClick={() => copyStudentLink(student.id)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${copyFeedback === student.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{copyFeedback === student.id ? <><Check size={14}/> 복사됨</> : <><LinkIcon size={14}/> 복사</>}</button>
                       <button onClick={() => { setCurrentDocId(student.id); setView('PLANNER'); setRole('teacher'); }} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><ChevronRight size={18}/></button>
                     </div>
                   </div>
@@ -648,13 +680,13 @@ export default function App() {
                   <div className="flex items-center gap-3">
                     {role === 'teacher' && <button onClick={() => setView('TEACHER_DASHBOARD')} className="p-2 rounded-full hover:bg-slate-100 border border-slate-200"><ChevronLeft className="w-5 h-5" /></button>}
                     <div className="p-2.5 rounded-xl shadow-inner bg-gradient-to-br from-indigo-500 to-indigo-700"><BookOpen className="text-white w-5 h-5" /></div>
-                    <div className="font-extrabold text-xl tracking-tight">{studentName} 플래너</div>
+                    <div className="font-extrabold text-xl tracking-tight">{studentName}</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
                   <div className="flex p-1.5 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
                     {['WEEKLY', 'MONTHLY', 'YEARLY'].map((tab) => (
-                      <button key={tab} onClick={() => { setActiveTab(tab); setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); }} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
+                      <button key={tab} onClick={() => { setActiveTab(tab); setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setEditingCell(null); }} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
                     ))}
                   </div>
                   {role === 'teacher' && (
@@ -667,7 +699,6 @@ export default function App() {
             </header>
 
             <main className="max-w-full mx-auto p-2 md:p-6 pb-24 relative text-center min-h-screen">
-              
               {activeTab === 'WEEKLY' && (
                 <div className="animate-fade-in flex flex-col text-center">
                   <div className="space-y-2 md:space-y-4 flex-1 flex flex-col">
@@ -682,7 +713,7 @@ export default function App() {
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5 md:gap-2 p-1 md:p-1.5 rounded-xl border border-slate-200 bg-slate-50 shadow-inner flex-wrap md:flex-nowrap justify-center">
-                              <input type="text" placeholder="D-day 제목" className="w-20 md:w-32 p-1.5 md:p-2.5 text-xs md:text-sm rounded-lg outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
+                              <input type="text" placeholder="D-day" className="w-20 md:w-32 p-1.5 md:p-2.5 text-xs md:text-sm rounded-lg outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
                               <input type="date" className="w-24 md:w-36 p-1.5 md:p-2.5 text-[10px] md:text-sm rounded-lg outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
                               <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory(); } }} className="px-3 md:px-5 py-1.5 md:py-2.5 rounded-lg text-xs md:text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
                             </div>
@@ -710,8 +741,8 @@ export default function App() {
                           )}
                           <div className="h-5 md:h-8 w-px mx-0.5 md:mx-1 bg-slate-200 text-center"></div>
 
-                          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold whitespace-nowrap mr-1">
-                            <Sparkles size={12}/> Shift다중선택 / 복사(C) 붙여넣기(V) / Undo(Z) 완벽 연동
+                          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold whitespace-nowrap mr-1 border border-indigo-100">
+                            <Sparkles size={12}/> 더블클릭 및 Enter 편집 / Ctrl+Z 호환
                           </div>
 
                           {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
@@ -750,28 +781,37 @@ export default function App() {
                                 </td>
                                 {DAYS.map((day) => {
                                   if (row[`${day}_hidden`]) return null;
+                                  
                                   const dayIdx = DAYS.indexOf(day);
-                                  const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
+                                  const cellKey = `W-${row.id}-${day}`;
+                                  const isSel = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
+                                  const isEditing = editingCell === cellKey;
                                   const keywordColor = getCellColor(row[day]);
-                                  const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
+                                  const bgColor = isSel ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
+                                  
                                   return (
                                     <td 
-                                      key={day} 
-                                      className={`p-0 relative align-middle border border-slate-200 transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 cursor-text`} 
-                                      style={{ backgroundColor: bgColor }} 
-                                      rowSpan={row[`${day}_span`] || 1} 
-                                      onMouseDown={(e) => handleMouseDown(e, day, row.id)} 
-                                      onMouseEnter={() => handleMouseEnter(day, row.id)}
-                                      onClick={(e) => { if (!e.shiftKey) { const area = e.currentTarget.querySelector('textarea'); if (area) area.focus(); } }}
+                                      key={day} tabIndex={0}
+                                      className={`p-0 relative align-middle border border-slate-200 transition-all duration-200 outline-none cursor-cell ${isSel && !isEditing ? 'ring-2 ring-indigo-500 ring-inset z-10' : 'hover:bg-indigo-50/30'}`} 
+                                      style={{ backgroundColor: bgColor }} rowSpan={row[`${day}_span`] || 1} 
+                                      onMouseDown={(e) => handleMouseDown(e, day, row.id)} onMouseEnter={() => handleMouseEnter(day, row.id)}
+                                      onDoubleClick={() => setEditingCell(cellKey)}
                                     >
-                                      <div className="w-full h-full flex items-center justify-center p-0 md:p-0.5 text-center min-h-[24px] md:min-h-[28px]">
-                                        <textarea 
-                                          value={row[day] || ''} 
-                                          onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} 
-                                          onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur}
-                                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} 
-                                          rows={1} className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-[10px] md:text-xs align-middle" 
-                                        />
+                                      <div className="w-full h-full flex items-center justify-center p-0 md:p-0.5 text-center min-h-[24px] md:min-h-[28px] overflow-hidden">
+                                        {isEditing ? (
+                                          <textarea 
+                                            autoFocus value={row[day] || ''} 
+                                            onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} 
+                                            onInput={autoResize} onBlur={(e) => { handleBlur(); }}
+                                            onFocus={(e) => { const v = e.target.value; e.target.value = ''; e.target.value = v; handleFocus(e); }}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); e.target.blur(); } }} 
+                                            rows={1} className="w-full h-full text-center bg-white resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-2 focus:ring-indigo-500 rounded-sm text-[10px] md:text-xs align-middle shadow-md absolute inset-0 z-20 m-0.5" 
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full whitespace-pre-wrap font-bold text-[10px] md:text-xs text-slate-800 break-words flex items-center justify-center pointer-events-none p-1">
+                                            {row[day] || ''}
+                                          </div>
+                                        )}
                                       </div>
                                     </td>
                                   );
@@ -835,25 +875,30 @@ export default function App() {
                                 <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-1">비고</td>
                                 {chunk.map((d, i) => {
                                   const cIdx = chunkStartIndex + i; const rIdx = 0;
+                                  const cellKey = `note-${d.full}`;
                                   const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
-                                  const isEditing = editingCell === `note-${d.full}`;
+                                  const isEditing = editingCell === cellKey;
                                   return (
-                                    <td key={`note-${d.full}`} 
+                                    <td key={cellKey} tabIndex={0}
                                       onMouseDown={(e) => handleMonthlyMouseDown(e, rIdx, cIdx)}
                                       onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
-                                      onClick={(e) => { if (!e.shiftKey && !isEditing) setEditingCell(`note-${d.full}`); }}
-                                      className={`border border-slate-300 p-0 align-middle text-center cursor-text transition-colors ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50'}`}
+                                      onDoubleClick={() => setEditingCell(cellKey)}
+                                      className={`border border-slate-300 p-0 align-middle text-center cursor-cell transition-colors outline-none ${isSel && !isEditing ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50'}`}
                                     >
-                                      {isEditing ? (
-                                        <textarea 
-                                          value={termScheduler.topNotes[d.full] || ''} 
-                                          onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
-                                          onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} autoFocus rows={1}
-                                          className="w-full h-full min-h-[30px] bg-white resize-none outline-none p-1 text-center font-bold overflow-hidden leading-tight align-middle" 
-                                        />
-                                      ) : (
-                                        <div className="w-full h-full min-h-[30px] flex items-center justify-center p-1 whitespace-pre-wrap font-bold text-slate-800">{termScheduler.topNotes[d.full] || ''}</div>
-                                      )}
+                                      <div className="w-full h-full flex items-center justify-center p-1 text-center min-h-[30px] overflow-hidden">
+                                        {isEditing ? (
+                                          <textarea 
+                                            value={termScheduler.topNotes[d.full] || ''} 
+                                            onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
+                                            onInput={autoResize} onFocus={(e)=>{ const v = e.target.value; e.target.value=''; e.target.value=v; handleFocus(e);}} 
+                                            onBlur={(e) => { handleBlur(); }} autoFocus rows={1}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); e.target.blur(); } }} 
+                                            className="w-full h-full bg-white resize-none outline-none p-1 text-center font-bold overflow-hidden leading-tight align-middle shadow-md absolute inset-0 z-20 m-0.5 rounded-sm focus:ring-2 focus:ring-indigo-500" 
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full min-h-[30px] flex items-center justify-center p-1 whitespace-pre-wrap font-bold text-slate-800 pointer-events-none break-words">{termScheduler.topNotes[d.full] || ''}</div>
+                                        )}
+                                      </div>
                                     </td>
                                   )
                                 })}
@@ -866,46 +911,56 @@ export default function App() {
                                       {sub}
                                       <button onClick={() => removeSubjectRow(sub)} className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
                                     </td>
-                                    <td className="border border-slate-300 p-0 align-middle text-center bg-white cursor-text">
+                                    <td className="border border-slate-300 p-0 align-middle text-center bg-white cursor-cell" onDoubleClick={() => setEditingCell(`tb-${sub}`)}>
                                       <div className="w-full h-full flex items-center justify-center p-1 min-h-[40px]">
-                                        <textarea 
-                                          value={termScheduler.textbooks[sub] || ''} 
-                                          onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
-                                          onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} placeholder="입력" rows={1}
-                                          className="w-full bg-transparent resize-none outline-none overflow-hidden font-bold text-center text-slate-700 leading-tight align-middle focus:ring-1 focus:ring-indigo-400/50 placeholder:text-slate-300" 
-                                        />
+                                        {editingCell === `tb-${sub}` ? (
+                                          <textarea 
+                                            autoFocus value={termScheduler.textbooks[sub] || ''} 
+                                            onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
+                                            onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} placeholder="입력" rows={1}
+                                            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); setEditingCell(null); } }} 
+                                            className="w-full bg-transparent resize-none outline-none overflow-hidden font-bold text-center text-slate-700 leading-tight align-middle focus:ring-1 focus:ring-indigo-400/50" 
+                                          />
+                                        ) : (
+                                          <div className="w-full h-full whitespace-pre-wrap font-bold text-slate-700 pointer-events-none flex items-center justify-center">{termScheduler.textbooks[sub] || ''}</div>
+                                        )}
                                       </div>
                                     </td>
                                     {chunk.map((d, i) => {
                                       const cIdx = chunkStartIndex + i;
-                                      const val = termScheduler.cells[`${sub}-${d.full}`] || '';
+                                      const cellKey = `${sub}-${d.full}`;
+                                      const val = termScheduler.cells[cellKey] || '';
                                       const lines = val.split('\n').filter(l => l.trim() !== '');
-                                      const isEditing = editingCell === `${sub}-${d.full}`;
+                                      const isEditing = editingCell === cellKey;
                                       const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
                                       return (
-                                        <td key={`${sub}-${d.full}`}
+                                        <td key={cellKey} tabIndex={0}
                                           onMouseDown={(e) => handleMonthlyMouseDown(e, rIdx, cIdx)}
                                           onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
-                                          onClick={(e) => { if (!e.shiftKey && !isEditing && e.target.type !== 'checkbox') setEditingCell(`${sub}-${d.full}`); }}
-                                          className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'}`}
+                                          onDoubleClick={(e) => setEditingCell(cellKey)}
+                                          className={`border border-slate-300 p-0 align-middle transition-colors relative text-center outline-none cursor-cell ${isSel && !isEditing ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'}`}
                                         >
-                                          <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[50px] cursor-text">
+                                          <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[50px] overflow-hidden">
                                             {isEditing ? (
                                               <textarea 
                                                 autoFocus value={val} 
                                                 onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
-                                                onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} rows={1}
-                                                className="w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden min-h-[40px] align-middle leading-tight" 
+                                                onInput={autoResize} onFocus={(e)=>{ const v = e.target.value; e.target.value=''; e.target.value=v; handleFocus(e);}} 
+                                                onBlur={(e) => { handleBlur(); }} rows={1}
+                                                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); e.target.blur(); } }} 
+                                                className="w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded-sm shadow-md overflow-hidden min-h-[40px] align-middle leading-tight absolute inset-0 z-20 m-0.5 focus:ring-2 focus:ring-indigo-500" 
                                               />
                                             ) : (
                                               <div className="w-full h-full flex flex-col gap-1.5 px-1 justify-center min-h-[40px]">
-                                                {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block">.</span> ) : (
+                                                {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none">.</span> ) : (
                                                   lines.map((line, idx) => (
-                                                    <div key={idx} className="flex items-center justify-center gap-1 bg-white/70 rounded px-1 py-1 shadow-sm border border-black/5 mx-auto w-[95%]">
-                                                      <span className="text-[9px] md:text-[10px] font-black text-slate-800 leading-tight text-center flex-1 break-words whitespace-pre-wrap">{line}</span>
+                                                    <div key={idx} className="flex items-center justify-center gap-1 bg-white/70 rounded px-1 py-1 shadow-sm border border-black/5 mx-auto w-[95%] pointer-events-auto">
+                                                      <span className="text-[9px] md:text-[10px] font-black text-slate-800 leading-tight text-center flex-1 break-words whitespace-pre-wrap pointer-events-none">{line}</span>
                                                       <input type="checkbox" checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
                                                         onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
-                                                        onClick={(e) => e.stopPropagation()} className="w-3 h-3 md:w-4 md:h-4 cursor-pointer accent-indigo-600 flex-shrink-0" 
+                                                        onDoubleClick={(e) => e.stopPropagation()} 
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                        className="w-3 h-3 md:w-4 md:h-4 cursor-pointer accent-indigo-600 flex-shrink-0" 
                                                       />
                                                     </div>
                                                   ))
@@ -968,7 +1023,7 @@ export default function App() {
                                         if (lineText.trim() !== "" && lineText.trim().includes(tbName)) {
                                           if (firstData === "-") firstData = lineText.trim();
                                           lastData = lineText.trim(); totalItems++;
-                                          if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
+                                          if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) { checkedItems++; }
                                         }
                                       });
                                     }
