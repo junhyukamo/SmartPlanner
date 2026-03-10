@@ -118,7 +118,7 @@ export default function App() {
   // =========================================================================
   // 💡 선택 상태 (주간 / 월간)
   // =========================================================================
-  const [isDragging, setIsDragging] = useState(false);
+  const isDragging = useRef(false);
   const [selection, setSelection] = useState({ startDay: null, endDay: null, startId: null, endId: null });
   const [monthlySelection, setMonthlySelection] = useState({ r1: null, c1: null, r2: null, c2: null });
   const isMonthlyDragging = useRef(false);
@@ -203,7 +203,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(() => { document.querySelectorAll('textarea').forEach(el => { el.style.height = 'auto'; if (el.scrollHeight > 0) el.style.height = el.scrollHeight + 'px'; }); }, 100);
     return () => clearTimeout(timer);
-  }, [activeTab, view, currentDocId, loading]);
+  }, [activeTab, view, currentDocId, loading, timetable]);
 
   const calculateDDay = (targetDate) => {
     if (!targetDate) return '';
@@ -276,7 +276,11 @@ export default function App() {
   useEffect(() => {
     const handleCopy = (e) => {
       if (view !== 'PLANNER') return;
-      if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') { if (document.activeElement.selectionStart !== document.activeElement.selectionEnd) return; }
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === 'INPUT') return;
+      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
+      if (activeTab === 'YEARLY') return;
+
       let tsv = "";
       if (activeTab === 'WEEKLY' && selection.startDay) {
         const bounds = getSelectionBounds(); if (!bounds) return;
@@ -312,17 +316,21 @@ export default function App() {
 
     const handlePaste = (e) => {
       if (view !== 'PLANNER') return;
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === 'INPUT') return;
+      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
+      if (activeTab === 'YEARLY') return;
+
       const pastedText = e.clipboardData?.getData('text/plain') || window.clipboardData?.getData('text/plain');
       const pastedJsonStr = e.clipboardData?.getData('application/json') || window.clipboardData?.getData('application/json');
       if (!pastedText && !pastedJsonStr) return;
 
-      let parsedData = null; let pastedType = null; let hasStructure = false;
-      if (pastedJsonStr) { try { const obj = JSON.parse(pastedJsonStr); if (obj.data) { parsedData = obj.data; pastedType = obj.tab; if (parsedData.length > 1 || parsedData[0].length > 1 || (parsedData[0][0].span && parsedData[0][0].span > 1)) hasStructure = true; } } catch(err) {} }
+      let parsedData = null; let pastedType = null;
+      if (pastedJsonStr) { try { const obj = JSON.parse(pastedJsonStr); if (obj.data) { parsedData = obj.data; pastedType = obj.tab; } } catch(err) {} }
 
       if (activeTab === 'WEEKLY' && selection.startDay) {
         const bounds = getSelectionBounds(); if (!bounds) return;
         const isSingleCell = bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx;
-        if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') { if (pastedType !== 'WEEKLY' && !pastedText.includes('\t') && !pastedText.includes('\n') && isSingleCell) return; }
         
         e.preventDefault(); saveToHistory();
         setTimetable(prev => {
@@ -354,7 +362,6 @@ export default function App() {
       } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
         const mb = getMonthlyBounds(); if (!mb) return;
         const isSingleCell = mb.minR === mb.maxR && mb.minC === mb.maxC;
-        if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') { if (pastedType !== 'MONTHLY' && !pastedText.includes('\t') && !pastedText.includes('\n') && isSingleCell) return; }
         
         e.preventDefault(); saveToHistory();
         setTermScheduler(prev => {
@@ -394,25 +401,30 @@ export default function App() {
 
     const handleKeyDown = (e) => {
       if (view !== 'PLANNER') return;
-      const isTyping = document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT';
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === 'INPUT') return;
+      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
+      if (activeTab === 'YEARLY' && activeTag === 'TEXTAREA') return;
+
       const isCtrl = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? e.metaKey : e.ctrlKey;
 
-      if (isCtrl && e.key.toLowerCase() === 'z') { if (!isTyping) { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; } }
-      if (isCtrl && e.key.toLowerCase() === 'y') { if (!isTyping) { e.preventDefault(); handleRedo(); return; } }
+      if (isCtrl && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; }
+      if (isCtrl && e.key.toLowerCase() === 'y') { e.preventDefault(); handleRedo(); return; }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (activeTab === 'WEEKLY' && selection.startDay) {
           const bounds = getSelectionBounds(); if (!bounds) return;
-          if (isTyping && bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx) return; 
           e.preventDefault(); saveToHistory();
           setTimetable(prev => {
             let newTt = [...prev];
             for (let id = bounds.minId; id <= bounds.maxId; id++) { for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { if (!newTt[id - 1][`${DAYS[d]}_hidden`]) newTt[id - 1] = { ...newTt[id - 1], [DAYS[d]]: '' }; } }
             return newTt;
           });
+          if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') {
+            document.activeElement.value = '';
+          }
         } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
           const mb = getMonthlyBounds(); if (!mb) return;
-          if (isTyping && mb.minR === mb.maxR && mb.minC === mb.maxC) return;
           e.preventDefault(); saveToHistory();
           setTermScheduler(prev => {
             let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes };
@@ -428,7 +440,7 @@ export default function App() {
 
     document.addEventListener('copy', handleCopy); document.addEventListener('paste', handlePaste); document.addEventListener('keydown', handleKeyDown);
     return () => { document.removeEventListener('copy', handleCopy); document.removeEventListener('paste', handlePaste); document.removeEventListener('keydown', handleKeyDown); };
-  }, [activeTab, view, selection, monthlySelection, timetable, termScheduler]); 
+  }, [activeTab, view, selection, monthlySelection, timetable, termScheduler, editingCell]); 
 
   // =========================================================================
 
@@ -437,18 +449,45 @@ export default function App() {
   const copyStudentLink = (sid) => { const el = document.createElement('textarea'); el.value = `${window.location.origin}${window.location.pathname}?sid=${sid}`; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000); };
 
   const handleMouseDown = (e, day, id) => {
-    setIsDragging(true); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
-    if (e.shiftKey && selection.startDay) { e.preventDefault(); setSelection(prev => ({ ...prev, endDay: day, endId: id })); } else { setSelection({ startDay: day, endDay: day, startId: id, endId: id }); }
+    isDragging.current = true; 
+    setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
+    if (e.shiftKey && selection.startDay) { 
+      e.preventDefault(); 
+      setSelection(prev => ({ ...prev, endDay: day, endId: id })); 
+    } else { 
+      // 💡 한글 첫 글자 씹힘 방지: 이미 선택된 셀이면 불필요한 상태 업데이트(리렌더링)를 차단합니다.
+      setSelection(prev => {
+        if (prev.startDay === day && prev.endDay === day && prev.startId === id && prev.endId === id) return prev;
+        return { startDay: day, endDay: day, startId: id, endId: id };
+      });
+    }
   };
-  const handleMouseEnter = (day, id) => { if (isDragging && activeTab === 'WEEKLY') setSelection(prev => ({ ...prev, endDay: day, endId: id })); };
+
+  const handleMouseEnter = (day, id) => { 
+    if (isDragging.current && activeTab === 'WEEKLY') {
+      setSelection(prev => ({ ...prev, endDay: day, endId: id })); 
+    }
+  };
 
   const handleMonthlyMouseDown = (e, rIdx, cIdx) => {
     if (e.target.type === 'checkbox') return;
     isMonthlyDragging.current = true; setSelection({ startDay: null, endDay: null, startId: null, endId: null });
-    if (e.shiftKey && monthlySelection.r1 !== null) { e.preventDefault(); setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); } else { setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+    if (e.shiftKey && monthlySelection.r1 !== null) { 
+      e.preventDefault(); 
+      setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); 
+    } else { 
+      setMonthlySelection(prev => {
+        if (prev.r1 === rIdx && prev.c1 === cIdx && prev.r2 === rIdx && prev.c2 === cIdx) return prev;
+        return { r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx };
+      });
+    }
   };
-  const handleMonthlyMouseEnter = (rIdx, cIdx) => { if (isMonthlyDragging.current && activeTab === 'MONTHLY') setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); };
-  const handleMouseUp = () => { setIsDragging(false); isMonthlyDragging.current = false; };
+
+  const handleMonthlyMouseEnter = (rIdx, cIdx) => { 
+    if (isMonthlyDragging.current && activeTab === 'MONTHLY') setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); 
+  };
+
+  const handleMouseUp = () => { isDragging.current = false; isMonthlyDragging.current = false; };
   useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
 
   const mergeCells = () => {
@@ -654,7 +693,7 @@ export default function App() {
                 <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
                   <div className="flex p-1.5 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
                     {['WEEKLY', 'MONTHLY', 'YEARLY'].map((tab) => (
-                      <button key={tab} onClick={() => { setActiveTab(tab); setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); }} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
+                      <button key={tab} onClick={() => { setActiveTab(tab); setEditingCell(null); setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); }} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
                     ))}
                   </div>
                   {role === 'teacher' && (
@@ -711,7 +750,7 @@ export default function App() {
                           <div className="h-5 md:h-8 w-px mx-0.5 md:mx-1 bg-slate-200 text-center"></div>
 
                           <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold whitespace-nowrap mr-1">
-                            <Sparkles size={12}/> Shift다중선택 / 복사(C) 붙여넣기(V) / Undo(Z) 완벽 연동
+                            <Sparkles size={12}/> 구글 시트식 에디팅 / 방향키 지원
                           </div>
 
                           {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
@@ -722,19 +761,22 @@ export default function App() {
                       
                       <div className="w-full relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner text-center" onMouseLeave={handleMouseUp}>
                         <table className="w-full text-center border-collapse min-w-[320px] md:min-w-full table-fixed">
-                          <thead className="z-20 shadow-sm bg-slate-50 border-b-2 border-slate-200 text-slate-800">
+                          <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800">
                             <tr>
-                              <th className="py-1 md:py-2 w-10 md:w-16 border-r border-slate-200 uppercase tracking-widest text-[8px] md:text-[10px] font-black text-slate-400 bg-slate-50 z-20 align-middle">
-                                <Clock className="w-3 h-3 mx-auto mb-0.5 opacity-50 hidden md:block"/>
+                              <th className={`py-1 md:py-2 w-10 md:w-16 border-r border-slate-200 uppercase tracking-widest text-[8px] md:text-[10px] z-20 align-middle transition-colors duration-200 ${wBounds ? 'bg-indigo-100 text-indigo-700 font-black' : 'text-slate-400 font-black bg-slate-50'}`}>
+                                <Clock className={`w-3 h-3 mx-auto mb-0.5 hidden md:block transition-opacity duration-200 ${wBounds ? 'opacity-100 text-indigo-700' : 'opacity-50'}`}/>
                                 <span className="md:hidden">시간</span>
                                 <span className="hidden md:inline">Time</span>
                               </th>
                               {DAYS.map((d, i) => {
                                 const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
                                 const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
-                                let textColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : '';
+                                const isColSelected = activeTab === 'WEEKLY' && wBounds && i >= wBounds.minDayIdx && i <= wBounds.maxDayIdx;
+                                let defaultTextColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : 'text-slate-600';
+                                let textColor = isColSelected ? 'text-indigo-700' : defaultTextColor;
+                                let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-slate-50';
                                 return (
-                                  <th key={d} className={`py-1 md:py-2 font-black text-[10px] md:text-xs border-r border-slate-200 bg-slate-50 z-20 align-middle ${textColor}`}>
+                                  <th key={d} className={`py-1 md:py-2 font-black text-[10px] md:text-xs border-r border-slate-200 z-20 align-middle transition-colors duration-200 ${textColor} ${bgColor}`}>
                                     <span className="hidden md:inline">{labelsLong[i]}</span>
                                     <span className="md:hidden">{labelsShort[i]}</span>
                                   </th>
@@ -743,41 +785,145 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {timetable.map((row) => (
-                              <tr key={row.id} className="group text-center">
-                                <td className="p-0 w-10 md:w-16 border border-slate-200 align-middle bg-slate-50/50 transition-colors select-none">
-                                  <div className="flex flex-col items-center justify-center h-full text-[8px] md:text-[10px] font-medium text-slate-400"><span>{row.time}</span></div>
-                                </td>
-                                {DAYS.map((day) => {
-                                  if (row[`${day}_hidden`]) return null;
-                                  const dayIdx = DAYS.indexOf(day);
-                                  const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
-                                  const keywordColor = getCellColor(row[day]);
-                                  const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
-                                  return (
-                                    <td 
-                                      key={day} 
-                                      className={`p-0 relative align-middle border border-slate-200 transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 cursor-text`} 
-                                      style={{ backgroundColor: bgColor }} 
-                                      rowSpan={row[`${day}_span`] || 1} 
-                                      onMouseDown={(e) => handleMouseDown(e, day, row.id)} 
-                                      onMouseEnter={() => handleMouseEnter(day, row.id)}
-                                      onClick={(e) => { if (!e.shiftKey) { const area = e.currentTarget.querySelector('textarea'); if (area) area.focus(); } }}
-                                    >
-                                      <div className="w-full h-full flex items-center justify-center p-0 md:p-0.5 text-center min-h-[24px] md:min-h-[28px]">
-                                        <textarea 
-                                          value={row[day] || ''} 
-                                          onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} 
-                                          onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur}
-                                          onKeyDown={(e) => { if (e.key === 'Enter' && !e.altKey && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } }} 
-                                          rows={1} className="w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-[10px] md:text-xs align-middle" 
-                                        />
-                                      </div>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            ))}
+                            {timetable.map((row) => {
+                              const isRowSelected = activeTab === 'WEEKLY' && wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId;
+                              const timeBgClass = isRowSelected ? "bg-indigo-100/70 shadow-inner border-indigo-200" : "bg-slate-50/50";
+                              const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-400 font-medium";
+                              return (
+                                <tr key={row.id} className="group text-center">
+                                  <td className={`p-0 w-10 md:w-16 border border-slate-200 align-middle transition-colors duration-200 select-none ${timeBgClass}`}>
+                                    <div className={`flex flex-col items-center justify-center h-full text-[8px] md:text-[10px] ${timeTextClass}`}><span>{row.time}</span></div>
+                                  </td>
+                                  {DAYS.map((day) => {
+                                    if (row[`${day}_hidden`]) return null;
+                                    const dayIdx = DAYS.indexOf(day);
+                                    
+                                    const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
+                                    const isSingleSelection = wBounds && wBounds.minId === wBounds.maxId && wBounds.minDayIdx === wBounds.maxDayIdx;
+                                    const isActiveThis = isSingleSelection && selection.startId === row.id && selection.startDay === day;
+                                    
+                                    const cellId = `WEEKLY-${day}-${row.id}`;
+                                    const isEditingThis = editingCell === cellId;
+                                    
+                                    const keywordColor = getCellColor(row[day]);
+                                    const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
+                                    
+                                    return (
+                                      <td 
+                                        key={day} 
+                                        className={`p-0 relative align-middle border border-slate-200 transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
+                                        style={{ backgroundColor: bgColor }} 
+                                        rowSpan={row[`${day}_span`] || 1} 
+                                        onMouseDown={(e) => {
+                                          if (editingCell !== cellId) setEditingCell(null);
+                                          handleMouseDown(e, day, row.id);
+                                        }} 
+                                        onMouseEnter={() => handleMouseEnter(day, row.id)}
+                                        onClick={(e) => { 
+                                          if (!e.shiftKey) { 
+                                            const area = document.getElementById(`textarea-${row.id}-${day}`); 
+                                            if (area && document.activeElement !== area) {
+                                              setTimeout(() => area.focus(), 0);
+                                            } 
+                                          } 
+                                        }}
+                                        onDoubleClick={() => setEditingCell(cellId)}
+                                      >
+                                        <div className="w-full h-full flex items-center justify-center p-0 md:p-0.5 text-center min-h-[24px] md:min-h-[28px]">
+                                          <textarea 
+                                            id={`textarea-${row.id}-${day}`}
+                                            value={row[day] || ''} 
+                                            onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} 
+                                            onInput={autoResize} 
+                                            onFocus={handleFocus} 
+                                            onBlur={handleBlur}
+                                            style={{
+                                              caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                              cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text'
+                                            }}
+                                            onCompositionStart={(e) => {
+                                              if (!isEditingThis && isActiveThis) {
+                                                e.currentTarget.value = '';
+                                                handleTimetableChange(row.id, day, '');
+                                                setEditingCell(cellId);
+                                                setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
+                                              }
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                              
+                                              const moveFocus = (rId, dIdx, dir) => {
+                                                let nextRId = rId; let nextDIdx = dIdx;
+                                                if (dir === 'DOWN') {
+                                                   const span = timetable[nextRId - 1][`${DAYS[nextDIdx]}_span`] || 1;
+                                                   nextRId += span;
+                                                   while(nextRId <= 32 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId++;
+                                                   if (nextRId > 32) return;
+                                                } else if (dir === 'UP') {
+                                                   nextRId -= 1;
+                                                   while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                   if (nextRId < 1) return;
+                                                } else if (dir === 'RIGHT') {
+                                                   nextDIdx += 1;
+                                                   if (nextDIdx > 6) { nextDIdx = 0; nextRId += 1; }
+                                                   if (nextRId > 32) return;
+                                                   while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                   if (nextRId < 1) nextRId = 1;
+                                                } else if (dir === 'LEFT') {
+                                                   nextDIdx -= 1;
+                                                   if (nextDIdx < 0) { nextDIdx = 6; nextRId -= 1; }
+                                                   if (nextRId < 1) return;
+                                                   while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                   if (nextRId < 1) nextRId = 1;
+                                                }
+                                          
+                                                const nextDay = DAYS[nextDIdx];
+                                                setSelection({ startDay: nextDay, endDay: nextDay, startId: nextRId, endId: nextRId });
+                                                setEditingCell(null);
+                                                setTimeout(() => {
+                                                  const el = document.getElementById(`textarea-${nextRId}-${nextDay}`);
+                                                  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+                                                }, 0);
+                                              };
+                                          
+                                              if (!isEditingThis && isActiveThis) {
+                                                if (e.key === 'Enter' || e.key === 'F2') {
+                                                  e.preventDefault();
+                                                  setEditingCell(cellId);
+                                                  e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                                                } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(row.id, dayIdx, 'DOWN');
+                                                } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus(row.id, dayIdx, 'UP');
+                                                } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocus(row.id, dayIdx, 'RIGHT');
+                                                } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocus(row.id, dayIdx, 'LEFT');
+                                                } else if (e.key === 'Tab') { e.preventDefault(); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
+                                                } else if (e.key === 'Delete' || e.key === 'Backspace') { 
+                                                  // 글로벌 핸들러에서 데이터를 삭제하도록 패스
+                                                } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                                                  e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
+                                                  setEditingCell(cellId);
+                                                  setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
+                                                }
+                                              } else if (isEditingThis) {
+                                                if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
+                                                  e.preventDefault(); setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
+                                                } else if (e.key === 'Tab') {
+                                                  e.preventDefault(); setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                } else if (e.key === 'Escape') {
+                                                  e.preventDefault(); setEditingCell(null);
+                                                  e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                                                }
+                                              }
+                                            }} 
+                                            rows={1} className={`w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-[10px] md:text-xs align-middle ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
+                                          />
+                                        </div>
+                                      </td>
+                                    );
+                                  })}
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -849,6 +995,7 @@ export default function App() {
                                           value={termScheduler.topNotes[d.full] || ''} 
                                           onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
                                           onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} autoFocus rows={1}
+                                          onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); }}
                                           className="w-full h-full min-h-[30px] bg-white resize-none outline-none p-1 text-center font-bold overflow-hidden leading-tight align-middle" 
                                         />
                                       ) : (
@@ -872,6 +1019,7 @@ export default function App() {
                                           value={termScheduler.textbooks[sub] || ''} 
                                           onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
                                           onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} placeholder="입력" rows={1}
+                                          onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.blur(); }}
                                           className="w-full bg-transparent resize-none outline-none overflow-hidden font-bold text-center text-slate-700 leading-tight align-middle focus:ring-1 focus:ring-indigo-400/50 placeholder:text-slate-300" 
                                         />
                                       </div>
@@ -886,7 +1034,11 @@ export default function App() {
                                         <td key={`${sub}-${d.full}`}
                                           onMouseDown={(e) => handleMonthlyMouseDown(e, rIdx, cIdx)}
                                           onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
-                                          onClick={(e) => { if (!e.shiftKey && !isEditing && e.target.type !== 'checkbox') setEditingCell(`${sub}-${d.full}`); }}
+                                          onClick={(e) => { 
+                                            if (!e.shiftKey && !isEditing && e.target.type !== 'checkbox') {
+                                              setEditingCell(`${sub}-${d.full}`);
+                                            }
+                                          }}
                                           className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'}`}
                                         >
                                           <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[50px] cursor-text">
@@ -895,6 +1047,7 @@ export default function App() {
                                                 autoFocus value={val} 
                                                 onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
                                                 onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} rows={1}
+                                                onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); }}
                                                 className="w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden min-h-[40px] align-middle leading-tight" 
                                               />
                                             ) : (
