@@ -129,6 +129,53 @@ export default function App() {
   const historyRef = useRef({ past: [], future: [] });
   const currentStateRef = useRef({ timetable, termScheduler, yearlyPlan });
   const focusSnapshotRef = useRef(null);
+  const historyLoaded = useRef(false);
+
+  // =========================================================================
+  // 💡 학생별 탭/날짜 환경설정 저장 (LocalStorage) 및 학생 접속 로직
+  // =========================================================================
+  const openStudentPlanner = (studentId, newRole) => {
+    let t = 'WEEKLY', d = new Date(2026, 1, 2);
+    try {
+      const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
+      if (saved[studentId]) {
+        if (saved[studentId].tab) t = saved[studentId].tab;
+        if (saved[studentId].currentDate) {
+          const parsedDate = new Date(saved[studentId].currentDate);
+          if (!isNaN(parsedDate)) d = parsedDate;
+        }
+      }
+    } catch (e) {}
+    
+    setActiveTab(t);
+    setCurrentDate(d);
+    
+    // 학생 변경 시 선택 상태 및 편집 모드, 히스토리(Undo/Redo 꼬임 방지) 모두 리셋
+    setEditingCell(null);
+    setSelection({ startDay: null, endDay: null, startId: null, endId: null });
+    setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
+    historyRef.current = { past: [], future: [] };
+    historyLoaded.current = false;
+    
+    setCurrentDocId(studentId);
+    if (newRole) setRole(newRole);
+    setView('PLANNER');
+  };
+
+  // 활성화된 탭이나 날짜가 변경될 때마다 로컬 스토리지에 캐싱
+  useEffect(() => {
+    if (view === 'PLANNER' && currentDocId) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
+        if (!saved[currentDocId]) saved[currentDocId] = {};
+        saved[currentDocId].tab = activeTab;
+        saved[currentDocId].currentDate = currentDate.toISOString();
+        localStorage.setItem('planner_student_prefs', JSON.stringify(saved));
+      } catch (e) {}
+    }
+  }, [activeTab, currentDate, currentDocId, view]);
+
+  // =========================================================================
 
   useEffect(() => { currentStateRef.current = { timetable, termScheduler, yearlyPlan }; }, [timetable, termScheduler, yearlyPlan]);
 
@@ -212,16 +259,20 @@ export default function App() {
     if (days === 0) return 'D-Day'; return days > 0 ? `D-${days}` : `D+${Math.abs(days)}`;
   };
 
-  const historyLoaded = useRef(false);
   useEffect(() => {
     const initAuth = async () => {
       try {
         await signInAnonymously(auth);
         const params = new URLSearchParams(window.location.search); const sid = params.get('sid');
-        if (sid) { setCurrentDocId(sid); setRole('student'); setView('PLANNER'); } 
+        if (sid) { 
+          openStudentPlanner(sid, 'student'); 
+        } 
         else {
           const savedRole = localStorage.getItem('planner_role'); const savedName = localStorage.getItem('planner_name');
-          if (savedRole === 'student' && savedName) { setRole('student'); setStudentName(savedName); setCurrentDocId(savedName); setView('PLANNER'); } 
+          if (savedRole === 'student' && savedName) { 
+            setStudentName(savedName); 
+            openStudentPlanner(savedName, 'student'); 
+          } 
           else if (savedRole === 'teacher') { setRole('teacher'); setView('TEACHER_DASHBOARD'); } 
           else { setView('LANDING'); }
         }
@@ -455,7 +506,6 @@ export default function App() {
       e.preventDefault(); 
       setSelection(prev => ({ ...prev, endDay: day, endId: id })); 
     } else { 
-      // 💡 한글 첫 글자 씹힘 방지: 이미 선택된 셀이면 불필요한 상태 업데이트(리렌더링)를 차단합니다.
       setSelection(prev => {
         if (prev.startDay === day && prev.endDay === day && prev.startId === id && prev.endId === id) return prev;
         return { startDay: day, endDay: day, startId: id, endId: id };
@@ -587,7 +637,19 @@ export default function App() {
   const handleTimetableChange = (id, day, value) => setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row));
   const handleYearlyChange = (index, value) => { const newPlan = [...yearlyPlan]; newPlan[index] = value; setYearlyPlan(newPlan); };
   const handleDeleteStudent = (e, studentId) => { e.stopPropagation(); setStudentToDelete(studentId); };
-  const executeDeleteStudent = async () => { if (!studentToDelete) return; try { await deleteDoc(doc(db, 'planners', studentToDelete)); setStudentToDelete(null); } catch (e) {} };
+  
+  const executeDeleteStudent = async () => { 
+    if (!studentToDelete) return; 
+    try { 
+      await deleteDoc(doc(db, 'planners', studentToDelete)); 
+      try {
+        const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
+        delete saved[studentToDelete];
+        localStorage.setItem('planner_student_prefs', JSON.stringify(saved));
+      } catch (e) {}
+      setStudentToDelete(null); 
+    } catch (e) {} 
+  };
 
   if (view === 'LOADING') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div></div>;
   if (view === 'PLANNER_DELETED_BLANK') return <div className="min-h-screen bg-slate-50" />;
@@ -662,7 +724,7 @@ export default function App() {
                 {studentList.map((student) => (
                   <div key={student.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-500 transition-all flex flex-col justify-between h-48 group text-center">
                     <div className="flex justify-between items-start">
-                      <div onClick={() => { setCurrentDocId(student.id); setView('PLANNER'); setRole('teacher'); }} className="cursor-pointer text-center w-full">
+                      <div onClick={() => openStudentPlanner(student.id, 'teacher')} className="cursor-pointer text-center w-full">
                         <span className="text-xl font-extrabold text-slate-800 block mb-1">{student.studentName || '이름 없음'}</span>
                         <span className="text-[10px] text-slate-400 font-mono">{student.id.substring(0, 13)}...</span>
                       </div>
@@ -670,7 +732,7 @@ export default function App() {
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => copyStudentLink(student.id)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${copyFeedback === student.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{copyFeedback === student.id ? <><Check size={14}/> 복사됨</> : <><LinkIcon size={14}/> 링크 복사</>}</button>
-                      <button onClick={() => { setCurrentDocId(student.id); setView('PLANNER'); setRole('teacher'); }} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><ChevronRight size={18}/></button>
+                      <button onClick={() => openStudentPlanner(student.id, 'teacher')} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><ChevronRight size={18}/></button>
                     </div>
                   </div>
                 ))}
@@ -693,7 +755,12 @@ export default function App() {
                 <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
                   <div className="flex p-1.5 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
                     {['WEEKLY', 'MONTHLY', 'YEARLY'].map((tab) => (
-                      <button key={tab} onClick={() => { setActiveTab(tab); setEditingCell(null); setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); }} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
+                      <button key={tab} onClick={() => { 
+                        setActiveTab(tab); 
+                        setEditingCell(null); 
+                        setSelection({ startDay: null, endDay: null, startId: null, endId: null }); 
+                        setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); 
+                      }} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
                     ))}
                   </div>
                   {role === 'teacher' && (
