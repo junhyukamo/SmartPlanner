@@ -48,10 +48,12 @@ export default function App() {
   const [studentName, setStudentName] = useState('');
   const [teacherPassword, setTeacherPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [dbError, setDbError] = useState(''); 
   const [globalAiKey, setGlobalAiKey] = useState('');
   const [showGlobalKeyInput, setShowGlobalKeyInput] = useState(false);
   const [currentDocId, setCurrentDocId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadedDocId, setLoadedDocId] = useState(null); 
   const [isNotFound, setIsNotFound] = useState(false); 
   const [activeTab, setActiveTab] = useState('WEEKLY');
   const [showColorModal, setShowColorModal] = useState(false);
@@ -115,25 +117,16 @@ export default function App() {
   const [studentList, setStudentList] = useState([]);
   const [editingCell, setEditingCell] = useState(null); 
 
-  // =========================================================================
-  // 💡 선택 상태 (주간 / 월간)
-  // =========================================================================
   const isDragging = useRef(false);
   const [selection, setSelection] = useState({ startDay: null, endDay: null, startId: null, endId: null });
   const [monthlySelection, setMonthlySelection] = useState({ r1: null, c1: null, r2: null, c2: null });
   const isMonthlyDragging = useRef(false);
 
-  // =========================================================================
-  // 💡 Undo / Redo 히스토리 시스템
-  // =========================================================================
   const historyRef = useRef({ past: [], future: [] });
   const currentStateRef = useRef({ timetable, termScheduler, yearlyPlan });
   const focusSnapshotRef = useRef(null);
   const historyLoaded = useRef(false);
 
-  // =========================================================================
-  // 💡 학생별 탭/날짜 환경설정 저장 (LocalStorage) 및 학생 접속 로직
-  // =========================================================================
   const openStudentPlanner = (studentId, newRole) => {
     let t = 'WEEKLY', d = new Date(2026, 1, 2);
     try {
@@ -150,19 +143,18 @@ export default function App() {
     setActiveTab(t);
     setCurrentDate(d);
     
-    // 학생 변경 시 선택 상태 및 편집 모드, 히스토리(Undo/Redo 꼬임 방지) 모두 리셋
     setEditingCell(null);
     setSelection({ startDay: null, endDay: null, startId: null, endId: null });
     setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
     historyRef.current = { past: [], future: [] };
     historyLoaded.current = false;
     
+    setLoadedDocId(null); 
     setCurrentDocId(studentId);
     if (newRole) setRole(newRole);
     setView('PLANNER');
   };
 
-  // 활성화된 탭이나 날짜가 변경될 때마다 로컬 스토리지에 캐싱
   useEffect(() => {
     if (view === 'PLANNER' && currentDocId) {
       try {
@@ -174,8 +166,6 @@ export default function App() {
       } catch (e) {}
     }
   }, [activeTab, currentDate, currentDocId, view]);
-
-  // =========================================================================
 
   useEffect(() => { currentStateRef.current = { timetable, termScheduler, yearlyPlan }; }, [timetable, termScheduler, yearlyPlan]);
 
@@ -222,8 +212,6 @@ export default function App() {
     focusSnapshotRef.current = null; setEditingCell(null);
   };
 
-  // =========================================================================
-
   const getSelectionBounds = () => {
     if (!selection.startDay || !selection.endDay || !selection.startId || !selection.endId) return null;
     const d1 = DAYS.indexOf(selection.startDay); const d2 = DAYS.indexOf(selection.endDay);
@@ -268,7 +256,15 @@ export default function App() {
           openStudentPlanner(sid, 'student'); 
         } 
         else {
-          const savedRole = localStorage.getItem('planner_role'); const savedName = localStorage.getItem('planner_name');
+          // 💡 기존에 영구 저장(localStorage)된 관리자 로그인 기록이 있다면 보안을 위해 깔끔하게 지우기
+          if (localStorage.getItem('planner_role') === 'teacher') {
+            localStorage.removeItem('planner_role');
+          }
+
+          // 💡 관리자는 브라우저를 닫으면 사라지는 sessionStorage 사용 (임시 저장소)
+          const savedRole = sessionStorage.getItem('planner_role') || localStorage.getItem('planner_role');
+          const savedName = localStorage.getItem('planner_name');
+
           if (savedRole === 'student' && savedName) { 
             setStudentName(savedName); 
             openStudentPlanner(savedName, 'student'); 
@@ -277,7 +273,13 @@ export default function App() {
           else { setView('LANDING'); }
         }
         onSnapshot(doc(db, 'settings', 'global'), (snap) => { if (snap.exists()) setGlobalAiKey(snap.data().aiKey || ''); });
-      } catch (error) {}
+      } catch (error) {
+        if (error.code === 'auth/unauthorized-domain') {
+          setDbError("Vercel 도메인이 Firebase 인증 허용 목록에 없습니다. 콘솔 [Authentication] -> [Settings] -> [승인된 도메인]에 추가해주세요.");
+        } else {
+          setDbError(`인증 오류: ${error.message}`);
+        }
+      }
     };
     initAuth(); onAuthStateChanged(auth, setUser);
   }, []);
@@ -294,8 +296,17 @@ export default function App() {
           setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {}, ...(data.termScheduler || {}) });
           setTodos(data.todos || []); setDDay(data.dDay || null); setYearlyPlan(data.yearlyPlan || Array(12).fill('')); setColorRules(data.colorRules || []); setStudentName(data.studentName || '');
           if (!historyLoaded.current) { historyRef.current = { past: [], future: [] }; historyLoaded.current = true; }
-        } else { setIsNotFound(true); }
+          
+          setLoadedDocId(currentDocId); 
+        } else { 
+          setIsNotFound(true); 
+          setLoadedDocId(null); 
+        }
+        setDbError('');
       } catch (e) {} finally { setLoading(false); }
+    }, (error) => {
+      setDbError(`[읽기 차단됨] Firebase 보안 규칙(Rules)이 만료되었거나 권한이 없습니다. 콘솔에서 권한을 풀어주세요. (${error.message})`);
+      setLoading(false);
     });
     return () => unsubscribe();
   }, [user, currentDocId, view]);
@@ -303,20 +314,29 @@ export default function App() {
   const isFirstRun = useRef(true);
   useEffect(() => {
     if (isFirstRun.current) { isFirstRun.current = false; return; }
-    if (!user || !currentDocId || view !== 'PLANNER' || loading || isNotFound) return;
+    if (!user || !currentDocId || view !== 'PLANNER' || loading || isNotFound || loadedDocId !== currentDocId || dbError) return;
+    
     const saveData = async () => {
+      if (loadedDocId !== currentDocId) return; 
       const isActuallyName = studentName && studentName !== currentDocId;
-      await setDoc(doc(db, 'planners', currentDocId), { timetable, todos, dDay, yearlyPlan, termScheduler, colorRules, lastUpdated: new Date().toISOString(), ...(isActuallyName && { studentName }) }, { merge: true });
+      try {
+        await setDoc(doc(db, 'planners', currentDocId), { timetable, todos, dDay, yearlyPlan, termScheduler, colorRules, lastUpdated: new Date().toISOString(), ...(isActuallyName && { studentName }) }, { merge: true });
+      } catch(e) {
+        setDbError(`[쓰기 차단됨] Firebase 보안 규칙에 의해 데이터 저장이 차단되었습니다.`);
+      }
     };
     const timeoutId = setTimeout(saveData, 1000);
     return () => clearTimeout(timeoutId);
-  }, [timetable, todos, dDay, yearlyPlan, termScheduler, colorRules, user, currentDocId, view, loading, studentName, isNotFound]);
+  }, [timetable, todos, dDay, yearlyPlan, termScheduler, colorRules, user, currentDocId, view, loading, studentName, isNotFound, loadedDocId, dbError]);
 
   useEffect(() => {
     if (!user || view !== 'TEACHER_DASHBOARD') return;
     const unsubscribe = onSnapshot(collection(db, 'planners'), (snapshot) => {
       const students = []; snapshot.forEach((doc) => students.push({ id: doc.id, ...doc.data() }));
       students.sort((a, b) => (a.studentName || "").localeCompare(b.studentName || "", 'ko')); setStudentList(students);
+      setDbError('');
+    }, (error) => {
+      setDbError(`[대시보드 차단됨] Firebase 보안 규칙(Rules) 권한이 없습니다. 콘솔에서 허용으로 변경해주세요. (${error.message})`);
     });
     return () => unsubscribe();
   }, [user, view]);
@@ -493,8 +513,6 @@ export default function App() {
     return () => { document.removeEventListener('copy', handleCopy); document.removeEventListener('paste', handlePaste); document.removeEventListener('keydown', handleKeyDown); };
   }, [activeTab, view, selection, monthlySelection, timetable, termScheduler, editingCell]); 
 
-  // =========================================================================
-
   const saveGlobalAiKey = async () => { try { await setDoc(doc(db, 'settings', 'global'), { aiKey: globalAiKey }, { merge: true }); setShowGlobalKeyInput(false); setAiFeedback('✅ 공용 API 키 저장'); setTimeout(() => setAiFeedback(''), 3000); } catch (e) {} };
   const createNewStudentSheet = async () => { const name = prompt("이름을 입력하세요."); if (!name || !name.trim()) return; const newSid = crypto.randomUUID(); setLoading(true); try { await setDoc(doc(db, 'planners', newSid), { studentName: name.trim(), timetable: generateTimeSlots(), todos: [], yearlyPlan: Array(12).fill(''), createdAt: new Date().toISOString() }); setAiFeedback(`✅ 학생 생성됨.`); setTimeout(() => setAiFeedback(''), 3000); } catch (e) {} finally { setLoading(false); } };
   const copyStudentLink = (sid) => { const el = document.createElement('textarea'); el.value = `${window.location.origin}${window.location.pathname}?sid=${sid}`; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000); };
@@ -631,9 +649,34 @@ export default function App() {
     setAiPrompt(''); setIsAiProcessing(false); setTimeout(() => { if (!text) setShowAiModal(false); setAiFeedback(''); }, 3000);
   };
 
-  const handleTeacherLogin = (e) => { e.preventDefault(); if (teacherPassword === '551000') { localStorage.setItem('planner_role', 'teacher'); setRole('teacher'); setView('TEACHER_DASHBOARD'); setTeacherPassword(''); } else setErrorMsg('불일치'); };
+  // 💡 관리자 로그인 시 브라우저를 끄면 로그아웃되도록 임시 저장소(SessionStorage) 사용!
+  const handleTeacherLogin = (e) => { 
+    e.preventDefault(); 
+    if (teacherPassword === '551000') { 
+      sessionStorage.setItem('planner_role', 'teacher'); 
+      setRole('teacher'); 
+      setView('TEACHER_DASHBOARD'); 
+      setTeacherPassword(''); 
+    } else {
+      setErrorMsg('비밀번호 불일치'); 
+    }
+  };
+
   const handleLogout = () => setShowLogoutConfirm(true);
-  const executeLogout = () => { localStorage.removeItem('planner_role'); localStorage.removeItem('planner_name'); setView('LANDING'); setRole(''); setStudentName(''); setCurrentDocId(null); setShowLogoutConfirm(false); window.history.replaceState({}, '', window.location.pathname); };
+
+  // 💡 로그아웃 시 영구 저장소의 찌꺼기도 확실히 비움
+  const executeLogout = () => { 
+    localStorage.removeItem('planner_role'); 
+    localStorage.removeItem('planner_name'); 
+    sessionStorage.removeItem('planner_role'); 
+    setView('LANDING'); 
+    setRole(''); 
+    setStudentName(''); 
+    setCurrentDocId(null); 
+    setShowLogoutConfirm(false); 
+    window.history.replaceState({}, '', window.location.pathname); 
+  };
+
   const handleTimetableChange = (id, day, value) => setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row));
   const handleYearlyChange = (index, value) => { const newPlan = [...yearlyPlan]; newPlan[index] = value; setYearlyPlan(newPlan); };
   const handleDeleteStudent = (e, studentId) => { e.stopPropagation(); setStudentToDelete(studentId); };
@@ -661,6 +704,22 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 transition-colors duration-300">
       <div className="w-full mx-auto">
+        
+        {dbError && (
+          <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[200] w-full max-w-2xl px-4 animate-fade-in">
+            <div className="p-4 bg-red-50 text-red-700 font-bold rounded-2xl border-2 border-red-200 shadow-2xl flex flex-col gap-2">
+              <div className="flex items-center gap-3 mb-1">
+                <AlertCircle className="w-6 h-6 flex-shrink-0" />
+                <span className="text-base break-keep">데이터베이스 접근이 차단되었습니다! (데이터는 안전합니다)</span>
+                <button onClick={() => setDbError('')} className="ml-auto p-1 hover:bg-red-100 rounded-lg"><X size={16}/></button>
+              </div>
+              <div className="text-sm font-medium ml-9 space-y-1">
+                <p>• 원인: {dbError}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {view === 'LANDING' && (
           <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
             <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 transform transition-all hover:scale-[1.01]">
@@ -711,6 +770,7 @@ export default function App() {
                   <button onClick={handleLogout} className="text-slate-500 hover:text-red-600 hover:bg-red-50 px-5 py-3 rounded-xl font-bold flex items-center gap-2 bg-slate-100"><LogOut className="w-5 h-5" /> 로그아웃</button>
                 </div>
               </header>
+
               {showGlobalKeyInput && (
                 <div className="mb-10 p-8 bg-indigo-50 rounded-3xl border-2 border-indigo-100 animate-fade-in shadow-inner text-center">
                   <h3 className="text-lg font-black text-indigo-900 mb-4 flex items-center justify-center gap-2"><Key className="w-5 h-5"/> AI 공용 API 키 설정</h3>
@@ -720,23 +780,28 @@ export default function App() {
                   </div>
                 </div>
               )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-center">
-                {studentList.map((student) => (
-                  <div key={student.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-500 transition-all flex flex-col justify-between h-48 group text-center">
-                    <div className="flex justify-between items-start">
-                      <div onClick={() => openStudentPlanner(student.id, 'teacher')} className="cursor-pointer text-center w-full">
-                        <span className="text-xl font-extrabold text-slate-800 block mb-1">{student.studentName || '이름 없음'}</span>
-                        <span className="text-[10px] text-slate-400 font-mono">{student.id.substring(0, 13)}...</span>
+              
+              {studentList.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-center">
+                  {studentList.map((student) => (
+                    <div key={student.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-500 transition-all flex flex-col justify-between h-48 group text-center">
+                      <div className="flex justify-between items-start">
+                        <div onClick={() => openStudentPlanner(student.id, 'teacher')} className="cursor-pointer text-center w-full">
+                          <span className="text-xl font-extrabold text-slate-800 block mb-1">{student.studentName || '이름 없음'}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">{student.id.substring(0, 13)}...</span>
+                        </div>
+                        <button onClick={(e) => handleDeleteStudent(e, student.id)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18} /></button>
                       </div>
-                      <button onClick={(e) => handleDeleteStudent(e, student.id)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18} /></button>
+                      <div className="flex gap-2">
+                        <button onClick={() => copyStudentLink(student.id)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${copyFeedback === student.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{copyFeedback === student.id ? <><Check size={14}/> 복사됨</> : <><LinkIcon size={14}/> 링크 복사</>}</button>
+                        <button onClick={() => openStudentPlanner(student.id, 'teacher')} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><ChevronRight size={18}/></button>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => copyStudentLink(student.id)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${copyFeedback === student.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{copyFeedback === student.id ? <><Check size={14}/> 복사됨</> : <><LinkIcon size={14}/> 링크 복사</>}</button>
-                      <button onClick={() => openStudentPlanner(student.id, 'teacher')} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><ChevronRight size={18}/></button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                !dbError && <div className="text-slate-400 font-bold p-10">등록된 학생이 없습니다.</div>
+              )}
             </div>
           </div>
         )}
@@ -815,10 +880,6 @@ export default function App() {
                             </div>
                           )}
                           <div className="h-5 md:h-8 w-px mx-0.5 md:mx-1 bg-slate-200 text-center"></div>
-
-                          <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold whitespace-nowrap mr-1">
-                            <Sparkles size={12}/> 구글 시트식 에디팅 / 방향키 지원
-                          </div>
 
                           {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
                           <button onClick={unmergeCells} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">분할</span></button>
@@ -1013,9 +1074,6 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex gap-3 text-center">
-                        <div className="hidden lg:flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-full text-xs font-bold whitespace-nowrap mr-2 shadow-sm">
-                            <Sparkles size={12}/> Shift다중선택 / 복사(C) 붙여넣기(V) / Undo(Z) 호환
-                        </div>
                         <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요"); if(name) addSubjectRow(name.trim()); }} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-xs md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={16}/> <span className="hidden sm:inline">과목 추가</span></button>
                         <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-xs md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={16}/> <span className="hidden sm:inline">일정 초기화</span></button>
                       </div>
