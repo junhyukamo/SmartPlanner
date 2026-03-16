@@ -256,12 +256,10 @@ export default function App() {
           openStudentPlanner(sid, 'student'); 
         } 
         else {
-          // 💡 기존에 영구 저장(localStorage)된 관리자 로그인 기록이 있다면 보안을 위해 깔끔하게 지우기
           if (localStorage.getItem('planner_role') === 'teacher') {
             localStorage.removeItem('planner_role');
           }
 
-          // 💡 관리자는 브라우저를 닫으면 사라지는 sessionStorage 사용 (임시 저장소)
           const savedRole = sessionStorage.getItem('planner_role') || localStorage.getItem('planner_role');
           const savedName = localStorage.getItem('planner_name');
 
@@ -606,50 +604,128 @@ export default function App() {
   const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
   const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
 
+  // 💡 [AI 조교 최적화] 프롬프트(두뇌) 업데이트 및 JSON 추출 방식 강화
   const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
     if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
     for (let i = 0; i < retries; i++) {
       try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${globalAiKey}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt + '\n' + userText }] }] }) });
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${globalAiKey}`, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ 
+            contents: [{ parts: [{ text: systemPrompt + '\n\n[사용자 요청]\n' + userText }] }],
+            // 💡 Gemini에게 무조건 JSON 포맷으로 대답하라고 강제하는 옵션 추가
+            generationConfig: { responseMimeType: "application/json" } 
+          }) 
+        });
         const result = await response.json();
         if (result.error) { if (result.error.code === 429 && i < retries - 1) { await new Promise(r => setTimeout(r, Math.pow(2, i) * 2000)); continue; } throw new Error(result.error.message); }
         return result.candidates?.[0]?.content?.parts?.[0]?.text;
-      } catch (error) { if (i === retries - 1) { setAiFeedback(`❌ 오류`); return null; } }
+      } catch (error) { if (i === retries - 1) { setAiFeedback(`❌ 오류 발생: ${error.message}`); return null; } }
     } return null;
   };
 
   const handleAiSubmit = async (e) => {
-    e.preventDefault(); if (!aiPrompt.trim()) return; setIsAiProcessing(true); setAiFeedback('AI 조교가 처리 중입니다...');
-    const sysPrompts = { WEEKLY: `당신은 플래너 전문가. { "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon|tue|wed|thu|fri|sat|sun", "startTime": "HH:MM", "endTime": "HH:MM", "content": "내용" }] }`, MONTHLY: `데이터 채우기. 과목: [${termScheduler.subjects.join(', ')}]. { "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용" }] }`, YEARLY: `연간 전문가. { "type": "UPDATE_YEARLY", "plans": ["1월", ..., "12월"] }` };
-    const text = await callGeminiAPI(sysPrompts[activeTab], `요청: "${aiPrompt}" / 날짜: ${JSON.stringify(allDates.map(d=>d.full))}`);
+    e.preventDefault(); 
+    if (!aiPrompt.trim()) return; 
+    setIsAiProcessing(true); 
+    setAiFeedback('AI 조교가 입력하신 내용을 분석 중입니다... 🤖');
+    
+    // 💡 [프롬프트 최적화] AI가 절대 헷갈리지 않도록 24시간제 규칙과 요일 규칙을 아주 상세히 기재
+    const sysPrompts = { 
+      WEEKLY: `당신은 스마트 학습 플래너의 주간 시간표(타임테이블) 관리 AI 조교입니다. 사용자의 입력(자연어)을 분석하여 아래 JSON 포맷으로만 응답하세요. 다른 설명은 금지.
+{ "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon", "startTime": "08:00", "endTime": "10:00", "content": "수학" }] }
+[필수 규칙]
+1. day: 월요일부터 일요일까지 각각 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' 으로 작성.
+2. startTime, endTime: 반드시 24시간제 "HH:00" 또는 "HH:30" 형식으로 작성. (예: 오전 8시는 "08:00", 오후 2시는 "14:00", 밤 10시는 "22:00")
+3. 사용자가 "오전8-10" 혹은 "8시~10시" 라고 하면 startTime은 "08:00", endTime은 "10:00"으로 정확히 분리.
+4. "오후 2-4" 라면 startTime "14:00", endTime "16:00" 으로 변환.
+5. 종료 시간이 명시되지 않았다면 무조건 시작 시간으로부터 1시간 뒤로 자동 설정.
+6. 일정이 여러 개면 updates 배열에 객체를 여러 개 만드세요.`, 
+      MONTHLY: `당신은 월간 스케줄 AI 조교입니다. 사용자의 요청을 분석하여 아래 JSON 포맷으로만 응답하세요. 설명 금지.
+{ "type": "UPDATE_TERM_SCHEDULER", "cells": [{ "subject": "과목명", "date": "YYYY-MM-DD", "content": "내용" }] }
+[필수 규칙]
+1. 과목명: 기존 등록된 과목 [${termScheduler.subjects.join(', ')}] 중 가장 알맞은 과목을 매칭.
+2. date: 제공된 날짜(YYYY-MM-DD) 데이터 배열을 참고하여 가장 일치하는 날짜를 찾아서 입력.
+3. 일정이 여러 개면 cells 배열에 객체를 여러 개 만드세요.`, 
+      YEARLY: `당신은 연간 플래너 AI 조교입니다. 아래 JSON 포맷으로만 응답하세요. 설명 금지.
+{ "type": "UPDATE_YEARLY", "plans": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"] }
+[필수 규칙]
+plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달은 빈 문자열("")로 두세요.` 
+    };
+
+    const text = await callGeminiAPI(sysPrompts[activeTab], `명령: "${aiPrompt}"\n(참고용 화면상 캘린더 날짜: ${JSON.stringify(allDates.map(d=>d.full))})`);
+    
     if (text) {
       try {
-        const aiResponse = JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim()); saveToHistory();
+        // 💡 [안전 파싱] AI가 혹시라도 쓸데없는 코드 블록 마크다운(```)을 덧붙일 경우를 대비한 강력한 텍스트 파싱 필터
+        let cleanedText = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+        const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) cleanedText = jsonMatch[0];
+
+        const aiResponse = JSON.parse(cleanedText); 
+        saveToHistory();
+        
         if (aiResponse.type === 'UPDATE_TIMETABLE' && activeTab === 'WEEKLY') {
           let newTt = [...timetable];
-          aiResponse.updates.forEach((update) => {
-            const sIdx = ((h, m) => (h - 8) * 2 + (m === 30 ? 1 : 0))(...update.startTime.split(':').map(Number)); const eIdx = ((h, m) => (h - 8) * 2 + (m === 30 ? 1 : 0))(...update.endTime.split(':').map(Number)) - 1;
-            if (sIdx >= 0 && eIdx <= 31 && sIdx <= eIdx) {
-              const sId = sIdx + 1, eId = eIdx + 1, sCount = eId - sId + 1;
-              for (let i = 1; i <= 32; i++) {
-                if (i === sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sCount, [`${update.day}_hidden`]: false, [update.day]: update.content };
-                else if (i > sId && i <= eId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true };
-                else if (i < sId && newTt[i-1][`${update.day}_span`] > 1 && i + newTt[i-1][`${update.day}_span`] - 1 >= sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sId - i };
+          
+          if(aiResponse.updates && Array.isArray(aiResponse.updates)){
+            aiResponse.updates.forEach((update) => {
+              if(!update.startTime || !update.endTime || !update.day) return;
+              
+              const sParts = update.startTime.split(':').map(Number);
+              const eParts = update.endTime.split(':').map(Number);
+              
+              if(isNaN(sParts[0]) || isNaN(eParts[0])) return;
+              
+              const sIdx = (sParts[0] - 8) * 2 + (sParts[1] >= 30 ? 1 : 0); 
+              let eIdx = (eParts[0] - 8) * 2 + (eParts[1] >= 30 ? 1 : 0) - 1;
+              
+              if (eIdx < sIdx) eIdx = sIdx; // 💡 시작 시간과 끝 시간이 꼬여도 에러나지 않게 방어
+              if (sIdx >= 0 && eIdx <= 31 && sIdx <= eIdx) {
+                const sId = sIdx + 1, eId = eIdx + 1, sCount = eId - sId + 1;
+                for (let i = 1; i <= 32; i++) {
+                  if (i === sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sCount, [`${update.day}_hidden`]: false, [update.day]: update.content };
+                  else if (i > sId && i <= eId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true };
+                  else if (i < sId && newTt[i-1][`${update.day}_span`] > 1 && i + newTt[i-1][`${update.day}_span`] - 1 >= sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sId - i };
+                }
               }
-            }
+            });
+          }
+          setTimetable(repairTimetable(newTt)); 
+          setAiFeedback('✨ 주간 시간표가 성공적으로 업데이트되었습니다!');
+        } 
+        else if (aiResponse.type === 'UPDATE_TERM_SCHEDULER' && activeTab === 'MONTHLY') {
+          setTermScheduler(prev => {
+            let newCells = { ...prev.cells };
+            let newSubjects = [...prev.subjects];
+            aiResponse.cells?.forEach(c => { 
+              // 💡 기존에 안 만들어둔 과목을 말해도 알아서 새 행(과목)을 추가하도록 편의성 업그레이드
+              if(c.subject && !newSubjects.includes(c.subject)) newSubjects.push(c.subject);
+              if(c.subject && c.date) {
+                newCells[`${c.subject}-${c.date}`] = newCells[`${c.subject}-${c.date}`] ? `${newCells[`${c.subject}-${c.date}`]}\n${c.content}` : c.content; 
+              }
+            });
+            return { ...prev, cells: newCells, subjects: newSubjects };
           });
-          setTimetable(repairTimetable(newTt)); setAiFeedback('✅ 주간 반영 완료!');
-        } else if (aiResponse.type === 'UPDATE_TERM_SCHEDULER' && activeTab === 'MONTHLY') {
-          let newCells = { ...termScheduler.cells };
-          aiResponse.cells?.forEach(c => { if(termScheduler.subjects.includes(c.subject)) newCells[`${c.subject}-${c.date}`] = newCells[`${c.subject}-${c.date}`] ? `${newCells[`${c.subject}-${c.date}`]}\n${c.content}` : c.content; });
-          setTermScheduler(prev => ({ ...prev, cells: newCells })); setAiFeedback('✅ 월간 추가 완료!');
-        } else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') { setYearlyPlan(aiResponse.plans); setAiFeedback('✅ 연간 반영 완료!'); }
-      } catch (e) { setAiFeedback('❌ 해석 실패.'); }
+          setAiFeedback('✨ 월간 스케줄에 일정이 성공적으로 추가되었습니다!');
+        } 
+        else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') { 
+          const newPlans = [...yearlyPlan];
+          // 💡 비어있지 않은 문자열만 덮어써서 기존 데이터가 날아가는 것을 방어
+          if(Array.isArray(aiResponse.plans)){
+            aiResponse.plans.forEach((p, i) => { if(p) newPlans[i] = p; });
+          }
+          setYearlyPlan(newPlans); 
+          setAiFeedback('✨ 연간 계획이 성공적으로 반영되었습니다!'); 
+        }
+      } catch (e) { 
+        setAiFeedback('❌ 명령이 너무 복잡하거나 모호합니다. 다시 한 번 적어주세요.'); 
+      }
     }
     setAiPrompt(''); setIsAiProcessing(false); setTimeout(() => { if (!text) setShowAiModal(false); setAiFeedback(''); }, 3000);
   };
 
-  // 💡 관리자 로그인 시 브라우저를 끄면 로그아웃되도록 임시 저장소(SessionStorage) 사용!
   const handleTeacherLogin = (e) => { 
     e.preventDefault(); 
     if (teacherPassword === '551000') { 
@@ -664,7 +740,6 @@ export default function App() {
 
   const handleLogout = () => setShowLogoutConfirm(true);
 
-  // 💡 로그아웃 시 영구 저장소의 찌꺼기도 확실히 비움
   const executeLogout = () => { 
     localStorage.removeItem('planner_role'); 
     localStorage.removeItem('planner_name'); 
@@ -879,7 +954,6 @@ export default function App() {
                               </div>
                             </div>
                           )}
-                          <div className="h-5 md:h-8 w-px mx-0.5 md:mx-1 bg-slate-200 text-center"></div>
 
                           {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
                           <button onClick={unmergeCells} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">분할</span></button>
