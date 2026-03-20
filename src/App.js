@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Check, Trash2, Plus, Clock, BookOpen, Calendar, X, Users,
   ChevronLeft, LogOut, Sparkles, Send, MousePointer2, Merge, Split,
-  Palette, AlertCircle, Key, Settings, ChevronRight, UserPlus, Link as LinkIcon
+  Palette, AlertCircle, Key, Settings, ChevronRight, UserPlus, Link as LinkIcon,
+  Minus
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -41,6 +42,31 @@ const parseTSV = (text) => {
   return rows;
 };
 
+// 💡 [A/B/C 콤] 스마트 매크로 자동 치환 함수
+const processComboText = (text, day) => {
+  if (!text) return text;
+  const isSat = day === 'sat';
+  let newText = text;
+
+  const combos = {
+    a: isSat ? '개별지도 A콤\n(2:20 - 3:50)' : '개별지도 A콤\n(5:20 - 6:50)',
+    b: isSat ? '개별지도 B콤\n(3:55 - 5:25)' : '개별지도 B콤\n(6:55 - 8:25)',
+    c: isSat ? '개별지도 C콤\n(5:30 - 7:00)' : '개별지도 C콤\n(8:30 - 10:00)'
+  };
+
+  ['a', 'b', 'c'].forEach(type => {
+    const regex = new RegExp(`${type}콤`, 'ig');
+    newText = newText.replace(regex, (match, offset, str) => {
+      // 💡 이미 '개별지도 A콤' 등으로 변환된 상태면 무시하여 중복 증식 철벽 방어
+      const prefix = str.substring(Math.max(0, offset - 6), offset);
+      if (prefix.includes("개별지도")) return match;
+      return combos[type];
+    });
+  });
+
+  return newText;
+};
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [view, setView] = useState('LOADING');
@@ -65,6 +91,9 @@ export default function App() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
+  
+  // 💡 [폰트 사이즈 조절 기능] 전역 State (기본 12px)
+  const [fontSize, setFontSize] = useState(12);
 
   const generateTimeSlots = () => {
     const slots = []; let idCounter = 1;
@@ -128,11 +157,12 @@ export default function App() {
   const historyLoaded = useRef(false);
 
   const openStudentPlanner = (studentId, newRole) => {
-    let t = 'WEEKLY', d = new Date(2026, 1, 2);
+    let t = 'WEEKLY', d = new Date(2026, 1, 2), fs = 12;
     try {
       const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
       if (saved[studentId]) {
         if (saved[studentId].tab) t = saved[studentId].tab;
+        if (saved[studentId].fontSize) fs = saved[studentId].fontSize;
         if (saved[studentId].currentDate) {
           const parsedDate = new Date(saved[studentId].currentDate);
           if (!isNaN(parsedDate)) d = parsedDate;
@@ -142,6 +172,7 @@ export default function App() {
     
     setActiveTab(t);
     setCurrentDate(d);
+    setFontSize(fs);
     
     setEditingCell(null);
     setSelection({ startDay: null, endDay: null, startId: null, endId: null });
@@ -161,11 +192,12 @@ export default function App() {
         const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
         if (!saved[currentDocId]) saved[currentDocId] = {};
         saved[currentDocId].tab = activeTab;
+        saved[currentDocId].fontSize = fontSize;
         saved[currentDocId].currentDate = currentDate.toISOString();
         localStorage.setItem('planner_student_prefs', JSON.stringify(saved));
       } catch (e) {}
     }
-  }, [activeTab, currentDate, currentDocId, view]);
+  }, [activeTab, currentDate, fontSize, currentDocId, view]);
 
   useEffect(() => { currentStateRef.current = { timetable, termScheduler, yearlyPlan }; }, [timetable, termScheduler, yearlyPlan]);
 
@@ -196,7 +228,7 @@ export default function App() {
   };
 
   const handleFocus = (e) => {
-    if(e && e.target) autoResize(e);
+    if(e && e.target && activeTab !== 'WEEKLY') autoResize(e); // 💡 주간 시트는 고정 핏을 위해 자동 리사이즈 제외
     focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
   };
 
@@ -233,12 +265,17 @@ export default function App() {
   };
   const allDates = getSchedulerDates();
 
-  const autoResize = (e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; };
+  const autoResize = (e) => { 
+    if (activeTab === 'WEEKLY') return; 
+    e.target.style.height = 'auto'; 
+    e.target.style.height = e.target.scrollHeight + 'px'; 
+  };
 
   useEffect(() => {
+    if (activeTab === 'WEEKLY') return;
     const timer = setTimeout(() => { document.querySelectorAll('textarea').forEach(el => { el.style.height = 'auto'; if (el.scrollHeight > 0) el.style.height = el.scrollHeight + 'px'; }); }, 100);
     return () => clearTimeout(timer);
-  }, [activeTab, view, currentDocId, loading, timetable]);
+  }, [activeTab, view, currentDocId, loading, timetable, fontSize]);
 
   const calculateDDay = (targetDate) => {
     if (!targetDate) return '';
@@ -259,7 +296,6 @@ export default function App() {
           if (localStorage.getItem('planner_role') === 'teacher') {
             localStorage.removeItem('planner_role');
           }
-
           const savedRole = sessionStorage.getItem('planner_role') || localStorage.getItem('planner_role');
           const savedName = localStorage.getItem('planner_name');
 
@@ -411,16 +447,37 @@ export default function App() {
             }
             parsedData.forEach((rowCopy, rIdx) => {
               const ttRowIdx = startRowIdx + rIdx; if (ttRowIdx > 31) return;
-              rowCopy.forEach((cellCopy, cIdx) => { const day = DAYS[bounds.minDayIdx + cIdx]; if (day) newTt[ttRowIdx] = { ...newTt[ttRowIdx], [day]: cellCopy.text, [`${day}_span`]: cellCopy.span, [`${day}_hidden`]: cellCopy.hidden }; });
+              rowCopy.forEach((cellCopy, cIdx) => { 
+                const day = DAYS[bounds.minDayIdx + cIdx]; 
+                if (day) {
+                  // 💡 붙여넣기 시에도 A/B/C콤 포맷 자동 적용!
+                  const formattedText = processComboText(cellCopy.text, day);
+                  newTt[ttRowIdx] = { ...newTt[ttRowIdx], [day]: formattedText, [`${day}_span`]: cellCopy.span, [`${day}_hidden`]: cellCopy.hidden }; 
+                }
+              });
             });
           } else {
             const rows = parseTSV(pastedText);
             if (rows.length === 1 && rows[0].length === 1 && !isSingleCell) {
-              for (let id = bounds.minId; id <= bounds.maxId; id++) { for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { if (!newTt[id - 1][`${DAYS[d]}_hidden`]) newTt[id - 1] = { ...newTt[id - 1], [DAYS[d]]: rows[0][0] }; } }
+              for (let id = bounds.minId; id <= bounds.maxId; id++) { 
+                for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { 
+                  const day = DAYS[d];
+                  if (!newTt[id - 1][`${day}_hidden`]) {
+                    const formattedText = processComboText(rows[0][0], day);
+                    newTt[id - 1] = { ...newTt[id - 1], [day]: formattedText }; 
+                  }
+                } 
+              }
             } else {
               rows.forEach((rowStrArr, i) => {
                 const rIdx = startRowIdx + i; if (rIdx > 31) return;
-                rowStrArr.forEach((colStr, j) => { const cIdx = bounds.minDayIdx + j; if (cIdx < 7 && !newTt[rIdx][`${DAYS[cIdx]}_hidden`]) newTt[rIdx] = { ...newTt[rIdx], [DAYS[cIdx]]: colStr }; });
+                rowStrArr.forEach((colStr, j) => { 
+                  const cIdx = bounds.minDayIdx + j; 
+                  if (cIdx < 7 && !newTt[rIdx][`${DAYS[cIdx]}_hidden`]) {
+                    const formattedText = processComboText(colStr, DAYS[cIdx]);
+                    newTt[rIdx] = { ...newTt[rIdx], [DAYS[cIdx]]: formattedText }; 
+                  }
+                });
               });
             }
           }
@@ -441,7 +498,9 @@ export default function App() {
               const sub = targetRow === 0 ? null : prev.subjects[targetRow - 1];
               rowCopy.forEach((cellCopy, cOffset) => {
                 const targetCol = mb.minC + cOffset; if (targetCol >= 28) return;
-                const date = allDates[targetCol].full; if (targetRow === 0) newTopNotes[date] = cellCopy.text; else newCells[`${sub}-${date}`] = cellCopy.text;
+                const dObj = allDates[targetCol];
+                const formattedText = processComboText(cellCopy.text, dObj.isSat ? 'sat' : 'mon');
+                if (targetRow === 0) newTopNotes[dObj.full] = formattedText; else newCells[`${sub}-${dObj.full}`] = formattedText;
               });
             });
           } else {
@@ -449,7 +508,11 @@ export default function App() {
             if (rows.length === 1 && rows[0].length === 1 && !isSingleCell) {
               for (let r = mb.minR; r <= mb.maxR; r++) {
                 const sub = r === 0 ? null : prev.subjects[r - 1];
-                for (let c = mb.minC; c <= mb.maxC; c++) { const date = allDates[c].full; if (r === 0) newTopNotes[date] = rows[0][0]; else newCells[`${sub}-${date}`] = rows[0][0]; }
+                for (let c = mb.minC; c <= mb.maxC; c++) { 
+                  const dObj = allDates[c]; 
+                  const formattedText = processComboText(rows[0][0], dObj.isSat ? 'sat' : 'mon');
+                  if (r === 0) newTopNotes[dObj.full] = formattedText; else newCells[`${sub}-${dObj.full}`] = formattedText; 
+                }
               }
             } else {
               rows.forEach((rowStrArr, i) => {
@@ -457,7 +520,9 @@ export default function App() {
                 const sub = rIdx === 0 ? null : prev.subjects[rIdx - 1];
                 rowStrArr.forEach((colStr, j) => {
                   const cIdx = mb.minC + j; if (cIdx >= 28) return;
-                  const date = allDates[cIdx].full; if (rIdx === 0) newTopNotes[date] = colStr; else newCells[`${sub}-${date}`] = colStr;
+                  const dObj = allDates[cIdx];
+                  const formattedText = processComboText(colStr, dObj.isSat ? 'sat' : 'mon');
+                  if (rIdx === 0) newTopNotes[dObj.full] = formattedText; else newCells[`${sub}-${dObj.full}`] = formattedText;
                 });
               });
             }
@@ -597,14 +662,25 @@ export default function App() {
   const handlePrev4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 28); return d; });
   const handleNext4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 28); return d; });
 
-  const handleTermCellChange = (subject, dateKey, value) => setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: value } }));
+  // 💡 [입력 처리] A콤 등 매크로 자동 포매팅 래퍼 
+  const handleTimetableChangeWrapper = (id, day, value) => {
+    const formatted = processComboText(value, day);
+    setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: formatted } : row));
+  };
+  
+  const handleTermCellChangeWrapper = (subject, dateKey, value) => {
+    const dObj = allDates.find(d => d.full === dateKey);
+    const dayType = dObj && dObj.isSat ? 'sat' : 'mon';
+    const formatted = processComboText(value, dayType);
+    setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: formatted } }));
+  };
+
   const handleTermCheckToggle = (subject, dateKey, index) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, checks: { ...prev.checks, [`${subject}-${dateKey}-${index}`]: !prev.checks[`${subject}-${dateKey}-${index}`] } })); };
   const handleTopNoteChange = (dateKey, value) => setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: value } }));
   const handleTermTextbookChange = (subject, value) => setTermScheduler(prev => ({ ...prev, textbooks: { ...prev.textbooks, [subject]: value } }));
   const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
   const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
 
-  // 💡 [AI 조교 최적화] 프롬프트(두뇌) 업데이트 및 JSON 추출 방식 강화
   const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
     if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
     for (let i = 0; i < retries; i++) {
@@ -614,7 +690,6 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' }, 
           body: JSON.stringify({ 
             contents: [{ parts: [{ text: systemPrompt + '\n\n[사용자 요청]\n' + userText }] }],
-            // 💡 Gemini에게 무조건 JSON 포맷으로 대답하라고 강제하는 옵션 추가
             generationConfig: { responseMimeType: "application/json" } 
           }) 
         });
@@ -631,7 +706,6 @@ export default function App() {
     setIsAiProcessing(true); 
     setAiFeedback('AI 조교가 입력하신 내용을 분석 중입니다... 🤖');
     
-    // 💡 [프롬프트 최적화] AI가 절대 헷갈리지 않도록 24시간제 규칙과 요일 규칙을 아주 상세히 기재
     const sysPrompts = { 
       WEEKLY: `당신은 스마트 학습 플래너의 주간 시간표(타임테이블) 관리 AI 조교입니다. 사용자의 입력(자연어)을 분석하여 아래 JSON 포맷으로만 응답하세요. 다른 설명은 금지.
 { "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon", "startTime": "08:00", "endTime": "10:00", "content": "수학" }] }
@@ -658,7 +732,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
     
     if (text) {
       try {
-        // 💡 [안전 파싱] AI가 혹시라도 쓸데없는 코드 블록 마크다운(```)을 덧붙일 경우를 대비한 강력한 텍스트 파싱 필터
         let cleanedText = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
         const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
         if (jsonMatch) cleanedText = jsonMatch[0];
@@ -681,7 +754,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
               const sIdx = (sParts[0] - 8) * 2 + (sParts[1] >= 30 ? 1 : 0); 
               let eIdx = (eParts[0] - 8) * 2 + (eParts[1] >= 30 ? 1 : 0) - 1;
               
-              if (eIdx < sIdx) eIdx = sIdx; // 💡 시작 시간과 끝 시간이 꼬여도 에러나지 않게 방어
+              if (eIdx < sIdx) eIdx = sIdx; 
               if (sIdx >= 0 && eIdx <= 31 && sIdx <= eIdx) {
                 const sId = sIdx + 1, eId = eIdx + 1, sCount = eId - sId + 1;
                 for (let i = 1; i <= 32; i++) {
@@ -700,7 +773,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
             let newCells = { ...prev.cells };
             let newSubjects = [...prev.subjects];
             aiResponse.cells?.forEach(c => { 
-              // 💡 기존에 안 만들어둔 과목을 말해도 알아서 새 행(과목)을 추가하도록 편의성 업그레이드
               if(c.subject && !newSubjects.includes(c.subject)) newSubjects.push(c.subject);
               if(c.subject && c.date) {
                 newCells[`${c.subject}-${c.date}`] = newCells[`${c.subject}-${c.date}`] ? `${newCells[`${c.subject}-${c.date}`]}\n${c.content}` : c.content; 
@@ -712,7 +784,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
         } 
         else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') { 
           const newPlans = [...yearlyPlan];
-          // 💡 비어있지 않은 문자열만 덮어써서 기존 데이터가 날아가는 것을 방어
           if(Array.isArray(aiResponse.plans)){
             aiResponse.plans.forEach((p, i) => { if(p) newPlans[i] = p; });
           }
@@ -752,7 +823,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
     window.history.replaceState({}, '', window.location.pathname); 
   };
 
-  const handleTimetableChange = (id, day, value) => setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row));
   const handleYearlyChange = (index, value) => { const newPlan = [...yearlyPlan]; newPlan[index] = value; setYearlyPlan(newPlan); };
   const handleDeleteStudent = (e, studentId) => { e.stopPropagation(); setStudentToDelete(studentId); };
   
@@ -777,8 +847,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
   const mb = getMonthlyBounds();
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 transition-colors duration-300">
-      <div className="w-full mx-auto">
+    // 💡 주간 시트는 100vh 및 overflow-hidden으로 모니터 화면에 맞게 스크롤을 억제합니다.
+    <div className={`bg-slate-50 text-slate-800 transition-colors duration-300 ${(view === 'PLANNER' && activeTab === 'WEEKLY') ? 'h-screen h-[100dvh] overflow-hidden flex flex-col' : 'min-h-screen'}`}>
+      <div className={`w-full mx-auto ${(view === 'PLANNER' && activeTab === 'WEEKLY') ? 'flex-1 flex flex-col min-h-0' : ''}`}>
         
         {dbError && (
           <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[200] w-full max-w-2xl px-4 animate-fade-in">
@@ -882,62 +953,70 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
         )}
 
         {view === 'PLANNER' && (
-          <>
-            <header className="px-4 py-3 shadow-sm sticky top-0 z-30 bg-white border-b border-slate-200 backdrop-blur-md">
-              <div className="max-w-[98vw] mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex flex-col h-full w-full relative">
+            <header className="flex-none px-4 py-2 md:py-3 shadow-sm z-30 bg-white border-b border-slate-200">
+              <div className="max-w-[98vw] mx-auto flex flex-col md:flex-row justify-between items-center gap-2 md:gap-4">
                 <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
                   <div className="flex items-center gap-3">
                     {role === 'teacher' && <button onClick={() => setView('TEACHER_DASHBOARD')} className="p-2 rounded-full hover:bg-slate-100 border border-slate-200"><ChevronLeft className="w-5 h-5" /></button>}
-                    <div className="p-2.5 rounded-xl shadow-inner bg-gradient-to-br from-indigo-500 to-indigo-700"><BookOpen className="text-white w-5 h-5" /></div>
-                    <div className="font-extrabold text-xl tracking-tight">{studentName} 플래너</div>
+                    <div className="p-2 md:p-2.5 rounded-xl shadow-inner bg-gradient-to-br from-indigo-500 to-indigo-700"><BookOpen className="text-white w-4 h-4 md:w-5 md:h-5" /></div>
+                    <div className="font-extrabold text-lg md:text-xl tracking-tight">{studentName} 플래너</div>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-                  <div className="flex p-1.5 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
+                <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-between md:justify-end">
+                  
+                  {/* 💡 [폰트 사이즈 조절 UI] */}
+                  <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 shadow-inner">
+                    <button onClick={() => setFontSize(f => Math.max(8, f - 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Minus size={12} className="md:w-3.5 md:h-3.5"/></button>
+                    <span className="text-[10px] md:text-xs font-black w-5 md:w-6 text-center text-indigo-700 select-none cursor-default">{fontSize}</span>
+                    <button onClick={() => setFontSize(f => Math.min(24, f + 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Plus size={12} className="md:w-3.5 md:h-3.5"/></button>
+                  </div>
+
+                  <div className="flex p-1 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
                     {['WEEKLY', 'MONTHLY', 'YEARLY'].map((tab) => (
                       <button key={tab} onClick={() => { 
                         setActiveTab(tab); 
                         setEditingCell(null); 
                         setSelection({ startDay: null, endDay: null, startId: null, endId: null }); 
                         setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); 
-                      }} className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
+                      }} className={`flex-1 md:flex-none px-4 md:px-6 py-1 md:py-2 rounded-lg text-xs md:text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
                     ))}
                   </div>
                   {role === 'teacher' && (
-                    <div className="hidden md:flex items-center gap-2 border-l pl-3 ml-1 border-slate-200">
-                      <button onClick={handleLogout} className="p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-5 h-5" /></button>
+                    <div className="hidden md:flex items-center gap-2 border-l pl-2 md:pl-3 ml-1 border-slate-200">
+                      <button onClick={handleLogout} className="p-2 md:p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-4 h-4 md:w-5 md:h-5" /></button>
                     </div>
                   )}
                 </div>
               </div>
             </header>
 
-            <main className="max-w-full mx-auto p-2 md:p-6 pb-24 relative text-center min-h-screen">
+            <main className={`flex-1 min-h-0 w-full mx-auto relative text-center flex flex-col ${activeTab === 'WEEKLY' ? 'p-1 md:p-2 overflow-hidden' : 'p-2 md:p-6 pb-24 overflow-y-auto custom-scrollbar'}`}>
               
               {activeTab === 'WEEKLY' && (
-                <div className="animate-fade-in flex flex-col text-center">
-                  <div className="space-y-2 md:space-y-4 flex-1 flex flex-col">
-                    <div className="p-2 md:p-4 rounded-2xl md:rounded-3xl shadow-sm border border-slate-200 bg-white flex flex-col h-auto">
-                      <div className="flex flex-wrap items-center justify-between gap-2 md:gap-4 mb-2 md:mb-4 flex-shrink-0">
-                        <div className="flex flex-wrap items-center gap-2 md:gap-4">
+                <div className="animate-fade-in flex flex-col text-center h-full">
+                  <div className="flex-1 flex flex-col min-h-0">
+                    <div className="p-1 md:p-2 rounded-xl shadow-sm border border-slate-200 bg-white flex flex-col h-full">
+                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1 md:mb-2 flex-shrink-0 px-1">
+                        <div className="flex flex-wrap items-center gap-2">
                           {dDay ? (
-                            <div className="flex items-center gap-1.5 md:gap-3 px-3 md:px-5 py-1.5 md:py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl shadow-md text-xs md:text-sm text-center">
-                              <Calendar className="w-3 h-3 md:w-4 md:h-4" />
+                            <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
+                              <Calendar className="w-3 h-3" />
                               <span className="font-bold">{dDay.title} ({calculateDDay(dDay.date)})</span>
-                              <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3 md:w-4 md:h-4" /></button>
+                              <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
                             </div>
                           ) : (
-                            <div className="flex items-center gap-1.5 md:gap-2 p-1 md:p-1.5 rounded-xl border border-slate-200 bg-slate-50 shadow-inner flex-wrap md:flex-nowrap justify-center">
-                              <input type="text" placeholder="D-day 제목" className="w-20 md:w-32 p-1.5 md:p-2.5 text-xs md:text-sm rounded-lg outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
-                              <input type="date" className="w-24 md:w-36 p-1.5 md:p-2.5 text-[10px] md:text-sm rounded-lg outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
-                              <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory(); } }} className="px-3 md:px-5 py-1.5 md:py-2.5 rounded-lg text-xs md:text-sm font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
+                            <div className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center">
+                              <input type="text" placeholder="D-day 제목" className="w-20 md:w-28 p-1 text-xs rounded outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
+                              <input type="date" className="w-24 p-1 text-[10px] md:text-xs rounded outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
+                              <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory(); } }} className="px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
                             </div>
                           )}
                         </div>
-                        <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 text-[10px] md:text-sm ml-auto">
-                          <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><Palette className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">색상</span></button>
+                        <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto">
+                          <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span></button>
                           {showColorModal && (
-                            <div className="absolute right-0 top-14 w-64 md:w-80 p-4 md:p-5 rounded-2xl shadow-2xl border border-slate-200 bg-white z-30 animate-fade-in text-center">
+                            <div className="absolute right-2 md:right-6 top-12 md:top-14 w-64 md:w-80 p-4 md:p-5 rounded-2xl shadow-2xl border border-slate-200 bg-white z-30 animate-fade-in text-center">
                               <h4 className="font-extrabold mb-3 md:mb-4 text-sm md:text-base flex items-center justify-center gap-2"><Palette className="text-indigo-500 w-4 h-4 md:w-5 md:h-5"/> 키워드 색상 지정</h4>
                               <div className="flex gap-2 mb-3 md:mb-4">
                                 <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-2 md:p-3 text-xs md:text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
@@ -955,18 +1034,20 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                             </div>
                           )}
 
-                          {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 md:gap-2 bg-indigo-600 text-white px-2 md:px-4 py-1.5 md:py-2 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold"><Merge className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 md:gap-2 px-2 md:px-4 py-1.5 md:py-2 rounded-lg font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">드래그</span></div>}
-                          <button onClick={unmergeCells} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">분할</span></button>
-                          <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 md:gap-2 px-2 md:px-3 py-1.5 md:py-2 rounded-lg font-bold transition-colors ml-0 md:ml-1 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="hidden sm:inline">초기화</span></button>
+                          <div className="h-5 w-px mx-0.5 bg-slate-200"></div>
+
+                          {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 bg-indigo-600 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold text-xs"><Merge className="w-3 h-3" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3" /> <span className="hidden sm:inline">드래그</span></div>}
+                          <button onClick={unmergeCells} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3" /> <span className="hidden sm:inline">분할</span></button>
+                          <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors ml-0 bg-red-50 text-red-600 hover:bg-red-100"><Trash2 className="w-3 h-3" /> <span className="hidden sm:inline">초기화</span></button>
                         </div>
                       </div>
                       
-                      <div className="w-full relative select-none rounded-xl border-2 border-slate-200 bg-white shadow-inner text-center" onMouseLeave={handleMouseUp}>
-                        <table className="w-full text-center border-collapse min-w-[320px] md:min-w-full table-fixed">
-                          <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800">
-                            <tr>
-                              <th className={`py-1 md:py-2 w-10 md:w-16 border-r border-slate-200 uppercase tracking-widest text-[8px] md:text-[10px] z-20 align-middle transition-colors duration-200 ${wBounds ? 'bg-indigo-100 text-indigo-700 font-black' : 'text-slate-400 font-black bg-slate-50'}`}>
-                                <Clock className={`w-3 h-3 mx-auto mb-0.5 hidden md:block transition-opacity duration-200 ${wBounds ? 'opacity-100 text-indigo-700' : 'opacity-50'}`}/>
+                      {/* 💡 테이블이 화면 높이의 100%를 정확히 채우도록 구성 */}
+                      <div className="w-full flex-1 relative select-none rounded-lg border-2 border-slate-200 bg-white shadow-inner text-center overflow-hidden" onMouseLeave={handleMouseUp}>
+                        <table className="w-full h-full text-center border-collapse table-fixed">
+                          <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50">
+                            <tr style={{ height: '30px' }}>
+                              <th className={`border-r border-slate-200 uppercase font-black z-20 align-middle transition-colors duration-200 w-10 md:w-14 ${wBounds ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>
                                 <span className="md:hidden">시간</span>
                                 <span className="hidden md:inline">Time</span>
                               </th>
@@ -976,9 +1057,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                 const isColSelected = activeTab === 'WEEKLY' && wBounds && i >= wBounds.minDayIdx && i <= wBounds.maxDayIdx;
                                 let defaultTextColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : 'text-slate-600';
                                 let textColor = isColSelected ? 'text-indigo-700' : defaultTextColor;
-                                let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-slate-50';
+                                let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-transparent';
                                 return (
-                                  <th key={d} className={`py-1 md:py-2 font-black text-[10px] md:text-xs border-r border-slate-200 z-20 align-middle transition-colors duration-200 ${textColor} ${bgColor}`}>
+                                  <th key={d} className={`font-black border-r border-slate-200 z-20 align-middle transition-colors duration-200 py-0 px-0 ${textColor} ${bgColor}`} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
                                     <span className="hidden md:inline">{labelsLong[i]}</span>
                                     <span className="md:hidden">{labelsShort[i]}</span>
                                   </th>
@@ -992,9 +1073,12 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                               const timeBgClass = isRowSelected ? "bg-indigo-100/70 shadow-inner border-indigo-200" : "bg-slate-50/50";
                               const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-400 font-medium";
                               return (
-                                <tr key={row.id} className="group text-center">
-                                  <td className={`p-0 w-10 md:w-16 border border-slate-200 align-middle transition-colors duration-200 select-none ${timeBgClass}`}>
-                                    <div className={`flex flex-col items-center justify-center h-full text-[8px] md:text-[10px] ${timeTextClass}`}><span>{row.time}</span></div>
+                                // 💡 32개의 각 행이 높이를 정확히 균등 분할
+                                <tr key={row.id} className="group text-center" style={{ height: `calc((100% - 30px) / 32)` }}>
+                                  <td className={`p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none ${timeBgClass}`}>
+                                    <div className={`flex flex-col items-center justify-center w-full h-full ${timeTextClass}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>
+                                      <span>{row.time}</span>
+                                    </div>
                                   </td>
                                   {DAYS.map((day) => {
                                     if (row[`${day}_hidden`]) return null;
@@ -1013,7 +1097,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                     return (
                                       <td 
                                         key={day} 
-                                        className={`p-0 relative align-middle border border-slate-200 transition-all duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
+                                        className={`p-0 relative align-middle border-b border-r border-slate-200 transition-colors duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
                                         style={{ backgroundColor: bgColor }} 
                                         rowSpan={row[`${day}_span`] || 1} 
                                         onMouseDown={(e) => {
@@ -1031,22 +1115,24 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                         }}
                                         onDoubleClick={() => setEditingCell(cellId)}
                                       >
-                                        <div className="w-full h-full flex items-center justify-center p-0 md:p-0.5 text-center min-h-[24px] md:min-h-[28px]">
+                                        <div className="absolute inset-0 w-full h-full flex items-center justify-center p-0.5 text-center">
+                                          {/* 💡 텍스트가 셀을 뚫고 표를 망가뜨리지 않게 100% 핏 및 내부 스크롤 허용 */}
                                           <textarea 
                                             id={`textarea-${row.id}-${day}`}
                                             value={row[day] || ''} 
-                                            onChange={(e) => handleTimetableChange(row.id, day, e.target.value)} 
-                                            onInput={autoResize} 
+                                            onChange={(e) => handleTimetableChangeWrapper(row.id, day, e.target.value)} 
                                             onFocus={handleFocus} 
                                             onBlur={handleBlur}
                                             style={{
                                               caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                              cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text'
+                                              cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                              fontSize: `${fontSize}px`,
+                                              lineHeight: '1.2'
                                             }}
                                             onCompositionStart={(e) => {
                                               if (!isEditingThis && isActiveThis) {
                                                 e.currentTarget.value = '';
-                                                handleTimetableChange(row.id, day, '');
+                                                handleTimetableChangeWrapper(row.id, day, '');
                                                 setEditingCell(cellId);
                                                 setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
                                               }
@@ -1100,24 +1186,25 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 } else if (e.key === 'Tab') { e.preventDefault(); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
                                                 } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
                                                 } else if (e.key === 'Delete' || e.key === 'Backspace') { 
-                                                  // 글로벌 핸들러에서 데이터를 삭제하도록 패스
                                                 } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                                                  e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
+                                                  e.currentTarget.value = ''; handleTimetableChangeWrapper(row.id, day, ''); 
                                                   setEditingCell(cellId);
                                                   setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
                                                 }
                                               } else if (isEditingThis) {
                                                 if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
-                                                  e.preventDefault(); setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
+                                                  e.preventDefault(); 
+                                                  setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
                                                 } else if (e.key === 'Tab') {
-                                                  e.preventDefault(); setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                  e.preventDefault(); 
+                                                  setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
                                                 } else if (e.key === 'Escape') {
                                                   e.preventDefault(); setEditingCell(null);
                                                   e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
                                                 }
                                               }
                                             }} 
-                                            rows={1} className={`w-full h-full text-center bg-transparent resize-none outline-none overflow-hidden font-bold leading-tight focus:ring-1 focus:ring-indigo-400/50 text-[10px] md:text-xs align-middle ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
+                                            className={`w-full h-full p-0 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle custom-scrollbar overflow-y-auto ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
                                           />
                                         </div>
                                       </td>
@@ -1161,23 +1248,23 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           <table className="w-full border-collapse mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
                             <thead>
                               <tr className="bg-slate-50 text-center">
-                                <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2}>과목</th>
-                                <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2}>교재</th>
+                                <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>과목</th>
+                                <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>교재</th>
                                 {chunk.map((d, i) => {
                                   let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                  return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`}>{d.day}</th>;
+                                  return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{d.day}</th>;
                                 })}
                               </tr>
                               <tr className="bg-slate-50 text-center">
                                 {chunk.map((d, i) => {
                                    let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                   return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`}>{d.label}</th>;
+                                   return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>{d.label}</th>;
                                 })}
                               </tr>
                             </thead>
                             <tbody>
                               <tr className="bg-white text-center">
-                                <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-1">비고</td>
+                                <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-1" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>비고</td>
                                 {chunk.map((d, i) => {
                                   const cIdx = chunkStartIndex + i; const rIdx = 0;
                                   const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
@@ -1191,14 +1278,15 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                     >
                                       {isEditing ? (
                                         <textarea 
+                                          style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }}
                                           value={termScheduler.topNotes[d.full] || ''} 
                                           onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
                                           onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} autoFocus rows={1}
                                           onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); }}
-                                          className="w-full h-full min-h-[30px] bg-white resize-none outline-none p-1 text-center font-bold overflow-hidden leading-tight align-middle" 
+                                          className="w-full h-full min-h-[30px] bg-white resize-none outline-none p-1 text-center font-bold overflow-hidden align-middle" 
                                         />
                                       ) : (
-                                        <div className="w-full h-full min-h-[30px] flex items-center justify-center p-1 whitespace-pre-wrap font-bold text-slate-800">{termScheduler.topNotes[d.full] || ''}</div>
+                                        <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="w-full h-full min-h-[30px] flex items-center justify-center p-1 whitespace-pre-wrap font-bold text-slate-800">{termScheduler.topNotes[d.full] || ''}</div>
                                       )}
                                     </td>
                                   )
@@ -1209,7 +1297,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                 return (
                                   <tr key={sub} className="text-center align-middle">
                                     <td className="border border-slate-300 px-1 py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep">
-                                      {sub}
+                                      <span style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{sub}</span>
                                       <button onClick={() => removeSubjectRow(sub)} className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
                                     </td>
                                     <td className="border border-slate-300 p-0 align-middle text-center bg-white cursor-text">
@@ -1219,7 +1307,8 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                           onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
                                           onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} placeholder="입력" rows={1}
                                           onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.blur(); }}
-                                          className="w-full bg-transparent resize-none outline-none overflow-hidden font-bold text-center text-slate-700 leading-tight align-middle focus:ring-1 focus:ring-indigo-400/50 placeholder:text-slate-300" 
+                                          style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }}
+                                          className="w-full bg-transparent resize-none outline-none overflow-hidden font-bold text-center text-slate-700 align-middle focus:ring-1 focus:ring-indigo-400/50 placeholder:text-slate-300" 
                                         />
                                       </div>
                                     </td>
@@ -1244,17 +1333,18 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                             {isEditing ? (
                                               <textarea 
                                                 autoFocus value={val} 
-                                                onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
+                                                onChange={(e) => handleTermCellChangeWrapper(sub, d.full, e.target.value)} 
                                                 onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} rows={1}
                                                 onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); }}
-                                                className="w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden min-h-[40px] align-middle leading-tight" 
+                                                style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }}
+                                                className="w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden min-h-[40px] align-middle" 
                                               />
                                             ) : (
                                               <div className="w-full h-full flex flex-col gap-1.5 px-1 justify-center min-h-[40px]">
-                                                {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block">.</span> ) : (
+                                                {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
                                                   lines.map((line, idx) => (
                                                     <div key={idx} className="flex items-center justify-center gap-1 bg-white/70 rounded px-1 py-1 shadow-sm border border-black/5 mx-auto w-[95%]">
-                                                      <span className="text-[9px] md:text-[10px] font-black text-slate-800 leading-tight text-center flex-1 break-words whitespace-pre-wrap">{line}</span>
+                                                      <span style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-words whitespace-pre-wrap">{line}</span>
                                                       <input type="checkbox" checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
                                                         onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
                                                         onClick={(e) => e.stopPropagation()} className="w-3 h-3 md:w-4 md:h-4 cursor-pointer accent-indigo-600 flex-shrink-0" 
@@ -1281,7 +1371,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                       <div className="text-left flex justify-center w-full text-center mt-6">
                         <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
                           <thead>
-                            <tr className="bg-slate-100 font-black text-slate-800 text-center">
+                            <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
                               <th className="border border-slate-200 w-[10%] py-3 md:py-4 align-middle text-center break-keep">과목</th>
                               <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">교재</th>
                               <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">시작</th>
@@ -1330,11 +1420,11 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                               }
 
                               return rowData.map((data, index) => (
-                                <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center">
-                                  {index === 0 && <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 align-middle">{sub}</td>}
-                                  <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap">{data.tbName}</td>
-                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap">{data.firstData}</td>
-                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-rose-700 align-middle break-words whitespace-pre-wrap">{data.lastData}</td>
+                                <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
+                                  {index === 0 && <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${fontSize}px` }}>{sub}</span></td>}
+                                  <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.tbName}</span></td>
+                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.firstData}</span></td>
+                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.lastData}</span></td>
                                   <td className="border border-slate-200 p-2 md:p-3 text-center align-middle">
                                     <div className="relative w-full h-5 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
                                       <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
@@ -1362,7 +1452,8 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                         onChange={(e) => handleYearlyChange(idx, e.target.value)} 
                         onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur}
                         placeholder={`${idx + 1}월 마일스톤`} 
-                        className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all text-sm font-bold resize-none text-center overflow-hidden text-center text-center bg-transparent" 
+                        style={{ fontSize: `${fontSize + 2}px`, lineHeight: '1.4' }}
+                        className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent" 
                       />
                     </div>
                   ))}
@@ -1389,7 +1480,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all text-center"><Sparkles className="w-7 h-7 text-center" /></button>
               )}
             </div>
-          </>
+          </div>
         )}
 
         {showResetConfirm && (
