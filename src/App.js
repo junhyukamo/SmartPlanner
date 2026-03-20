@@ -4,7 +4,7 @@ import {
   Check, Trash2, Plus, Clock, BookOpen, Calendar, X, Users,
   ChevronLeft, LogOut, Sparkles, Send, MousePointer2, Merge, Split,
   Palette, AlertCircle, Key, Settings, ChevronRight, UserPlus, Link as LinkIcon,
-  Minus, Printer
+  Minus
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
@@ -42,9 +42,10 @@ const parseTSV = (text) => {
   return rows;
 };
 
-// 💡 [A/B/C 콤] 스마트 매크로 자동 치환 함수
+// 💡 [A/B/C 콤] 스마트 매크로 자동 치환 함수 (AI조교, 붙여넣기, 직접입력 모두 찰떡같이 잡아냅니다)
 const processComboText = (text, day) => {
   if (!text) return text;
+  // 주말(토/일)과 평일을 캘린더 데이터 기준으로 정확히 분리
   const isSat = (day === 'sat' || day === '토요일' || day === '토');
   let newText = text;
 
@@ -55,6 +56,7 @@ const processComboText = (text, day) => {
   };
 
   ['a', 'b', 'c'].forEach(type => {
+    // a콤, A콤, 이미 개별지도가 적혀있는 경우, 이미 괄호시간이 적혀있는 경우 등을 모두 파악해 무한증식을 막고 예쁘게 덮어씁니다.
     const regex = new RegExp(`(?:개별지도\\s*)?${type}콤(?:\\s*\\n?\\s*\\([\\d\\s:~-]+\\))?`, 'ig');
     newText = newText.replace(regex, `개별지도 ${type.toUpperCase()}콤\n${times[type]}`);
   });
@@ -87,15 +89,8 @@ export default function App() {
   const [isAiProcessing, setIsAiProcessing] = useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
   
+  // 💡 [폰트 사이즈 조절 기능] 전역 State (기본 12px)
   const [fontSize, setFontSize] = useState(12);
-
-  // 💡 [프린트 기능 State]
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [printSettings, setPrintSettings] = useState({
-    orientation: 'portrait', // 'portrait' | 'landscape'
-    colorMode: 'color',      // 'color' | 'bw'
-    scope: 'all'             // 'all' | 'selection'
-  });
 
   const generateTimeSlots = () => {
     const slots = []; let idCounter = 1;
@@ -230,10 +225,11 @@ export default function App() {
   };
 
   const handleFocus = (e) => {
-    if(e && e.target && activeTab !== 'WEEKLY') autoResize(e); 
+    if(e && e.target) autoResize(e); 
     focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
   };
 
+  // 💡 포커스를 잃었을 때 수동 입력된 A/B/C콤보 마법 치환 실행!
   const handleBlur = (e, id, day, isMonthly, subject, dateKey) => {
     if (e && e.target) {
       let formattedText = e.target.value;
@@ -289,8 +285,8 @@ export default function App() {
   };
   const allDates = getSchedulerDates();
 
+  // 💡 [핵심] 셀 크기 자동 핏(Auto Resize) 적용 함수. 셀 내부 스크롤을 막고 칸 높이를 내용물에 맞춰 부드럽게 늘립니다.
   const autoResize = (e) => { 
-    if (activeTab === 'WEEKLY') return; 
     if (e && e.target) {
       e.target.style.height = 'auto'; 
       e.target.style.height = e.target.scrollHeight + 'px'; 
@@ -298,7 +294,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (activeTab === 'WEEKLY') return;
     const timer = setTimeout(() => { 
       document.querySelectorAll('textarea.auto-resize').forEach(el => { 
         el.style.height = 'auto'; 
@@ -481,6 +476,7 @@ export default function App() {
               rowCopy.forEach((cellCopy, cIdx) => { 
                 const day = DAYS[bounds.minDayIdx + cIdx]; 
                 if (day) {
+                  // 💡 붙여넣기 시에도 콤보 마법 자동 적용
                   const formattedText = processComboText(cellCopy.text, day);
                   newTt[ttRowIdx] = { ...newTt[ttRowIdx], [day]: formattedText, [`${day}_span`]: cellCopy.span, [`${day}_hidden`]: cellCopy.hidden }; 
                 }
@@ -692,16 +688,12 @@ export default function App() {
   const handlePrev4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 28); return d; });
   const handleNext4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 28); return d; });
 
-  const handleTimetableChangeWrapper = (id, day, value) => {
-    const formatted = processComboText(value, day);
-    setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: formatted } : row));
+  const handleTimetableChange = (id, day, value) => {
+    setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row));
   };
   
-  const handleTermCellChangeWrapper = (subject, dateKey, value) => {
-    const dObj = allDates.find(d => d.full === dateKey);
-    const dayType = dObj && dObj.isSat ? 'sat' : 'mon';
-    const formatted = processComboText(value, dayType);
-    setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: formatted } }));
+  const handleTermCellChange = (subject, dateKey, value) => {
+    setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: value } }));
   };
 
   const handleTermCheckToggle = (subject, dateKey, index) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, checks: { ...prev.checks, [`${subject}-${dateKey}-${index}`]: !prev.checks[`${subject}-${dateKey}-${index}`] } })); };
@@ -710,6 +702,7 @@ export default function App() {
   const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
   const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
 
+  // 💡 [AI 조교 업그레이드] AI가 대답하는 텍스트 역시 똑똑하게 콤보 치환기를 거치게 됨
   const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
     if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
     for (let i = 0; i < retries; i++) {
@@ -787,6 +780,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
               if (sIdx >= 0 && eIdx <= 31 && sIdx <= eIdx) {
                 const sId = sIdx + 1, eId = eIdx + 1, sCount = eId - sId + 1;
                 
+                // 💡 AI 조교가 "수학 a콤" 이라고만 뱉어도 자동으로 괄호 포함 포맷으로 변경 적용
                 const formattedContent = processComboText(update.content, update.day);
 
                 for (let i = 1; i <= 32; i++) {
@@ -872,136 +866,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
       } catch (e) {}
       setStudentToDelete(null); 
     } catch (e) {} 
-  };
-
-  // 💡 [프린트 전용 실행 로직] 보이지 않는 iframe을 생성하여 순수한 테이블만 100% 크기로 렌더링 후 인쇄를 요청합니다.
-  const executePrint = () => {
-    setShowPrintModal(false);
-    
-    // 모달창이 완전히 닫히고 React가 렌더링을 끝낼 수 있도록 약간의 딜레이를 줍니다.
-    setTimeout(() => {
-      const bounds = printSettings.scope === 'selection' ? getSelectionBounds() : { minId: 1, maxId: 32, minDayIdx: 0, maxDayIdx: 6 };
-      if (!bounds) return;
-
-      const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
-      
-      // iframe 내부에 주입할 순수 HTML과 인쇄용 특수 CSS
-      let html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>${studentName || '학생'} 주간 플래너</title>
-          <style>
-            @page { 
-              size: A4 ${printSettings.orientation}; 
-              margin: 10mm; 
-            }
-            body { 
-              font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
-              font-size: ${fontSize}px;
-              color: #000;
-              margin: 0; padding: 0;
-              display: flex; flex-direction: column;
-              height: 100vh; box-sizing: border-box;
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-              ${printSettings.colorMode === 'bw' ? 'filter: grayscale(100%);' : ''}
-            }
-            h2 { text-align: center; margin: 0 0 10px 0; font-weight: 900; font-size: 1.5em; flex-shrink: 0; }
-            table { width: 100%; flex-grow: 1; border-collapse: collapse; table-layout: fixed; height: 100%; }
-            th, td { border: 2px solid #000; text-align: center; vertical-align: middle; padding: 2px; word-break: break-word; white-space: pre-wrap; line-height: 1.3; }
-            th { font-weight: 900; height: 30px; }
-            .time-col { width: 50px; font-weight: 700; font-size: 0.85em; }
-            ${printSettings.colorMode === 'color' ? `
-              th { background-color: #f8fafc; }
-              .time-col { background-color: #f8fafc; }
-              .text-blue { color: #3b82f6; }
-              .text-red { color: #ef4444; }
-            ` : `
-              th { background-color: transparent; }
-              .time-col { background-color: transparent; }
-            `}
-          </style>
-        </head>
-        <body>
-          <h2>${studentName || '학생'} 주간 학습 플래너</h2>
-          <table>
-            <thead>
-              <tr>
-                <th class="time-col">시간</th>
-      `;
-
-      for(let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
-        let cls = DAYS[d] === 'sat' ? 'text-blue' : DAYS[d] === 'sun' ? 'text-red' : '';
-        html += `<th class="${cls}">${labelsShort[d]}</th>`;
-      }
-      html += `</tr></thead><tbody>`;
-
-      for(let r = bounds.minId - 1; r < bounds.maxId; r++) {
-        html += `<tr><td class="time-col">${timetable[r].time}</td>`;
-        for(let c = bounds.minDayIdx; c <= bounds.maxDayIdx; c++) {
-          const day = DAYS[c];
-          const cell = timetable[r];
-          let renderTd = false;
-          let text = '';
-          let rowspan = 1;
-          let bgColor = getCellColor(cell[day]) || 'transparent';
-          
-          // 복잡하게 얽힌 셀 병합(rowSpan) 로직을 완벽하게 계산하여 인쇄용 표에 그립니다.
-          if (!cell[`${day}_hidden`]) {
-              renderTd = true;
-              text = cell[day];
-              rowspan = cell[`${day}_span`] || 1;
-              if (r + rowspan > bounds.maxId) rowspan = bounds.maxId - r;
-          } else {
-              let parentR = r - 1;
-              while(parentR >= 0 && timetable[parentR][`${day}_hidden`]) parentR--;
-              if (parentR >= 0 && parentR < bounds.minId - 1) {
-                  if (r === bounds.minId - 1) {
-                      renderTd = true;
-                      text = timetable[parentR][day];
-                      bgColor = getCellColor(text) || 'transparent';
-                      let originalSpan = timetable[parentR][`${day}_span`];
-                      let endRow = parentR + originalSpan - 1;
-                      rowspan = endRow - r + 1;
-                      if (r + rowspan > bounds.maxId) rowspan = bounds.maxId - r;
-                  }
-              }
-          }
-          
-          if (renderTd) {
-              const formattedText = text ? text.replace(/\n/g, '<br>') : '';
-              const bgStyle = (printSettings.colorMode === 'bw') ? 'transparent' : bgColor;
-              html += `<td rowspan="${rowspan}" style="background-color: ${bgStyle};">${formattedText}</td>`;
-          }
-        }
-        html += `</tr>`;
-      }
-
-      html += `</tbody></table></body></html>`;
-
-      const iframe = document.createElement('iframe');
-      iframe.style.position = 'fixed';
-      iframe.style.right = '0';
-      iframe.style.bottom = '0';
-      iframe.style.width = '0';
-      iframe.style.height = '0';
-      iframe.style.border = 'none';
-      document.body.appendChild(iframe);
-
-      const doc = iframe.contentWindow.document;
-      doc.open();
-      doc.write(html);
-      doc.close();
-
-      iframe.contentWindow.focus();
-      setTimeout(() => {
-        iframe.contentWindow.print();
-        setTimeout(() => {
-          document.body.removeChild(iframe);
-        }, 500);
-      }, 250);
-    }, 100);
   };
 
   if (view === 'LOADING') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div></div>;
@@ -1129,6 +993,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 </div>
                 <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-between md:justify-end">
                   
+                  {/* 💡 [폰트 사이즈 조절기 UI] */}
                   <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 shadow-inner">
                     <button onClick={() => setFontSize(f => Math.max(8, f - 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Minus size={12} className="md:w-3.5 md:h-3.5"/></button>
                     <span className="text-[10px] md:text-xs font-black w-5 md:w-6 text-center text-indigo-700 select-none cursor-default">{fontSize}</span>
@@ -1154,7 +1019,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
               </div>
             </header>
 
-            <main className={`flex-1 min-h-0 w-full mx-auto relative text-center flex flex-col ${activeTab === 'WEEKLY' ? 'p-1 md:p-2 overflow-hidden' : 'p-2 md:p-6 pb-24 overflow-y-auto custom-scrollbar'}`}>
+            <main className={`flex-1 min-h-0 w-full mx-auto relative text-center flex flex-col ${activeTab === 'WEEKLY' ? 'p-1 md:p-2' : 'p-2 md:p-6 pb-24'} overflow-y-auto custom-scrollbar`}>
               
               {activeTab === 'WEEKLY' && (
                 <div className="animate-fade-in flex flex-col text-center h-full">
@@ -1177,13 +1042,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           )}
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto">
-                          
-                          {/* 💡 [인쇄 버튼 추가] */}
-                          <button onClick={() => {
-                            setPrintSettings(p => ({ ...p, scope: wBounds ? 'selection' : 'all' }));
-                            setShowPrintModal(true);
-                          }} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 mr-1"><Printer className="w-3 h-3" /> <span className="hidden sm:inline">인쇄</span></button>
-
                           <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}><Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span></button>
                           {showColorModal && (
                             <div className="absolute right-2 md:right-6 top-12 md:top-14 w-64 md:w-80 p-4 md:p-5 rounded-2xl shadow-2xl border border-slate-200 bg-white z-30 animate-fade-in text-center">
@@ -1212,6 +1070,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                         </div>
                       </div>
                       
+                      {/* 💡 [표 크기 자동 확장 & 스크롤 완벽 해결]
+                          1. 부모 컨테이너에 overflow-y-auto를 걸어, 내용이 모니터 화면보다 커질 때만 전체 스크롤이 생기도록 함
+                          2. 텍스트 상자 안에는 절대 스크롤바가 생기지 않고, 내용에 따라 행(칸) 높이가 자연스럽게 늘어남 */}
                       <div className="w-full flex-1 relative select-none rounded-lg border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto custom-scrollbar" onMouseLeave={handleMouseUp}>
                         <table className="w-full h-full min-h-full text-center border-collapse table-fixed">
                           <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
@@ -1242,6 +1103,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                               const timeBgClass = isRowSelected ? "bg-indigo-100/70 shadow-inner border-indigo-200" : "bg-slate-50/50";
                               const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-400 font-medium";
                               return (
+                                // 💡 각 <tr>을 height: 1%로 설정해두면 빈 칸일 땐 균등하게 화면을 꽉 채우고, 텍스트가 많으면 고무줄처럼 자동으로 커짐!
                                 <tr key={row.id} className="group text-center h-[1%]">
                                   <td className={`p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none ${timeBgClass}`}>
                                     <div className={`flex flex-col items-center justify-center w-full h-full min-h-[28px] ${timeTextClass}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>
@@ -1357,25 +1219,24 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
                                                 } else if (e.key === 'Delete' || e.key === 'Backspace') { 
                                                 } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                                                  e.currentTarget.value = ''; handleTimetableChangeWrapper(row.id, day, ''); 
+                                                  e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
                                                   setEditingCell(cellId);
                                                   setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
                                                 }
                                               } else if (isEditingThis) {
                                                 if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
                                                   e.preventDefault(); 
-                                                  e.currentTarget.blur();
-                                                  moveFocus(row.id, dayIdx, 'DOWN');
+                                                  setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
                                                 } else if (e.key === 'Tab') {
                                                   e.preventDefault(); 
-                                                  e.currentTarget.blur();
-                                                  moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                  setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
                                                 } else if (e.key === 'Escape') {
                                                   e.preventDefault(); setEditingCell(null);
                                                   e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
                                                 }
                                               }
                                             }} 
+                                            // 💡 overflow-hidden 속성으로 셀 내부에 스크롤이 생기지 않도록 영구 차단
                                             className={`w-full p-1 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle auto-resize ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
                                             rows={1}
                                           />
@@ -1506,7 +1367,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                             {isEditing ? (
                                               <textarea 
                                                 autoFocus value={val} 
-                                                onChange={(e) => handleTermCellChangeWrapper(sub, d.full, e.target.value)} 
+                                                onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
                                                 onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, sub, d.full)} rows={1}
                                                 onKeyDown={(e) => { if (e.key === 'Escape') setEditingCell(null); }}
                                                 style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }}
@@ -1634,7 +1495,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
               )}
             </main>
 
-            <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center no-print">
+            <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center">
               {showAiModal ? (
                 <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in text-center">
                   <div className="bg-indigo-600 p-5 text-white flex justify-between items-center text-center">
@@ -1656,54 +1517,8 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
           </div>
         )}
 
-        {/* 💡 [프린트 설정 모달] */}
-        {showPrintModal && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowPrintModal(false)}>
-            <div className="w-full max-w-sm rounded-3xl shadow-2xl p-6 md:p-8 bg-white" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-xl font-black mb-6 flex items-center justify-center gap-2"><Printer className="w-6 h-6 text-indigo-600"/> 인쇄 설정</h3>
-
-              <div className="space-y-5 text-left">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">인쇄 영역</label>
-                  <div className="flex gap-2">
-                    <button onClick={() => setPrintSettings(p => ({...p, scope: 'all'}))} className={`flex-1 py-2.5 rounded-xl font-bold border-2 transition-all ${printSettings.scope === 'all' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>전체 시간표</button>
-                    <button disabled={!wBounds} onClick={() => setPrintSettings(p => ({...p, scope: 'selection'}))} className={`flex-1 py-2.5 rounded-xl font-bold border-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed ${printSettings.scope === 'selection' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>선택 영역만</button>
-                  </div>
-                  {!wBounds && <p className="text-[10px] text-slate-400 mt-1 text-center">* 셀을 드래그하면 선택 인쇄가 가능합니다.</p>}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">용지 방향 (A4)</label>
-                  <div className="flex gap-2">
-                    <button onClick={() => setPrintSettings(p => ({...p, orientation: 'portrait'}))} className={`flex-1 py-2.5 rounded-xl font-bold border-2 transition-all ${printSettings.orientation === 'portrait' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>세로 방향</button>
-                    <button onClick={() => setPrintSettings(p => ({...p, orientation: 'landscape'}))} className={`flex-1 py-2.5 rounded-xl font-bold border-2 transition-all ${printSettings.orientation === 'landscape' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>가로 방향</button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">색상 모드</label>
-                  <div className="flex gap-2">
-                    <button onClick={() => setPrintSettings(p => ({...p, colorMode: 'color'}))} className={`flex-1 py-2.5 rounded-xl font-bold border-2 transition-all ${printSettings.colorMode === 'color' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>컬러 인쇄</button>
-                    <button onClick={() => setPrintSettings(p => ({...p, colorMode: 'bw'}))} className={`flex-1 py-2.5 rounded-xl font-bold border-2 transition-all ${printSettings.colorMode === 'bw' ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>흑백 인쇄</button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3 mt-8">
-                <button onClick={() => setShowPrintModal(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors">취소</button>
-                <button onClick={() => {
-                  setShowPrintModal(false);
-                  setTimeout(() => executePrint(), 150);
-                }} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 flex items-center justify-center gap-2">
-                  <Printer className="w-5 h-5"/> 인쇄 시작
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {showResetConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowResetConfirm(false)}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setShowResetConfirm(false)}>
             <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
               <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center"><AlertCircle size={32} /></div>
               <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center">데이터 초기화</h3>
@@ -1717,7 +1532,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
         )}
 
         {showLogoutConfirm && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowLogoutConfirm(false)}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setShowLogoutConfirm(false)}>
             <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center" onClick={(e) => e.stopPropagation()}>
               <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center"><LogOut size={32} /></div>
               <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center">로그아웃</h3>
@@ -1731,7 +1546,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
         )}
 
         {studentToDelete && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setStudentToDelete(null)}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center" onClick={() => setStudentToDelete(null)}>
             <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
               <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
               <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
