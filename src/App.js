@@ -89,7 +89,6 @@ export default function App() {
   
   const [fontSize, setFontSize] = useState(12);
 
-  // 🖨️ [프린트 기능 State]
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printConfig, setPrintConfig] = useState({
     orientation: 'portrait', 
@@ -97,7 +96,6 @@ export default function App() {
     colorMode: 'color'       
   });
 
-  // 🚀 [라우팅 & 뒤로가기 상태 추적]
   const hasNavigated = useRef(false); 
 
   const navigateTo = (newView, params = {}) => {
@@ -290,15 +288,18 @@ export default function App() {
           setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: formattedText } : row));
         }
       } else if (isMonthly && subject && dateKey) {
-        const dObj = allDates.find(d => d.full === dateKey);
-        const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
-        formattedText = processComboText(e.target.value, dayType);
-        if (formattedText !== e.target.value) {
-          if (subject === 'TOP_NOTE') {
-            setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: formattedText } }));
-          } else {
-            setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: formattedText } }));
-          }
+        if (subject === 'TEXTBOOK') {
+          // 교재 칸은 onChange에서 실시간 처리됨
+        } else if (subject === 'TOP_NOTE') {
+          const dObj = allDates.find(d => d.full === dateKey);
+          const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
+          formattedText = processComboText(e.target.value, dayType);
+          setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: formattedText } }));
+        } else {
+          const dObj = allDates.find(d => d.full === dateKey);
+          const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
+          formattedText = processComboText(e.target.value, dayType);
+          setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: formattedText } }));
         }
       }
     }
@@ -315,7 +316,14 @@ export default function App() {
     setEditingCell(null);
   };
 
-  // 💡 [월간 시트] 키보드 내비게이션 포커스 자동 이동
+  // 💡 [월간 시트 전용] 교재 및 스케줄 칸을 통합한 논리 좌표계 (0~29)
+  const getColInfo = (c) => {
+    if (c === 0 || c === 15) return { type: 'textbook', block: c === 0 ? 0 : 1 };
+    if (c >= 1 && c <= 14) return { type: 'date', dIdx: c - 1 };
+    if (c >= 16 && c <= 29) return { type: 'date', dIdx: c - 2 };
+    return null;
+  };
+
   useEffect(() => {
     if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null && monthlySelection.r1 === monthlySelection.r2 && monthlySelection.c1 === monthlySelection.c2 && !editingCell) {
       const el = document.getElementById(`monthly-textarea-${monthlySelection.r1}-${monthlySelection.c1}`);
@@ -323,13 +331,31 @@ export default function App() {
     }
   }, [monthlySelection, editingCell, activeTab]);
 
+  // 💡 [월간 시트] 방향키 이동 계산 로직 (교재 칸 0, 15 포함하여 엑셀처럼 완벽 제어)
   const moveFocusMonthly = (rIdx, cIdx, dir) => {
     let nextRIdx = rIdx; let nextCIdx = cIdx;
-    if (dir === 'DOWN') { nextRIdx++; if (nextRIdx > termScheduler.subjects.length) return; }
-    else if (dir === 'UP') { nextRIdx--; if (nextRIdx < 0) return; }
-    else if (dir === 'RIGHT') { nextCIdx++; if (nextCIdx > 27) { nextCIdx = 0; nextRIdx++; } if (nextRIdx > termScheduler.subjects.length) return; }
-    else if (dir === 'LEFT') { nextCIdx--; if (nextCIdx < 0) { nextCIdx = 27; nextRIdx--; } if (nextRIdx < 0) return; }
     
+    while (true) {
+      if (dir === 'DOWN') { nextRIdx++; } 
+      else if (dir === 'UP') { nextRIdx--; } 
+      else if (dir === 'RIGHT') { 
+        nextCIdx++; 
+        if (nextCIdx > 29) { nextCIdx = 0; nextRIdx++; } 
+      } 
+      else if (dir === 'LEFT') { 
+        nextCIdx--; 
+        if (nextCIdx < 0) { nextCIdx = 29; nextRIdx--; } 
+      }
+      
+      // 범위를 벗어나면 이동 중지
+      if (nextRIdx < 0 || nextRIdx > termScheduler.subjects.length) return;
+      
+      // 0번째 행(비고란)에는 교재 칸(0, 15)이 없으므로 해당 좌표에 닿으면 건너뛰고 다음 좌표로 진행
+      if (nextRIdx === 0 && (nextCIdx === 0 || nextCIdx === 15)) continue;
+      
+      break;
+    }
+
     setMonthlySelection({ r1: nextRIdx, c1: nextCIdx, r2: nextRIdx, c2: nextCIdx });
     setEditingCell(null);
   };
@@ -465,6 +491,7 @@ export default function App() {
     return () => unsubscribe();
   }, [user, view]);
 
+  // 💡 [월간 시트] 복사/붙여넣기 엑셀 호환성 유지
   useEffect(() => {
     const handleCopy = (e) => {
       if (view !== 'PLANNER') return;
@@ -495,7 +522,17 @@ export default function App() {
           const sub = r === 0 ? null : termScheduler.subjects[r - 1];
           let rowData = []; let rowCopy = [];
           for (let c = mb.minC; c <= mb.maxC; c++) {
-             const date = allDates[c].full; const val = r === 0 ? (termScheduler.topNotes[date] || '') : (termScheduler.cells[`${sub}-${date}`] || '');
+             const colInfo = getColInfo(c);
+             if (!colInfo) continue;
+             
+             let val = '';
+             if (r === 0) {
+                 if (colInfo.type === 'textbook') val = ''; 
+                 else val = termScheduler.topNotes[allDates[colInfo.dIdx].full] || '';
+             } else {
+                 val = colInfo.type === 'textbook' ? (termScheduler.textbooks[sub] || '') : (termScheduler.cells[`${sub}-${allDates[colInfo.dIdx].full}`] || '');
+             }
+             
              rowData.push(val.includes('\n') || val.includes('\t') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val);
              rowCopy.push({ text: val });
           }
@@ -577,17 +614,34 @@ export default function App() {
         
         e.preventDefault(); saveToHistory();
         setTermScheduler(prev => {
-          let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes };
+          let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes }; let newTextbooks = { ...prev.textbooks };
           if (parsedData && pastedType === 'MONTHLY') {
             parsedData.forEach((rowCopy, rOffset) => {
               const targetRow = mb.minR + rOffset; if (targetRow > prev.subjects.length) return;
               const sub = targetRow === 0 ? null : prev.subjects[targetRow - 1];
-              rowCopy.forEach((cellCopy, cOffset) => {
-                const targetCol = mb.minC + cOffset; if (targetCol >= 28) return;
-                const dObj = allDates[targetCol];
-                const formattedText = processComboText(cellCopy.text, dObj.isSat ? 'sat' : 'mon');
-                if (targetRow === 0) newTopNotes[dObj.full] = formattedText; else newCells[`${sub}-${dObj.full}`] = formattedText;
-              });
+              
+              for (let cOffset = 0; cOffset < rowCopy.length; cOffset++) {
+                 let targetCol = mb.minC + cOffset;
+                 if (targetCol > 29) break;
+                 const colInfo = getColInfo(targetCol);
+                 if (!colInfo) continue;
+                 
+                 const cellVal = rowCopy[cOffset].text;
+                 
+                 if (targetRow === 0) {
+                   if (colInfo.type === 'date') {
+                      const formatted = processComboText(cellVal, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                      newTopNotes[allDates[colInfo.dIdx].full] = formatted;
+                   }
+                 } else {
+                   if (colInfo.type === 'textbook') {
+                      newTextbooks[sub] = cellVal;
+                   } else {
+                      const formatted = processComboText(cellVal, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                      newCells[`${sub}-${allDates[colInfo.dIdx].full}`] = formatted;
+                   }
+                 }
+              }
             });
           } else {
             const rows = parseTSV(pastedText);
@@ -595,25 +649,55 @@ export default function App() {
               for (let r = mb.minR; r <= mb.maxR; r++) {
                 const sub = r === 0 ? null : prev.subjects[r - 1];
                 for (let c = mb.minC; c <= mb.maxC; c++) { 
-                  const dObj = allDates[c]; 
-                  const formattedText = processComboText(rows[0][0], dObj.isSat ? 'sat' : 'mon');
-                  if (r === 0) newTopNotes[dObj.full] = formattedText; else newCells[`${sub}-${dObj.full}`] = formattedText; 
+                  const colInfo = getColInfo(c);
+                  if (!colInfo) continue;
+                  const colStr = rows[0][0];
+                  
+                  if (r === 0) {
+                     if (colInfo.type === 'date') {
+                       const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                       newTopNotes[allDates[colInfo.dIdx].full] = formatted;
+                     }
+                  } else {
+                     if (colInfo.type === 'textbook') {
+                       newTextbooks[sub] = colStr;
+                     } else {
+                       const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                       newCells[`${sub}-${allDates[colInfo.dIdx].full}`] = formatted;
+                     }
+                  }
                 }
               }
             } else {
               rows.forEach((rowStrArr, i) => {
                 const rIdx = mb.minR + i; if (rIdx > prev.subjects.length) return;
                 const sub = rIdx === 0 ? null : prev.subjects[rIdx - 1];
-                rowStrArr.forEach((colStr, j) => {
-                  const cIdx = mb.minC + j; if (cIdx >= 28) return;
-                  const dObj = allDates[cIdx];
-                  const formattedText = processComboText(colStr, dObj.isSat ? 'sat' : 'mon');
-                  if (rIdx === 0) newTopNotes[dObj.full] = formattedText; else newCells[`${sub}-${dObj.full}`] = formattedText;
-                });
+                
+                for (let j = 0; j < rowStrArr.length; j++) {
+                   let targetCol = mb.minC + j;
+                   if (targetCol > 29) break;
+                   const colInfo = getColInfo(targetCol);
+                   if (!colInfo) continue;
+                   
+                   const colStr = rowStrArr[j];
+                   if (rIdx === 0) {
+                      if (colInfo.type === 'date') {
+                        const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                        newTopNotes[allDates[colInfo.dIdx].full] = formatted;
+                      }
+                   } else {
+                      if (colInfo.type === 'textbook') {
+                        newTextbooks[sub] = colStr;
+                      } else {
+                        const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                        newCells[`${sub}-${allDates[colInfo.dIdx].full}`] = formatted;
+                      }
+                   }
+                }
               });
             }
           }
-          return { ...prev, cells: newCells, topNotes: newTopNotes };
+          return { ...prev, cells: newCells, topNotes: newTopNotes, textbooks: newTextbooks };
         });
         setAiFeedback('✅ 붙여넣기 완료'); setTimeout(() => setAiFeedback(''), 1500);
       }
@@ -640,19 +724,26 @@ export default function App() {
             for (let id = bounds.minId; id <= bounds.maxId; id++) { for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { if (!newTt[id - 1][`${DAYS[d]}_hidden`]) newTt[id - 1] = { ...newTt[id - 1], [DAYS[d]]: '' }; } }
             return newTt;
           });
-          if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') {
-            document.activeElement.value = '';
-          }
+          if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') document.activeElement.value = '';
         } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
           const mb = getMonthlyBounds(); if (!mb) return;
           e.preventDefault(); saveToHistory();
           setTermScheduler(prev => {
-            let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes };
+            let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes }; let newTextbooks = { ...prev.textbooks };
             for (let r = mb.minR; r <= mb.maxR; r++) {
               const sub = r === 0 ? null : prev.subjects[r - 1];
-              for (let c = mb.minC; c <= mb.maxC; c++) { const date = allDates[c].full; if (r === 0) newTopNotes[date] = ''; else newCells[`${sub}-${date}`] = ''; }
+              for (let c = mb.minC; c <= mb.maxC; c++) { 
+                const colInfo = getColInfo(c);
+                if (!colInfo) continue;
+                if (r === 0) {
+                  if (colInfo.type === 'date') newTopNotes[allDates[colInfo.dIdx].full] = '';
+                } else {
+                  if (colInfo.type === 'textbook') newTextbooks[sub] = '';
+                  else newCells[`${sub}-${allDates[colInfo.dIdx].full}`] = '';
+                }
+              }
             }
-            return { ...prev, cells: newCells, topNotes: newTopNotes };
+            return { ...prev, cells: newCells, topNotes: newTopNotes, textbooks: newTextbooks };
           });
         }
       }
@@ -667,42 +758,21 @@ export default function App() {
   const copyStudentLink = (sid) => { const el = document.createElement('textarea'); el.value = `${window.location.origin}${window.location.pathname}?sid=${sid}`; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000); };
 
   const handleMouseDown = (e, day, id) => {
-    isDragging.current = true; 
-    setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
-    if (e.shiftKey && selection.startDay) { 
-      e.preventDefault(); 
-      setSelection(prev => ({ ...prev, endDay: day, endId: id })); 
-    } else { 
-      setSelection(prev => {
-        if (prev.startDay === day && prev.endDay === day && prev.startId === id && prev.endId === id) return prev;
-        return { startDay: day, endDay: day, startId: id, endId: id };
-      });
-    }
+    isDragging.current = true; setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
+    if (e.shiftKey && selection.startDay) { e.preventDefault(); setSelection(prev => ({ ...prev, endDay: day, endId: id })); } 
+    else { setSelection(prev => { if (prev.startDay === day && prev.endDay === day && prev.startId === id && prev.endId === id) return prev; return { startDay: day, endDay: day, startId: id, endId: id }; }); }
   };
 
-  const handleMouseEnter = (day, id) => { 
-    if (isDragging.current && activeTab === 'WEEKLY') {
-      setSelection(prev => ({ ...prev, endDay: day, endId: id })); 
-    }
-  };
+  const handleMouseEnter = (day, id) => { if (isDragging.current && activeTab === 'WEEKLY') setSelection(prev => ({ ...prev, endDay: day, endId: id })); };
 
   const handleMonthlyMouseDown = (e, rIdx, cIdx) => {
     if (e.target.type === 'checkbox') return;
     isMonthlyDragging.current = true; setSelection({ startDay: null, endDay: null, startId: null, endId: null });
-    if (e.shiftKey && monthlySelection.r1 !== null) { 
-      e.preventDefault(); 
-      setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); 
-    } else { 
-      setMonthlySelection(prev => {
-        if (prev.r1 === rIdx && prev.c1 === cIdx && prev.r2 === rIdx && prev.c2 === cIdx) return prev;
-        return { r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx };
-      });
-    }
+    if (e.shiftKey && monthlySelection.r1 !== null) { e.preventDefault(); setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); } 
+    else { setMonthlySelection(prev => { if (prev.r1 === rIdx && prev.c1 === cIdx && prev.r2 === rIdx && prev.c2 === cIdx) return prev; return { r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }; }); }
   };
 
-  const handleMonthlyMouseEnter = (rIdx, cIdx) => { 
-    if (isMonthlyDragging.current && activeTab === 'MONTHLY') setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); 
-  };
+  const handleMonthlyMouseEnter = (rIdx, cIdx) => { if (isMonthlyDragging.current && activeTab === 'MONTHLY') setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); };
 
   const handleMouseUp = () => { isDragging.current = false; isMonthlyDragging.current = false; };
   useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
@@ -741,28 +811,22 @@ export default function App() {
     setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setShowResetConfirm(false); 
   };
 
-  const addColorRule = () => { if (!newColorRule.keyword.trim()) return; setColorRules([...colorRules, { ...newColorRule, id: Date.now() }]); setNewColorRule({ ...newColorRule, keyword: '' }); };
+  const addColorRule = () => { if (!newColorRule.keyword.trim()) return; setColorRules([...colorRules, { ...newColorRule, id: Date.now() }]); setNewColorRule({ ...newColorRule, keyword: '' }); setShowColorModal(false); };
   const removeColorRule = (id) => setColorRules(colorRules.filter((rule) => rule.id !== id));
   const getCellColor = (text) => { if (!text || typeof text !== 'string') return null; const rule = colorRules.find((r) => text.includes(r.keyword)); return rule ? rule.color : null; };
 
   const handlePrev4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 28); return d; });
   const handleNext4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 28); return d; });
 
-  const handleTimetableChange = (id, day, value) => {
-    setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row));
-  };
-  
-  const handleTermCellChange = (subject, dateKey, value) => {
-    setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: value } }));
-  };
-
+  const handleTimetableChange = (id, day, value) => { setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row)); };
+  const handleTermCellChange = (subject, dateKey, value) => { setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: value } })); };
   const handleTermCheckToggle = (subject, dateKey, index) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, checks: { ...prev.checks, [`${subject}-${dateKey}-${index}`]: !prev.checks[`${subject}-${dateKey}-${index}`] } })); };
   const handleTopNoteChange = (dateKey, value) => setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: value } }));
   const handleTermTextbookChange = (subject, value) => setTermScheduler(prev => ({ ...prev, textbooks: { ...prev.textbooks, [subject]: value } }));
   const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
   const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
 
-  // 💡 [AI 조교 프롬프트 업그레이드] 교재 등록과 진도 배분을 완벽하게 분리해서 똑똑하게 처리
+  // 💡 [AI 조교 지능 100배 향상] 과목 추가 기능 지원 및 교재/일정의 명확한 맥락 분리 적용
   const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
     if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
     for (let i = 0; i < retries; i++) {
@@ -802,17 +866,19 @@ export default function App() {
       MONTHLY: `당신은 스마트 월간 스케줄 및 교재 관리 AI 조교입니다. 사용자의 요청을 분석하여 아래 JSON 포맷으로만 응답하세요. 설명 금지.
 {
   "type": "UPDATE_TERM_SCHEDULER",
+  "new_subjects": ["과목명1", "과목명2"],
   "updates": [
     { "target": "textbook", "subject": "과목명", "content": "교재 이름들 (여러 권이면 줄바꿈\\n으로 구분)" },
     { "target": "cell", "subject": "과목명", "date": "YYYY-MM-DD", "content": "학습 내용" }
   ]
 }
 [필수 규칙]
-1. 사용자가 단원/페이지 등 구체적인 학습 진도 없이 "ㅇㅇ 교재 추가해줘", "자습서, 평가문제집" 처럼 단순히 교재명만 나열하면 target을 "textbook"으로 설정하세요.
-2. 사용자가 "월~토 자습서 1단원부터 5단원" 처럼 특정 기간/요일에 분량을 나누어 달라고 요청하면 target을 "cell"로 설정하세요. 기간에 속하는 날짜마다 객체를 생성하고 분량을 알맞게 배분하세요.
-3. 과목명: 기존 등록된 과목 [${termScheduler.subjects.join(', ')}] 중 알맞은 과목을 매칭. 없으면 새로 생성.
-4. target이 "cell"인 경우 date는 제공된 캘린더 날짜 배열을 참고하여 가장 일치하는 날짜를 YYYY-MM-DD 형식으로 입력하세요.
-5. 교재 추가와 일정 추가를 동시에 요청받으면 updates 배열에 각각의 객체를 모두 생성하세요.`, 
+1. 사용자가 "국어, 수학 추가해 줘" 등 진도나 교재 언급 없이 단순히 과목만 생성하라는 요청을 하면 new_subjects 배열에 과목명들을 담아 응답하세요.
+2. 사용자가 날짜나 분량 언급 없이 "국어 교재 자습서, 평가문제집 추가해 줘" 처럼 단순히 교재명만 나열하면 target을 "textbook"으로 설정하세요. (여러 권일 경우 content에 줄바꿈\\n으로 묶어서 응답)
+3. 사용자가 "월~토 자습서 1단원부터 5단원" 처럼 특정 기간/요일에 분량을 나누어 달라고 요청하면 target을 "cell"로 설정하세요. 기간에 속하는 날짜마다 분배하여 각각 객체를 만드세요.
+4. 과목명: 기존 등록된 과목 [${termScheduler.subjects.join(', ')}] 중 알맞은 과목을 매칭. 없으면 new_subjects에 포함시키세요.
+5. target이 "cell"인 경우 date는 제공된 캘린더 날짜 배열을 참고하여 가장 일치하는 날짜를 YYYY-MM-DD 형식으로 입력하세요.
+6. 복합 요청(과목 추가 + 교재 등록 + 일정 배분)을 받으면 new_subjects 배열과 updates 배열에 각각 빠짐없이 반영하세요.`, 
 
       YEARLY: `당신은 연간 플래너 AI 조교입니다. 아래 JSON 포맷으로만 응답하세요. 설명 금지.
 { "type": "UPDATE_YEARLY", "plans": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"] }
@@ -837,21 +903,17 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
           if(aiResponse.updates && Array.isArray(aiResponse.updates)){
             aiResponse.updates.forEach((update) => {
               if(!update.startTime || !update.endTime || !update.day) return;
-              
               const sParts = update.startTime.split(':').map(Number);
               const eParts = update.endTime.split(':').map(Number);
-              
               if(isNaN(sParts[0]) || isNaN(eParts[0])) return;
               
               const sIdx = (sParts[0] - 8) * 2 + (sParts[1] >= 30 ? 1 : 0); 
               let eIdx = (eParts[0] - 8) * 2 + (eParts[1] >= 30 ? 1 : 0) - 1;
-              
               if (eIdx < sIdx) eIdx = sIdx; 
+              
               if (sIdx >= 0 && eIdx <= 31 && sIdx <= eIdx) {
                 const sId = sIdx + 1, eId = eIdx + 1, sCount = eId - sId + 1;
-                
                 const formattedContent = processComboText(update.content, update.day);
-
                 for (let i = 1; i <= 32; i++) {
                   if (i === sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sCount, [`${update.day}_hidden`]: false, [update.day]: formattedContent };
                   else if (i > sId && i <= eId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true };
@@ -868,6 +930,12 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
             let newCells = { ...prev.cells };
             let newTextbooks = { ...prev.textbooks };
             let newSubjects = [...prev.subjects];
+            
+            if (aiResponse.new_subjects && Array.isArray(aiResponse.new_subjects)) {
+              aiResponse.new_subjects.forEach(s => {
+                if (s && !newSubjects.includes(s)) newSubjects.push(s);
+              });
+            }
             
             if (aiResponse.updates && Array.isArray(aiResponse.updates)) {
               aiResponse.updates.forEach(u => {
@@ -889,7 +957,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
             }
             return { ...prev, cells: newCells, textbooks: newTextbooks, subjects: newSubjects };
           });
-          setAiFeedback('✨ 월간 스케줄에 내용이 성공적으로 업데이트되었습니다!');
+          setAiFeedback('✨ 월간 스케줄에 내용이 성공적으로 반영되었습니다!');
         } 
         else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') { 
           const newPlans = [...yearlyPlan];
@@ -924,13 +992,10 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
     localStorage.removeItem('planner_name'); 
     sessionStorage.removeItem('planner_role'); 
     setShowLogoutConfirm(false); 
-    
     hasNavigated.current = false;
     window.history.replaceState({ view: 'LANDING', role: '', docId: null, studentName: '' }, '', window.location.pathname);
     setView('LANDING'); 
-    setRole(''); 
-    setStudentName(''); 
-    setCurrentDocId(null); 
+    setRole(''); setStudentName(''); setCurrentDocId(null); 
   };
 
   const handleYearlyChange = (index, value) => { const newPlan = [...yearlyPlan]; newPlan[index] = value; setYearlyPlan(newPlan); };
@@ -1064,7 +1129,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
 
           {view === 'PLANNER' && (
             <div className="flex flex-col h-full w-full relative">
-              <header className="flex-none px-4 py-2 md:py-3 shadow-sm z-30 bg-white border-b border-slate-200">
+              <header className="flex-none px-4 py-2 md:py-3 shadow-sm z-30 bg-white border-b border-slate-200 relative">
                 <div className="max-w-[98vw] mx-auto flex flex-col md:flex-row justify-between items-center gap-2 md:gap-4">
                   <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
                     <div className="flex items-center gap-3">
@@ -1105,10 +1170,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 {activeTab === 'WEEKLY' && (
                   <div className="animate-fade-in flex flex-col text-center h-full">
                     <div className="flex-1 flex flex-col min-h-0">
-                      <div className="p-1 md:p-2 rounded-xl shadow-sm border border-slate-200 bg-white flex flex-col h-full">
+                      <div className="p-1 md:p-2 rounded-xl shadow-sm border border-slate-200 bg-white flex flex-col h-full relative z-30">
                         
-                        {/* 💡 [수정] 모달이 가려지지 않도록 컨테이너의 z-index를 최상단(70)으로 조정 */}
-                        <div className="flex flex-wrap items-center justify-between gap-1 mb-1 md:mb-2 flex-shrink-0 px-1 relative z-[70]">
+                        <div className="flex flex-wrap items-center justify-between gap-1 mb-1 md:mb-2 flex-shrink-0 px-1 relative z-40">
                           <div className="flex flex-wrap items-center gap-2">
                             {dDay ? (
                               <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
@@ -1131,33 +1195,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                               <Printer className="w-3 h-3" /> <span className="hidden sm:inline">인쇄</span>
                             </button>
 
-                            {/* 💡 [수정] 색상 버튼과 모달의 z-index를 최우선(80)으로 조정 */}
-                            <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[80]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+                            <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[60]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
                               <Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span>
                             </button>
-                            
-                            {/* 💡 [수정] top-full mt-2 를 사용하여 버튼 바로 아래에 뜨게 하여 윗부분 잘림 완벽 방지 */}
-                            {showColorModal && (
-                              <>
-                                <div className="fixed inset-0 z-[60]" onClick={() => setShowColorModal(false)}></div>
-                                <div className="absolute right-0 top-full mt-2 w-64 md:w-80 p-4 md:p-5 rounded-2xl shadow-2xl border border-slate-200 bg-white z-[80] animate-fade-in text-center cursor-default">
-                                  <h4 className="font-extrabold mb-3 md:mb-4 text-sm md:text-base flex items-center justify-center gap-2"><Palette className="text-indigo-500 w-4 h-4 md:w-5 md:h-5"/> 키워드 색상 지정</h4>
-                                  <div className="flex gap-2 mb-3 md:mb-4">
-                                    <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-2 md:p-3 text-xs md:text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
-                                    <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
-                                    <button onClick={addColorRule} className="bg-indigo-600 text-white px-3 md:px-4 py-1.5 md:py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md text-xs md:text-sm">추가</button>
-                                  </div>
-                                  <div className="space-y-2 max-h-40 md:max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                                    {colorRules.map((rule) => (
-                                      <div key={rule.id} className="flex items-center justify-between text-xs md:text-sm p-2 md:p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors text-center">
-                                        <div className="flex items-center gap-2 md:gap-3 font-bold"><div className="w-4 h-4 md:w-5 md:h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
-                                        <button onClick={() => removeColorRule(rule.id)} className="p-1 md:p-1.5 rounded-lg transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-3 h-3 md:w-4 md:h-4" /></button>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </>
-                            )}
 
                             <div className="h-5 w-px mx-0.5 bg-slate-200"></div>
 
@@ -1167,7 +1207,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           </div>
                         </div>
                         
-                        {/* 💡 [수정] 테이블의 z-index를 낮춰 모달보다 뒤에 가려지도록 변경 */}
                         <div className="w-full flex-1 relative select-none rounded-lg border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
                           <table className="w-full h-full min-h-full text-center border-collapse table-fixed">
                             <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
@@ -1363,7 +1402,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           </div>
                         </div>
                         <div className="flex gap-3 text-center">
-                          <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요"); if(name) addSubjectRow(name.trim()); }} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-xs md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={16}/> <span className="hidden sm:inline">과목 추가</span></button>
+                          <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-xs md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={16}/> <span className="hidden sm:inline">과목 추가</span></button>
                           <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-xs md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={16}/> <span className="hidden sm:inline">일정 초기화</span></button>
                         </div>
                       </div>
@@ -1394,7 +1433,8 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                 <tr className="bg-white text-center">
                                   <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-1" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>비고</td>
                                   {chunk.map((d, i) => {
-                                    const cIdx = chunkStartIndex + i; const rIdx = 0;
+                                    const cIdx = blockIdx === 0 ? i + 1 : i + 16;
+                                    const rIdx = 0;
                                     const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
                                     const cellId = `note-${d.full}`;
                                     const isEditingThis = editingCell === cellId;
@@ -1412,19 +1452,13 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                         onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
                                         onClick={(e) => { 
                                           if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
-                                            setTimeout(() => {
-                                              const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
-                                              if (el) el.focus();
-                                            }, 0);
+                                            setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
                                           }
                                         }}
-                                        onDoubleClick={(e) => {
-                                          if (e.target.type !== 'checkbox') setEditingCell(cellId);
-                                        }}
+                                        onDoubleClick={(e) => { if (e.target.type !== 'checkbox') setEditingCell(cellId); }}
                                         className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
                                       >
                                         <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[30px] relative">
-                                          {/* 💡 [수정] 엑셀 키보드 조작 완벽 이식 (보이지 않는 textarea 활용) */}
                                           <textarea 
                                             id={`monthly-textarea-${rIdx}-${cIdx}`}
                                             value={val} 
@@ -1432,52 +1466,38 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                             onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, 'TOP_NOTE', d.full)} rows={1}
                                             onCompositionStart={(e) => {
                                               if (!isEditingThis && isActiveThis) {
-                                                e.currentTarget.value = '';
-                                                handleTopNoteChange(d.full, '');
-                                                setEditingCell(cellId);
-                                                setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                e.currentTarget.value = ''; handleTopNoteChange(d.full, '');
+                                                setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
                                               }
                                             }}
                                             onKeyDown={(e) => { 
                                               if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                              
                                               if (!isEditingThis && isActiveThis) {
-                                                if (e.key === 'Enter' || e.key === 'F2') {
-                                                  e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN');
-                                                } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP');
-                                                } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT');
-                                                } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT');
-                                                } else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
-                                                } else if (e.key === 'Delete' || e.key === 'Backspace') { 
-                                                  e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, '');
-                                                } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                                                  e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); 
-                                                  setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
-                                                }
+                                                if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
+                                                else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
+                                                else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
+                                                else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, ''); }
+                                                else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
                                               } else if (isEditingThis) {
-                                                if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
-                                                  e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
-                                                } else if (e.key === 'Tab') {
-                                                  e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                } else if (e.key === 'Escape') { 
-                                                  e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                } 
+                                                if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
                                               }
                                             }}
                                             style={{
-                                              fontSize: `${fontSize}px`, lineHeight: '1.3',
-                                              opacity: isEditingThis ? 1 : 0,
+                                              fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
                                               caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
                                               cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
                                               zIndex: isEditingThis ? 20 : 0
                                             }}
                                             className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
                                           />
-                                          
                                           {!isEditingThis && (
-                                            <div className="w-full h-full flex flex-col gap-1.5 px-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
+                                            <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
                                               <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-bold text-slate-800">{val}</div>
                                             </div>
                                           )}
@@ -1488,26 +1508,88 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                 </tr>
                                 {termScheduler.subjects.map((sub, sIdx) => {
                                   const rIdx = sIdx + 1;
+                                  
+                                  // 💡 [수정] 교재(Textbook) 칸 엑셀화 통합 (좌표 0, 15)
+                                  const tbCIdx = blockIdx === 0 ? 0 : 15;
+                                  const isSelTb = mb && rIdx >= mb.minR && rIdx <= mb.maxR && tbCIdx >= mb.minC && tbCIdx <= mb.maxC;
+                                  const cellIdTb = `textbook-${sub}-${blockIdx}`;
+                                  const isEditingTb = editingCell === cellIdTb;
+                                  const isSingleSelTb = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                  const isActiveTb = isSingleSelTb && monthlySelection.r1 === rIdx && monthlySelection.c1 === tbCIdx;
+                                  const tbVal = termScheduler.textbooks[sub] || '';
+
                                   return (
                                     <tr key={sub} className="text-center align-middle">
                                       <td className="border border-slate-300 px-1 py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep">
                                         <span style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{sub}</span>
                                         <button onClick={() => removeSubjectRow(sub)} className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
                                       </td>
-                                      <td className="border border-slate-300 p-0 align-middle text-center bg-white cursor-text">
-                                        <div className="w-full h-full flex items-center justify-center p-1 min-h-[40px]">
+                                      
+                                      <td key={cellIdTb}
+                                        onMouseDown={(e) => {
+                                          if (editingCell !== cellIdTb) setEditingCell(null);
+                                          handleMonthlyMouseDown(e, rIdx, tbCIdx);
+                                        }}
+                                        onMouseEnter={() => handleMonthlyMouseEnter(rIdx, tbCIdx)}
+                                        onClick={(e) => { 
+                                          if (!e.shiftKey && !isEditingTb) {
+                                            setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`); if (el) el.focus(); }, 0);
+                                          }
+                                        }}
+                                        onDoubleClick={() => setEditingCell(cellIdTb)}
+                                        className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
+                                      >
+                                        <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[50px] relative">
                                           <textarea 
-                                            value={termScheduler.textbooks[sub] || ''} 
+                                            id={`monthly-textarea-${rIdx}-${tbCIdx}`}
+                                            value={tbVal} 
                                             onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
-                                            onInput={autoResize} onFocus={handleFocus} onBlur={handleBlur} placeholder="입력" rows={1}
-                                            onKeyDown={(e) => { if (e.key === 'Escape') e.currentTarget.blur(); }}
-                                            style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }}
-                                            className="w-full bg-transparent resize-none outline-none overflow-hidden font-bold text-center text-slate-700 align-middle focus:ring-1 focus:ring-indigo-400/50 placeholder:text-slate-300 auto-resize" 
+                                            onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, 'TEXTBOOK', sub)} rows={1}
+                                            onCompositionStart={(e) => {
+                                              if (!isEditingTb && isActiveTb) {
+                                                e.currentTarget.value = ''; handleTermTextbookChange(sub, '');
+                                                setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx });
+                                              }
+                                            }}
+                                            onKeyDown={(e) => { 
+                                              if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                              if (!isEditingTb && isActiveTb) {
+                                                if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellIdTb); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'DOWN'); }
+                                                else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'UP'); }
+                                                else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'RIGHT'); }
+                                                else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'LEFT'); }
+                                                else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, ''); }
+                                                else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
+                                              } else if (isEditingTb) {
+                                                if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, 'DOWN'); }
+                                                else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                              }
+                                            }}
+                                            style={{
+                                              fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingTb ? 1 : 0,
+                                              caretColor: (!isEditingTb && isActiveTb) ? 'transparent' : 'auto',
+                                              cursor: (!isEditingTb && isActiveTb) ? 'default' : 'text',
+                                              zIndex: isEditingTb ? 20 : 0
+                                            }}
+                                            className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-700 placeholder:text-slate-300 align-middle auto-resize ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
                                           />
+                                          {!isEditingTb && (
+                                            <div className="w-full h-full flex flex-col justify-center px-1 min-h-[40px] relative z-10 pointer-events-none">
+                                              {tbVal.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
+                                                <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-words whitespace-pre-wrap pointer-events-none">{tbVal}</div>
+                                              )}
+                                            </div>
+                                          )}
                                         </div>
                                       </td>
+
+                                      {/* 💡 날짜 스케줄 셀 영역 */}
                                       {chunk.map((d, i) => {
-                                        const cIdx = chunkStartIndex + i;
+                                        const cIdx = blockIdx === 0 ? i + 1 : i + 16;
                                         const val = termScheduler.cells[`${sub}-${d.full}`] || '';
                                         const lines = val.split('\n').filter(l => l.trim() !== '');
                                         const cellId = `${sub}-${d.full}`;
@@ -1526,10 +1608,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                             onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
                                             onClick={(e) => { 
                                               if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
-                                                setTimeout(() => {
-                                                  const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
-                                                  if (el) el.focus();
-                                                }, 0);
+                                                setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
                                               }
                                             }}
                                             onDoubleClick={(e) => {
@@ -1538,7 +1617,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                             className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
                                           >
                                             <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[50px] relative">
-                                              {/* 💡 [수정] 과목 스케줄 란에도 동일한 엑셀 조작 완벽 이식 */}
                                               <textarea 
                                                 id={`monthly-textarea-${rIdx}-${cIdx}`}
                                                 value={val} 
@@ -1546,50 +1624,36 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, sub, d.full)} rows={1}
                                                 onCompositionStart={(e) => {
                                                   if (!isEditingThis && isActiveThis) {
-                                                    e.currentTarget.value = '';
-                                                    handleTermCellChange(sub, d.full, '');
-                                                    setEditingCell(cellId);
-                                                    setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                    e.currentTarget.value = ''; handleTermCellChange(sub, d.full, '');
+                                                    setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
                                                   }
                                                 }}
                                                 onKeyDown={(e) => { 
                                                   if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                  
                                                   if (!isEditingThis && isActiveThis) {
-                                                    if (e.key === 'Enter' || e.key === 'F2') {
-                                                      e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                    } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN');
-                                                    } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP');
-                                                    } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT');
-                                                    } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT');
-                                                    } else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                    } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
-                                                    } else if (e.key === 'Delete' || e.key === 'Backspace') { 
-                                                      e.preventDefault(); saveToHistory(); handleTermCellChange(sub, d.full, '');
-                                                    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                                                      e.currentTarget.value = ''; handleTermCellChange(sub, d.full, ''); 
-                                                      setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
-                                                    }
+                                                    if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                    else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                    else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
+                                                    else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
+                                                    else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
+                                                    else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                    else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, d.full, ''); }
+                                                    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
                                                   } else if (isEditingThis) {
-                                                    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) {
-                                                      e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
-                                                    } else if (e.key === 'Tab') {
-                                                      e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                    } else if (e.key === 'Escape') { 
-                                                      e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                    } 
+                                                    if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                    else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                    else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
                                                   }
                                                 }}
                                                 style={{
-                                                  fontSize: `${fontSize}px`, lineHeight: '1.3',
-                                                  opacity: isEditingThis ? 1 : 0,
+                                                  fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
                                                   caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
                                                   cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
                                                   zIndex: isEditingThis ? 20 : 0
                                                 }}
                                                 className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
                                               />
-                                              
                                               {!isEditingThis && (
                                                 <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[40px] relative z-10 pointer-events-auto cursor-default">
                                                   {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
@@ -1739,6 +1803,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
             </div>
           )}
 
+          {/* 🖨️ [인쇄 설정 모달창] */}
           {showPrintModal && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowPrintModal(false)}>
               <div className="w-full max-w-sm rounded-3xl shadow-2xl p-6 bg-white text-left cursor-default" onClick={(e) => e.stopPropagation()}>
@@ -1782,8 +1847,36 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
             </div>
           )}
 
+          {/* 🎨 [색상 설정 중앙 모달창] */}
+          {showColorModal && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowColorModal(false)}>
+              <div className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-slate-200 bg-white animate-fade-in text-center cursor-default" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="font-extrabold text-xl flex items-center justify-center gap-2 text-slate-800"><Palette className="text-indigo-600 w-6 h-6"/> 키워드 색상 지정</h4>
+                  <button onClick={() => setShowColorModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
+                </div>
+                
+                <div className="flex gap-2 mb-4">
+                  <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-3 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
+                  <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
+                  <button onClick={addColorRule} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md text-sm">추가</button>
+                </div>
+                
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  {colorRules.length === 0 && <div className="text-slate-400 font-bold p-4 text-xs">등록된 색상이 없습니다.</div>}
+                  {colorRules.map((rule) => (
+                    <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors text-center">
+                      <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
+                      <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           {showResetConfirm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowResetConfirm(false)}>
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowResetConfirm(false)}>
               <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
                 <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center"><AlertCircle size={32} /></div>
                 <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center">데이터 초기화</h3>
@@ -1797,7 +1890,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
           )}
 
           {showLogoutConfirm && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowLogoutConfirm(false)}>
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowLogoutConfirm(false)}>
               <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center" onClick={(e) => e.stopPropagation()}>
                 <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center"><LogOut size={32} /></div>
                 <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center">로그아웃</h3>
@@ -1811,7 +1904,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
           )}
 
           {studentToDelete && (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setStudentToDelete(null)}>
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setStudentToDelete(null)}>
               <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
                 <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
                 <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
