@@ -882,6 +882,7 @@ export default function App() {
   const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
   const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
 
+  // 💡 AI 조교 API
   const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
     if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
     for (let i = 0; i < retries; i++) {
@@ -1072,6 +1073,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
   if (view === 'LOADING') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div></div>;
   if (view === 'PLANNER_DELETED_BLANK') return <div className="min-h-screen bg-slate-50" />;
   
+  // 💡 [삭제된 시트 확인 버튼 제거 완료] 완전히 빈 화면에 문구만 출력
   if (isNotFound && view === 'PLANNER') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6"><h1 className="text-2xl font-black text-slate-400">삭제된 시트입니다.</h1></div>;
 
   const wBounds = getSelectionBounds(); const isWMulti = wBounds && (wBounds.minId !== wBounds.maxId || wBounds.minDayIdx !== wBounds.maxDayIdx);
@@ -1185,17 +1187,16 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
 
           {view === 'PLANNER' && (
             <div className="flex flex-col h-full w-full relative">
-              {/* 💡 [모바일 최적화] 헤더 영역 가로 스크롤 허용하여 공간 낭비 방지 */}
-              <header className="flex-none px-2 py-2 md:px-4 md:py-3 shadow-sm z-30 bg-white border-b border-slate-200 relative">
-                <div className="max-w-[100vw] mx-auto flex flex-row justify-between items-center gap-2 md:gap-4 overflow-x-auto custom-scrollbar pb-1 md:pb-0 px-2 md:px-0">
-                  <div className="flex items-center gap-3 w-max md:w-auto justify-between md:justify-start flex-shrink-0">
-                    <div className="flex items-center gap-2 md:gap-3">
-                      {role === 'teacher' && <button onClick={() => handleSafeBack('TEACHER_DASHBOARD')} className="p-1.5 md:p-2 rounded-full hover:bg-slate-100 border border-slate-200"><ChevronLeft className="w-4 h-4 md:w-5 md:h-5" /></button>}
-                      <div className="p-1.5 md:p-2.5 rounded-xl shadow-inner bg-gradient-to-br from-indigo-500 to-indigo-700"><BookOpen className="text-white w-4 h-4 md:w-5 md:h-5" /></div>
-                      <div className="font-extrabold text-base md:text-xl tracking-tight whitespace-nowrap">{studentName} 플래너</div>
+              <header className="flex-none px-4 py-2 md:py-3 shadow-sm z-30 bg-white border-b border-slate-200 relative">
+                <div className="max-w-[98vw] mx-auto flex flex-col md:flex-row justify-between items-center gap-2 md:gap-4">
+                  <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+                    <div className="flex items-center gap-3">
+                      {role === 'teacher' && <button onClick={() => handleSafeBack('TEACHER_DASHBOARD')} className="p-2 rounded-full hover:bg-slate-100 border border-slate-200"><ChevronLeft className="w-5 h-5" /></button>}
+                      <div className="p-2 md:p-2.5 rounded-xl shadow-inner bg-gradient-to-br from-indigo-500 to-indigo-700"><BookOpen className="text-white w-4 h-4 md:w-5 md:h-5" /></div>
+                      <div className="font-extrabold text-lg md:text-xl tracking-tight">{studentName} 플래너</div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 md:gap-3 w-max md:w-auto justify-between md:justify-end flex-shrink-0">
+                  <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-between md:justify-end">
                     
                     <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 shadow-inner">
                       <button onClick={() => setFontSize(f => Math.max(8, f - 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Minus size={12} className="md:w-3.5 md:h-3.5"/></button>
@@ -1203,19 +1204,19 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                       <button onClick={() => setFontSize(f => Math.min(24, f + 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Plus size={12} className="md:w-3.5 md:h-3.5"/></button>
                     </div>
 
-                    <div className="flex p-0.5 md:p-1 rounded-xl shadow-inner bg-slate-100 justify-center">
+                    <div className="flex p-1 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
                       {['WEEKLY', 'MONTHLY', 'YEARLY'].map((tab) => (
                         <button key={tab} onClick={() => { 
                           setActiveTab(tab); 
                           setEditingCell(null); 
                           setSelection({ startDay: null, endDay: null, startId: null, endId: null }); 
                           setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); 
-                        }} className={`px-3 md:px-6 py-1 md:py-2 rounded-lg text-xs md:text-sm font-extrabold transition-all duration-300 whitespace-nowrap ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
+                        }} className={`flex-1 md:flex-none px-4 md:px-6 py-1 md:py-2 rounded-lg text-xs md:text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>{tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : '연간'}</button>
                       ))}
                     </div>
                     {role === 'teacher' && (
-                      <div className="flex items-center gap-2 border-l pl-2 md:pl-3 ml-1 border-slate-200">
-                        <button onClick={() => setShowLogoutConfirm(true)} className="p-1.5 md:p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-4 h-4 md:w-5 md:h-5" /></button>
+                      <div className="hidden md:flex items-center gap-2 border-l pl-2 md:pl-3 ml-1 border-slate-200">
+                        <button onClick={() => setShowLogoutConfirm(true)} className="p-2 md:p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-4 h-4 md:w-5 md:h-5" /></button>
                       </div>
                     )}
                   </div>
@@ -1229,247 +1230,241 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                     <div className="flex-1 flex flex-col min-h-0">
                       <div className="p-1 md:p-2 rounded-xl shadow-sm border border-slate-200 bg-white flex flex-col h-full relative z-30">
                         
-                        {/* 💡 [모바일 최적화] 주간 툴바 버튼 조작 영역도 가로 스크롤로 밀어서 볼 수 있게 압축 */}
-                        <div className="flex flex-nowrap items-center justify-between gap-2 mb-1 md:mb-2 flex-shrink-0 px-1 relative z-40 w-full overflow-x-auto custom-scrollbar pb-1">
-                          <div className="flex flex-nowrap items-center gap-2 flex-shrink-0">
+                        <div className="flex flex-wrap items-center justify-between gap-1 mb-1 md:mb-2 flex-shrink-0 px-1 relative z-40">
+                          <div className="flex flex-wrap items-center gap-2">
                             {dDay ? (
-                              <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-[11px] md:text-xs text-center whitespace-nowrap">
-                                <Calendar className="w-3.5 h-3.5" />
+                              <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
+                                <Calendar className="w-3 h-3" />
+                                {/* 💡 [디데이 포맷 수정] 중간고사(4.23) D-31 */}
                                 <span className="font-bold">
                                   {dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}
                                 </span>
                                 <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1.5 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center flex-shrink-0">
-                                <input type="text" placeholder="D-day 제목" className="w-24 md:w-28 p-1.5 text-[11px] md:text-xs rounded outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
-                                <input type="date" className="w-28 p-1.5 text-[11px] md:text-xs rounded outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
-                                <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory(); } }} className="px-3 py-1.5 rounded text-[11px] md:text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white whitespace-nowrap">설정</button>
+                              <div className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center">
+                                <input type="text" placeholder="D-day 제목" className="w-20 md:w-28 p-1 text-xs rounded outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
+                                <input type="date" className="w-24 p-1 text-[10px] md:text-xs rounded outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
+                                <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory(); } }} className="px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
                               </div>
                             )}
                           </div>
                           
-                          <div className="flex flex-nowrap items-center justify-end gap-1.5 md:gap-2 ml-auto relative flex-shrink-0">
+                          <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto relative">
                             
-                            {/* 모바일 인쇄 버튼 숨김 유지 */}
-                            <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 whitespace-nowrap flex-shrink-0">
-                              <Printer className="w-3.5 h-3.5" /> <span>인쇄</span>
+                            {/* 💡 [모바일 환경 인쇄 버튼 숨김] */}
+                            <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="hidden sm:flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                              <Printer className="w-3 h-3" /> <span>인쇄</span>
                             </button>
 
-                            <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-all shadow-sm border whitespace-nowrap flex-shrink-0 ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[60]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
-                              <Palette className="w-3.5 h-3.5" /> <span>색상</span>
+                            <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[60]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+                              <Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span>
                             </button>
 
-                            <div className="h-5 w-px mx-0.5 bg-slate-200 hidden md:block flex-shrink-0"></div>
+                            <div className="h-5 w-px mx-0.5 bg-slate-200 hidden md:block"></div>
 
-                            {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold text-[11px] md:text-xs whitespace-nowrap flex-shrink-0"><Merge className="w-3.5 h-3.5" /> <span>병합</span></button> : <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none whitespace-nowrap flex-shrink-0"><MousePointer2 className="w-3.5 h-3.5" /> <span>드래그</span></div>}
-                            <button onClick={unmergeCells} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50 whitespace-nowrap flex-shrink-0"><Split className="w-3.5 h-3.5" /> <span>분할</span></button>
-                            <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] md:text-xs font-bold transition-colors ml-0 bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 whitespace-nowrap flex-shrink-0"><Trash2 className="w-3.5 h-3.5" /> <span>초기화</span></button>
+                            {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 bg-indigo-600 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold text-xs"><Merge className="w-3 h-3" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3" /> <span className="hidden sm:inline">드래그</span></div>}
+                            <button onClick={unmergeCells} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3" /> <span className="hidden sm:inline">분할</span></button>
+                            <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors ml-0 bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"><Trash2 className="w-3 h-3" /> <span className="hidden sm:inline">초기화</span></button>
                           </div>
                         </div>
                         
-                        {/* 💡 [모바일 최적화의 핵심] 
-                            표 너비를 최소 768px로 강제 보장하고, 화면 밖으로 삐져나가는 부분은 좌우 스와이프(스크롤)를 적용했습니다.
-                            인쇄 미리보기에서 보던 깔끔한 A4 사이즈의 비율이 모바일에서도 그대로 유지됩니다. */}
-                        <div className="w-full flex-1 relative select-none rounded-lg border-y md:border-2 border-slate-200 bg-white shadow-inner text-center overflow-x-auto overflow-y-auto custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
-                          <div className="min-w-[768px] lg:min-w-full h-full flex flex-col">
-                            <table className="w-full h-full min-h-full text-center border-collapse table-fixed flex-1">
-                              <thead className="z-30 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
-                                <tr style={{ height: '30px' }}>
-                                  {/* 시간 열은 가로로 넘겨도 항상 왼쪽에 보이도록 sticky 처리 */}
-                                  <th className={`sticky left-0 border-r border-slate-200 uppercase font-black z-40 align-middle transition-colors duration-200 w-[40px] sm:w-[50px] md:w-[60px] shadow-[2px_0_5px_rgba(0,0,0,0.04)] tracking-tighter ${wBounds ? 'bg-indigo-100 text-indigo-700' : 'text-slate-500 bg-slate-50'}`} style={{ fontSize: `${Math.max(8, fontSize - 3)}px` }}>
-                                    <span className="md:hidden">시간</span>
-                                    <span className="hidden md:inline">Time</span>
-                                  </th>
-                                  {DAYS.map((d, i) => {
-                                    const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
-                                    const isColSelected = activeTab === 'WEEKLY' && wBounds && i >= wBounds.minDayIdx && i <= wBounds.maxDayIdx;
-                                    let defaultTextColor = (d === 'sat') ? 'text-blue-600' : (d === 'sun') ? 'text-red-600' : 'text-slate-800';
-                                    let textColor = isColSelected ? 'text-indigo-700' : defaultTextColor;
-                                    let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-transparent';
-                                    return (
-                                      // 모바일에서도 무조건 월요일~일요일 플네임이 렌더링되게 변경 (너비가 넓어졌으므로)
-                                      <th key={d} className={`font-black border-r border-slate-200 z-30 align-middle transition-colors duration-200 py-1 px-1 ${textColor} ${bgColor}`} style={{ fontSize: `${Math.max(11, fontSize)}px` }}>
-                                        <span>{labelsLong[i]}</span>
-                                      </th>
-                                    );
-                                  })}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {timetable.map((row) => {
-                                  const isRowSelected = activeTab === 'WEEKLY' && wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId;
-                                  const timeBgClass = isRowSelected ? "bg-indigo-100 shadow-inner border-indigo-200" : "bg-slate-50";
-                                  const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-500 font-bold";
+                        {/* 💡 [주간 시트 한눈에 들어오게 모바일 가로 스크롤 제거] */}
+                        <div className="w-full flex-1 relative select-none rounded-lg border-y md:border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto overflow-x-hidden custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
+                          <table className="w-full h-full min-h-full text-center border-collapse table-fixed">
+                            <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
+                              <tr style={{ height: '30px' }}>
+                                <th className={`border-r border-slate-200 uppercase font-black z-20 align-middle transition-colors duration-200 w-10 md:w-14 ${wBounds ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>
+                                  <span className="md:hidden">시간</span>
+                                  <span className="hidden md:inline">Time</span>
+                                </th>
+                                {DAYS.map((d, i) => {
+                                  const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+                                  const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
+                                  const isColSelected = activeTab === 'WEEKLY' && wBounds && i >= wBounds.minDayIdx && i <= wBounds.maxDayIdx;
+                                  let defaultTextColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : 'text-slate-600';
+                                  let textColor = isColSelected ? 'text-indigo-700' : defaultTextColor;
+                                  let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-transparent';
                                   return (
-                                    <tr key={row.id} className="group text-center h-[1%]">
-                                      <td className={`sticky left-0 z-30 p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none shadow-[2px_0_5px_rgba(0,0,0,0.04)] ${timeBgClass}`}>
-                                        <div className={`flex flex-col items-center justify-center w-full h-full min-h-[26px] md:min-h-[28px] tracking-tighter ${timeTextClass}`} style={{ fontSize: `${Math.max(8, fontSize - 3)}px` }}>
-                                          <span>{row.time}</span>
-                                        </div>
-                                      </td>
-                                      {DAYS.map((day) => {
-                                        if (row[`${day}_hidden`]) return null;
-                                        const dayIdx = DAYS.indexOf(day);
-                                        
-                                        const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
-                                        const isSingleSelection = wBounds && wBounds.minId === wBounds.maxId && wBounds.minDayIdx === wBounds.maxDayIdx;
-                                        const isActiveThis = isSingleSelection && selection.startId === row.id && selection.startDay === day;
-                                        
-                                        const cellId = `WEEKLY-${day}-${row.id}`;
-                                        const isEditingThis = editingCell === cellId;
-                                        
-                                        const keywordColor = getCellColor(row[day]);
-                                        const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
-                                        
-                                        return (
-                                          <td 
-                                            key={day} 
-                                            className={`p-0 relative align-top border-b border-r border-slate-200 transition-colors duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
-                                            style={{ backgroundColor: bgColor }} 
-                                            rowSpan={row[`${day}_span`] || 1} 
-                                            onMouseDown={(e) => {
-                                              if (editingCell !== cellId) setEditingCell(null);
-                                              handleMouseDown(e, day, row.id);
-                                            }} 
-                                            onMouseEnter={() => handleMouseEnter(day, row.id)}
-                                            onClick={(e) => { 
-                                              if (!e.shiftKey) { 
-                                                const area = document.getElementById(`textarea-${row.id}-${day}`); 
-                                                if (area && document.activeElement !== area) {
-                                                  setTimeout(() => area.focus(), 0);
-                                                } 
+                                    <th key={d} className={`font-black border-r border-slate-200 z-20 align-middle transition-colors duration-200 py-0 px-0 ${textColor} ${bgColor}`} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
+                                      <span className="hidden md:inline">{labelsLong[i]}</span>
+                                      <span className="md:hidden">{labelsShort[i]}</span>
+                                    </th>
+                                  );
+                                })}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {timetable.map((row) => {
+                                const isRowSelected = activeTab === 'WEEKLY' && wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId;
+                                const timeBgClass = isRowSelected ? "bg-indigo-100/70 shadow-inner border-indigo-200" : "bg-slate-50/50";
+                                const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-400 font-medium";
+                                return (
+                                  <tr key={row.id} className="group text-center h-[1%]">
+                                    <td className={`p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none ${timeBgClass}`}>
+                                      <div className={`flex flex-col items-center justify-center w-full h-full min-h-[22px] md:min-h-[28px] ${timeTextClass}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>
+                                        <span>{row.time}</span>
+                                      </div>
+                                    </td>
+                                    {DAYS.map((day) => {
+                                      if (row[`${day}_hidden`]) return null;
+                                      const dayIdx = DAYS.indexOf(day);
+                                      
+                                      const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
+                                      const isSingleSelection = wBounds && wBounds.minId === wBounds.maxId && wBounds.minDayIdx === wBounds.maxDayIdx;
+                                      const isActiveThis = isSingleSelection && selection.startId === row.id && selection.startDay === day;
+                                      
+                                      const cellId = `WEEKLY-${day}-${row.id}`;
+                                      const isEditingThis = editingCell === cellId;
+                                      
+                                      const keywordColor = getCellColor(row[day]);
+                                      const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
+                                      
+                                      return (
+                                        <td 
+                                          key={day} 
+                                          className={`p-0 relative align-top border-b border-r border-slate-200 transition-colors duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
+                                          style={{ backgroundColor: bgColor }} 
+                                          rowSpan={row[`${day}_span`] || 1} 
+                                          onMouseDown={(e) => {
+                                            if (editingCell !== cellId) setEditingCell(null);
+                                            handleMouseDown(e, day, row.id);
+                                          }} 
+                                          onMouseEnter={() => handleMouseEnter(day, row.id)}
+                                          onClick={(e) => { 
+                                            if (!e.shiftKey) { 
+                                              const area = document.getElementById(`textarea-${row.id}-${day}`); 
+                                              if (area && document.activeElement !== area) {
+                                                setTimeout(() => area.focus(), 0);
                                               } 
-                                            }}
-                                            onDoubleClick={() => setEditingCell(cellId)}
-                                          >
-                                            {/* 💡 텍스트 패딩 축소, 자간/행간을 밀착시켜 인쇄물처럼 압축도 높은 폰트 렌더링 */}
-                                            <div className="w-full h-full flex flex-col items-center justify-center p-0.5 md:p-1 text-center min-h-[26px] md:min-h-[28px]">
-                                              <textarea 
-                                                id={`textarea-${row.id}-${day}`}
-                                                value={row[day] || ''} 
-                                                onChange={(e) => {
-                                                  handleTimetableChange(row.id, day, e.target.value);
-                                                  autoResize(e);
-                                                }} 
-                                                onFocus={handleFocus} 
-                                                onBlur={(e) => handleBlur(e, row.id, day, false)}
-                                                style={{
-                                                  caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                                  cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                                  fontSize: `${fontSize}px`,
-                                                  lineHeight: '1.15',
-                                                  letterSpacing: '-0.03em'
-                                                }}
-                                                onCompositionStart={(e) => {
-                                                  if (!isEditingThis && isActiveThis) {
-                                                    e.currentTarget.value = '';
-                                                    handleTimetableChange(row.id, day, '');
+                                            } 
+                                          }}
+                                          onDoubleClick={() => setEditingCell(cellId)}
+                                        >
+                                          <div className="w-full h-full flex flex-col items-center justify-center p-0.5 md:p-1 text-center min-h-[22px] md:min-h-[28px]">
+                                            <textarea 
+                                              id={`textarea-${row.id}-${day}`}
+                                              value={row[day] || ''} 
+                                              onChange={(e) => {
+                                                handleTimetableChange(row.id, day, e.target.value);
+                                                autoResize(e);
+                                              }} 
+                                              onFocus={handleFocus} 
+                                              onBlur={(e) => handleBlur(e, row.id, day, false)}
+                                              style={{
+                                                caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                fontSize: `${fontSize}px`,
+                                                lineHeight: '1.2'
+                                              }}
+                                              onCompositionStart={(e) => {
+                                                if (!isEditingThis && isActiveThis) {
+                                                  e.currentTarget.value = '';
+                                                  handleTimetableChange(row.id, day, '');
+                                                  setEditingCell(cellId);
+                                                  setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
+                                                }
+                                              }}
+                                              onKeyDown={(e) => {
+                                                if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                
+                                                const moveFocus = (rId, dIdx, dir) => {
+                                                  let nextRId = rId; let nextDIdx = dIdx;
+                                                  if (dir === 'DOWN') {
+                                                     const span = timetable[nextRId - 1][`${DAYS[nextDIdx]}_span`] || 1;
+                                                     nextRId += span;
+                                                     while(nextRId <= 32 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId++;
+                                                     if (nextRId > 32) return;
+                                                  } else if (dir === 'UP') {
+                                                     nextRId -= 1;
+                                                     while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                     if (nextRId < 1) return;
+                                                  } else if (dir === 'RIGHT') {
+                                                     nextDIdx += 1;
+                                                     if (nextDIdx > 6) { nextDIdx = 0; nextRId += 1; }
+                                                     if (nextRId > 32) return;
+                                                     while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                     if (nextRId < 1) nextRId = 1;
+                                                  } else if (dir === 'LEFT') {
+                                                     nextDIdx -= 1;
+                                                     if (nextDIdx < 0) { nextDIdx = 6; nextRId -= 1; }
+                                                     if (nextRId < 1) return;
+                                                     while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                     if (nextRId < 1) nextRId = 1;
+                                                  }
+                                                  
+                                                  const nextDay = DAYS[nextDIdx];
+                                                  setSelection({ startDay: nextDay, endDay: nextDay, startId: nextRId, endId: nextRId });
+                                                  setEditingCell(null);
+                                                  setTimeout(() => {
+                                                    const el = document.getElementById(`textarea-${nextRId}-${nextDay}`);
+                                                    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+                                                  }, 0);
+                                                };
+                                                
+                                                if (!isEditingThis && isActiveThis) {
+                                                  if (e.key === 'Enter' || e.key === 'F2') {
+                                                    e.preventDefault();
+                                                    setEditingCell(cellId);
+                                                    e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                                                  } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(row.id, dayIdx, 'DOWN');
+                                                  } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus(row.id, dayIdx, 'UP');
+                                                  } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocus(row.id, dayIdx, 'RIGHT');
+                                                  } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocus(row.id, dayIdx, 'LEFT');
+                                                  } else if (e.key === 'Tab') { e.preventDefault(); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                  } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
+                                                  } else if (e.key === 'Delete' || e.key === 'Backspace') { 
+                                                    e.preventDefault(); saveToHistory(); handleTimetableChange(row.id, day, '');
+                                                  } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                                                    e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
                                                     setEditingCell(cellId);
                                                     setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
                                                   }
-                                                }}
-                                                onKeyDown={(e) => {
-                                                  if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                  
-                                                  const moveFocus = (rId, dIdx, dir) => {
-                                                    let nextRId = rId; let nextDIdx = dIdx;
-                                                    if (dir === 'DOWN') {
-                                                       const span = timetable[nextRId - 1][`${DAYS[nextDIdx]}_span`] || 1;
-                                                       nextRId += span;
-                                                       while(nextRId <= 32 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId++;
-                                                       if (nextRId > 32) return;
-                                                    } else if (dir === 'UP') {
-                                                       nextRId -= 1;
-                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                       if (nextRId < 1) return;
-                                                    } else if (dir === 'RIGHT') {
-                                                       nextDIdx += 1;
-                                                       if (nextDIdx > 6) { nextDIdx = 0; nextRId += 1; }
-                                                       if (nextRId > 32) return;
-                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                       if (nextRId < 1) nextRId = 1;
-                                                    } else if (dir === 'LEFT') {
-                                                       nextDIdx -= 1;
-                                                       if (nextDIdx < 0) { nextDIdx = 6; nextRId -= 1; }
-                                                       if (nextRId < 1) return;
-                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                       if (nextRId < 1) nextRId = 1;
-                                                    }
-                                                    
-                                                    const nextDay = DAYS[nextDIdx];
-                                                    setSelection({ startDay: nextDay, endDay: nextDay, startId: nextRId, endId: nextRId });
-                                                    setEditingCell(null);
-                                                    setTimeout(() => {
-                                                      const el = document.getElementById(`textarea-${nextRId}-${nextDay}`);
-                                                      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
-                                                    }, 0);
-                                                  };
-                                                  
-                                                  if (!isEditingThis && isActiveThis) {
-                                                    if (e.key === 'Enter' || e.key === 'F2') {
-                                                      e.preventDefault();
-                                                      setEditingCell(cellId);
-                                                      e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                    } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(row.id, dayIdx, 'DOWN');
-                                                    } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus(row.id, dayIdx, 'UP');
-                                                    } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocus(row.id, dayIdx, 'RIGHT');
-                                                    } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocus(row.id, dayIdx, 'LEFT');
-                                                    } else if (e.key === 'Tab') { e.preventDefault(); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                    } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
-                                                    } else if (e.key === 'Delete' || e.key === 'Backspace') { 
-                                                      e.preventDefault(); saveToHistory(); handleTimetableChange(row.id, day, '');
-                                                    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                                                      e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
-                                                      setEditingCell(cellId);
-                                                      setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
-                                                    }
-                                                  } else if (isEditingThis) {
-                                                    if (e.key === 'Enter') {
-                                                      // 💡 [Alt+Enter 및 Shift+Enter 줄바꿈 적용]
-                                                      if (e.shiftKey || e.altKey) {
-                                                        if (e.altKey && !e.shiftKey) {
-                                                          e.preventDefault();
-                                                          const target = e.currentTarget;
-                                                          const start = target.selectionStart;
-                                                          const end = target.selectionEnd;
-                                                          const valStr = target.value;
-                                                          const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                          handleTimetableChange(row.id, day, newVal);
-                                                          setTimeout(() => {
-                                                            const targetEl = document.getElementById(`textarea-${row.id}-${day}`);
-                                                            if (targetEl) {
-                                                              targetEl.setSelectionRange(start + 1, start + 1);
-                                                              autoResize({ target: targetEl });
-                                                            }
-                                                          }, 0);
-                                                        }
-                                                      } else {
-                                                        e.preventDefault(); 
-                                                        setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
+                                                } else if (isEditingThis) {
+                                                  if (e.key === 'Enter') {
+                                                    // 💡 [Alt+Enter 및 Shift+Enter 줄바꿈 적용]
+                                                    if (e.shiftKey || e.altKey) {
+                                                      if (e.altKey && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        const target = e.currentTarget;
+                                                        const start = target.selectionStart;
+                                                        const end = target.selectionEnd;
+                                                        const valStr = target.value;
+                                                        const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                                        handleTimetableChange(row.id, day, newVal);
+                                                        setTimeout(() => {
+                                                          const targetEl = document.getElementById(`textarea-${row.id}-${day}`);
+                                                          if (targetEl) {
+                                                            targetEl.setSelectionRange(start + 1, start + 1);
+                                                            autoResize({ target: targetEl });
+                                                          }
+                                                        }, 0);
                                                       }
-                                                    } else if (e.key === 'Tab') {
+                                                    } else {
                                                       e.preventDefault(); 
-                                                      setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                    } else if (e.key === 'Escape') {
-                                                      e.preventDefault(); setEditingCell(null);
-                                                      e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                                                      setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
                                                     }
+                                                  } else if (e.key === 'Tab') {
+                                                    e.preventDefault(); 
+                                                    setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                  } else if (e.key === 'Escape') {
+                                                    e.preventDefault(); setEditingCell(null);
+                                                    e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
                                                   }
-                                                }} 
-                                                className={`w-[98%] p-0 m-0 mx-auto text-center bg-transparent resize-none outline-none overflow-hidden font-extrabold text-slate-800 align-middle auto-resize break-words whitespace-pre-wrap tracking-tight ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
-                                                rows={1}
-                                              />
-                                            </div>
-                                          </td>
-                                        );
-                                      })}
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
+                                                }
+                                              }} 
+                                              className={`w-full p-0 md:p-1 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle auto-resize break-words whitespace-pre-wrap ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
+                                              rows={1}
+                                            />
+                                          </div>
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     </div>
@@ -1477,21 +1472,21 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 )}
 
                 {activeTab === 'MONTHLY' && (
-                  <div className="animate-fade-in flex flex-col gap-4 md:gap-6 text-center w-full overflow-x-hidden">
-                    <div className="p-2 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200 bg-white shadow-sm w-full text-center">
-                      <div className="flex flex-nowrap items-center justify-between mb-4 md:mb-6 px-1 md:px-2 gap-3 text-center mt-2 md:mt-0 w-full overflow-x-auto custom-scrollbar pb-1">
-                        <div className="flex items-center gap-2 md:gap-4 text-center flex-shrink-0">
+                  <div className="animate-fade-in flex flex-col gap-6 text-center w-full overflow-x-hidden">
+                    <div className="p-2 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm w-full text-center">
+                      <div className="flex items-center justify-between mb-4 md:mb-6 px-2 text-center mt-2 md:mt-0">
+                        <div className="flex items-center gap-2 md:gap-4 text-center">
                           <div className="flex gap-2 text-center">
                             <button onClick={handlePrev4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronLeft size={16} className="md:w-5 md:h-5"/></button>
                             <button onClick={handleNext4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronRight size={16} className="md:w-5 md:h-5"/></button>
                           </div>
-                          <div className="font-extrabold text-slate-700 text-xs md:text-sm whitespace-nowrap tracking-tight">
+                          <div className="font-extrabold text-slate-600 text-[10px] md:text-sm whitespace-nowrap">
                             {currentDate.getFullYear()}.{String(currentDate.getMonth() + 1).padStart(2, '0')}.{String(currentDate.getDate()).padStart(2, '0')} 기준
                           </div>
                         </div>
-                        <div className="flex gap-2 text-center flex-shrink-0 ml-auto">
-                          <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-[11px] md:text-sm hover:bg-indigo-700 shadow-sm md:shadow-md transition-all text-center whitespace-nowrap"><Plus size={14} className="md:w-4 md:h-4"/> <span>과목 추가</span></button>
-                          <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-[11px] md:text-sm hover:bg-red-100 transition-all text-center whitespace-nowrap"><Trash2 size={14} className="md:w-4 md:h-4"/> <span>일정 초기화</span></button>
+                        <div className="flex gap-2 text-center">
+                          <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">과목 추가</span></button>
+                          <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">일정 초기화</span></button>
                         </div>
                       </div>
 
@@ -1499,29 +1494,29 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                         const chunkStartIndex = blockIdx * 14;
                         const chunk = allDates.slice(chunkStartIndex, chunkStartIndex + 14);
                         return (
-                          // 💡 [월간 시트 역시 800px 최소 너비를 확보하여 스마트폰에서도 인쇄물 비율 유지]
+                          // 💡 [월간 시트 가로 스와이프 기능] 모바일에서 찌그러지지 않고 넘겨서 볼 수 있음
                           <div key={blockIdx} className="w-full relative select-none overflow-x-auto custom-scrollbar pb-3" onMouseLeave={handleMouseUp}>
                             <div className="min-w-[800px] md:min-w-full">
-                              <table className="w-full border-collapse mb-4 md:mb-10 text-[10px] md:text-[11px] table-fixed text-center align-middle">
+                              <table className="w-full border-collapse mb-4 md:mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
                                 <thead>
                                   <tr className="bg-slate-50 text-center">
-                                    <th className="sticky left-0 z-30 bg-slate-50 border border-slate-300 w-[15%] md:w-[8%] py-1 md:py-2 text-center font-black align-middle shadow-[2px_0_5px_rgba(0,0,0,0.05)] text-slate-800" rowSpan={2} style={{ fontSize: `${Math.max(10, fontSize - 1)}px` }}>과목</th>
-                                    <th className="border border-slate-300 w-[15%] md:w-[8%] py-1 md:py-2 text-center font-black align-middle text-slate-800" rowSpan={2} style={{ fontSize: `${Math.max(10, fontSize - 1)}px` }}>교재</th>
+                                    <th className="border border-slate-300 w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>과목</th>
+                                    <th className="border border-slate-300 w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>교재</th>
                                     {chunk.map((d, i) => {
-                                      let textColor = d.isSat ? 'text-blue-600' : d.isWeekend ? 'text-red-600' : 'text-slate-800';
-                                      return <th key={i} className={`border border-slate-300 py-1 font-extrabold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(10, fontSize - 1)}px` }}>{d.day}</th>;
+                                      let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
+                                      return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{d.day}</th>;
                                     })}
                                   </tr>
                                   <tr className="bg-slate-50 text-center">
                                     {chunk.map((d, i) => {
-                                       let textColor = d.isSat ? 'text-blue-600' : d.isWeekend ? 'text-red-600' : 'text-slate-700';
-                                       return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle break-keep tracking-tighter ${textColor}`} style={{ fontSize: `${Math.max(9, fontSize - 2)}px` }}>{d.label}</th>;
+                                       let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
+                                       return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle break-keep ${textColor}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>{d.label}</th>;
                                     })}
                                   </tr>
                                 </thead>
                                 <tbody>
                                   <tr className="bg-white text-center">
-                                    <td colSpan={2} className="sticky left-0 z-20 border border-slate-300 text-center font-black bg-slate-50 text-slate-800 align-middle py-1 tracking-tight shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ fontSize: `${Math.max(10, fontSize - 1)}px` }}>비고</td>
+                                    <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-0.5 md:py-1" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>비고</td>
                                     {chunk.map((d, i) => {
                                       const cIdx = blockIdx === 0 ? i + 1 : i + 16;
                                       const rIdx = 0;
@@ -1548,7 +1543,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                           onDoubleClick={(e) => { if (e.target.type !== 'checkbox') setEditingCell(cellId); }}
                                           className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
                                         >
-                                          <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[30px] md:min-h-[36px] relative">
+                                          <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[26px] md:min-h-[30px] relative">
                                             <textarea 
                                               id={`monthly-textarea-${rIdx}-${cIdx}`}
                                               value={val} 
@@ -1598,16 +1593,16 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 }
                                               }}
                                               style={{
-                                                fontSize: `${fontSize}px`, lineHeight: '1.15', letterSpacing: '-0.03em', opacity: isEditingThis ? 1 : 0,
+                                                fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
                                                 caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
                                                 cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
                                                 zIndex: isEditingThis ? 20 : 0
                                               }}
-                                              className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-extrabold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize tracking-tight ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                              className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
                                             />
                                             {!isEditingThis && (
                                               <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
-                                                <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.15', letterSpacing: '-0.03em' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-extrabold text-slate-800 tracking-tight">{val}</div>
+                                                <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-bold text-slate-800">{val}</div>
                                               </div>
                                             )}
                                           </div>
@@ -1628,9 +1623,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
 
                                     return (
                                       <tr key={sub} className="text-center align-middle">
-                                        <td className="sticky left-0 z-20 border border-slate-300 p-1 md:px-2 md:py-2 font-black text-center relative group bg-slate-50/50 align-middle break-keep text-slate-800 tracking-tight shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
-                                          <span style={{ fontSize: `${Math.max(10, fontSize - 1)}px` }}>{sub}</span>
-                                          <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={12}/></button>
+                                        <td className="border border-slate-300 p-0.5 md:px-1 md:py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep">
+                                          <span style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{sub}</span>
+                                          <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
                                         </td>
                                         
                                         <td key={cellIdTb}
@@ -1647,7 +1642,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                           onDoubleClick={() => setEditingCell(cellIdTb)}
                                           className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
                                         >
-                                          <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[40px] md:min-h-[50px] relative">
+                                          <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
                                             <textarea 
                                               id={`monthly-textarea-${rIdx}-${tbCIdx}`}
                                               value={tbVal} 
@@ -1700,17 +1695,17 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 }
                                               }}
                                               style={{
-                                                fontSize: `${fontSize}px`, lineHeight: '1.15', letterSpacing: '-0.03em', opacity: isEditingTb ? 1 : 0,
+                                                fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingTb ? 1 : 0,
                                                 caretColor: (!isEditingTb && isActiveTb) ? 'transparent' : 'auto',
                                                 cursor: (!isEditingTb && isActiveTb) ? 'default' : 'text',
                                                 zIndex: isEditingTb ? 20 : 0
                                               }}
-                                              className={`absolute inset-0 w-[96%] mx-auto h-full bg-white resize-none outline-none p-0 text-center font-bold text-slate-800 placeholder:text-slate-300 align-middle auto-resize break-words whitespace-pre-wrap tracking-tight ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
+                                              className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-700 placeholder:text-slate-300 align-middle auto-resize break-words whitespace-pre-wrap ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
                                             />
                                             {!isEditingTb && (
-                                              <div className="w-full h-full flex flex-col justify-center px-0.5 md:px-1 min-h-[40px] md:min-h-[50px] relative z-10 pointer-events-none">
+                                              <div className="w-full h-full flex flex-col justify-center px-0.5 md:px-1 min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-none">
                                                 {tbVal.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
-                                                  <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.15', letterSpacing: '-0.03em' }} className="font-extrabold text-slate-800 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none tracking-tight">{tbVal}</div>
+                                                  <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none">{tbVal}</div>
                                                 )}
                                               </div>
                                             )}
@@ -1746,7 +1741,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                               }}
                                               className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
                                             >
-                                              <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[40px] md:min-h-[50px] relative">
+                                              <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
                                                 <textarea 
                                                   id={`monthly-textarea-${rIdx}-${cIdx}`}
                                                   value={val} 
@@ -1771,6 +1766,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                       else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, d.full, ''); }
                                                       else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
                                                     } else if (isEditingThis) {
+                                                      // 💡 Alt+Enter 반영
                                                       if (e.key === 'Enter') {
                                                         if (e.shiftKey || e.altKey) {
                                                           if (e.altKey && !e.shiftKey) {
@@ -1795,19 +1791,19 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                     }
                                                   }}
                                                   style={{
-                                                    fontSize: `${fontSize}px`, lineHeight: '1.15', letterSpacing: '-0.03em', opacity: isEditingThis ? 1 : 0,
+                                                    fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
                                                     caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
                                                     cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
                                                     zIndex: isEditingThis ? 20 : 0
                                                   }}
-                                                  className={`absolute inset-0 w-[96%] mx-auto h-full bg-white resize-none outline-none p-0.5 text-center font-extrabold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap tracking-tight ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                                  className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
                                                 />
                                                 {!isEditingThis && (
-                                                  <div className="w-full h-full flex flex-col gap-0.5 px-0.5 py-0.5 justify-center min-h-[40px] md:min-h-[50px] relative z-10 pointer-events-auto cursor-default">
+                                                  <div className="w-full h-full flex flex-col gap-1 px-0.5 md:px-1 py-0.5 md:py-1 justify-center min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-auto cursor-default">
                                                     {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
                                                       lines.map((line, idx) => (
-                                                        <div key={idx} className="flex items-center justify-center gap-0.5 bg-white/70 rounded p-0.5 shadow-sm border border-black/5 mx-auto w-full cursor-default pointer-events-auto">
-                                                          <span style={{ fontSize: `${fontSize}px`, lineHeight: '1.15', letterSpacing: '-0.03em' }} className="font-extrabold text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none tracking-tight">{line}</span>
+                                                        <div key={idx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
+                                                          <span style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
                                                           <input type="checkbox" checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
                                                             onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
                                                             onClick={(e) => { 
@@ -1815,7 +1811,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                               setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
                                                               setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
                                                             }} 
-                                                            className="w-[10px] h-[10px] md:w-3.5 md:h-3.5 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30 ml-0.5" 
+                                                            className="w-[10px] h-[10px] md:w-3 md:h-3 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
                                                           />
                                                         </div>
                                                       ))
@@ -1838,15 +1834,15 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
 
                       {termScheduler.subjects.length > 0 && (
                         <div className="text-left flex justify-center w-full text-center mt-2 md:mt-6 overflow-x-auto custom-scrollbar pb-2">
-                          <div className="min-w-[600px] md:min-w-full w-full">
+                          <div className="min-w-[500px] md:min-w-full w-full">
                             <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-xl md:rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
                               <thead>
-                                <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(10, fontSize - 1)}px` }}>
-                                  <th className="sticky left-0 z-30 bg-slate-100 border border-slate-200 w-[15%] md:w-[10%] py-2 md:py-4 align-middle text-center break-keep shadow-[2px_0_5px_rgba(0,0,0,0.04)]">과목</th>
-                                  <th className="border border-slate-200 w-[15%] md:w-[10%] align-middle text-center break-keep">교재</th>
-                                  <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">시작</th>
-                                  <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">목표</th>
-                                  <th className="border border-slate-200 w-[50%] md:w-[60%] align-middle text-center break-keep">달성도</th>
+                                <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
+                                  <th className="border border-slate-200 w-[12%] md:w-[10%] py-2 md:py-4 align-middle text-center break-keep">과목</th>
+                                  <th className="border border-slate-200 w-[12%] md:w-[10%] align-middle text-center break-keep">교재</th>
+                                  <th className="border border-slate-200 w-[12%] md:w-[10%] align-middle text-center break-keep">시작</th>
+                                  <th className="border border-slate-200 w-[12%] md:w-[10%] align-middle text-center break-keep">목표</th>
+                                  <th className="border border-slate-200 w-[52%] md:w-[60%] align-middle text-center break-keep">달성도</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -1890,15 +1886,15 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                   }
 
                                   return rowData.map((data, index) => (
-                                    <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center text-slate-800 font-bold" style={{ fontSize: `${Math.max(10, fontSize - 1)}px` }}>
-                                      {index === 0 && <td rowSpan={rowData.length} className="sticky left-0 z-20 border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50 align-middle shadow-[2px_0_5px_rgba(0,0,0,0.04)]"><span style={{ fontSize: `${fontSize}px` }}>{sub}</span></td>}
-                                      <td className="border border-slate-200 p-1 md:p-2 text-center align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.tbName}</span></td>
-                                      <td className="border border-slate-200 bg-slate-50/5 text-center p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.firstData}</span></td>
-                                      <td className="border border-slate-200 bg-slate-50/5 text-center p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.lastData}</span></td>
+                                    <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
+                                      {index === 0 && <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${fontSize}px` }}>{sub}</span></td>}
+                                      <td className="border border-slate-200 p-1 md:p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.tbName}</span></td>
+                                      <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.firstData}</span></td>
+                                      <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.lastData}</span></td>
                                       <td className="border border-slate-200 p-1.5 md:p-3 text-center align-middle">
                                         <div className="relative w-full h-4 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
-                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-400 to-green-300 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
-                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[9px] md:text-[10px] font-black text-slate-900 drop-shadow-sm">{data.percent}%</span>
+                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
+                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[8px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{data.percent}%</span>
                                         </div>
                                       </td>
                                     </tr>
@@ -1914,11 +1910,11 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 )}
 
                 {activeTab === 'YEARLY' && (
-                  // 💡 [연간 탭 반응형 그리드 도입] 모바일 1줄, 태블릿 2줄, 큰 화면 4~6줄로 텍스트 너비 확보
-                  <div className="animate-fade-in grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-4 text-center px-2 md:px-0">
+                  // 💡 [모바일 연간 시트 가시성 확보] 화면에 꽉 차게 조절
+                  <div className="animate-fade-in grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 md:gap-4 text-center">
                     {yearlyPlan.map((plan, idx) => (
-                      <div key={idx} className="p-3 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
-                        <h4 className="font-black text-indigo-600 mb-2 md:mb-3 text-[13px] md:text-base text-center tracking-tight">{idx + 1}월 계획</h4>
+                      <div key={idx} className="p-2 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
+                        <h4 className="font-black text-indigo-600 mb-1 md:mb-3 text-[10px] md:text-base text-center">{idx + 1}월 계획</h4>
                         <textarea 
                           value={plan || ''} 
                           onChange={(e) => handleYearlyChange(idx, e.target.value)} 
@@ -1939,8 +1935,8 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                             }
                           }}
                           placeholder={`${idx + 1}월 마일스톤`} 
-                          style={{ fontSize: `${Math.max(13, fontSize)}px`, lineHeight: '1.4' }}
-                          className="w-full p-2 md:p-4 rounded-lg md:rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent auto-resize min-h-[60px] md:min-h-[100px] break-words whitespace-pre-wrap text-slate-800" 
+                          style={{ fontSize: `${Math.max(10, fontSize)}px`, lineHeight: '1.4' }}
+                          className="w-full p-1.5 md:p-4 rounded-lg md:rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent auto-resize min-h-[40px] md:min-h-[80px] break-words whitespace-pre-wrap" 
                         />
                       </div>
                     ))}
@@ -1948,23 +1944,23 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 )}
               </main>
 
-              <div className="fixed bottom-4 right-4 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center print:hidden">
+              <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center print:hidden">
                 {showAiModal ? (
-                  <div className="w-[320px] sm:w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in text-center">
-                    <div className="bg-indigo-600 p-4 md:p-5 text-white flex justify-between items-center text-center">
-                      <h3 className="font-extrabold text-base md:text-lg flex items-center justify-center gap-2 w-full text-center"><Sparkles size={18}/> AI 매직 플래너</h3>
-                      <button onClick={() => setShowAiModal(false)}><X className="w-4 h-4 md:w-5 md:h-5 text-center" /></button>
+                  <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in text-center">
+                    <div className="bg-indigo-600 p-5 text-white flex justify-between items-center text-center">
+                      <h3 className="font-extrabold text-lg flex items-center justify-center gap-2 w-full text-center"><Sparkles size={20}/> AI 매직 플래너</h3>
+                      <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5 text-center" /></button>
                     </div>
-                    <div className="p-4 md:p-6 text-center">
-                      {aiFeedback && <div className="mb-4 md:mb-6 p-3 md:p-4 rounded-xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-[11px] md:text-xs leading-relaxed">{aiFeedback}</div>}
-                      <form onSubmit={handleAiSubmit} className="relative mt-2 text-center">
-                        <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-4 pr-12 py-3 md:py-4 rounded-xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-sm md:text-base text-center" disabled={isAiProcessing} />
-                        <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-1.5 top-1.5 p-2 md:p-3.5 bg-indigo-600 text-white rounded-lg md:rounded-xl hover:bg-indigo-700 transition-colors text-center"><Send size={16} className="md:w-5 md:h-5" /></button>
+                    <div className="p-6 text-center text-center text-center">
+                      {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs leading-relaxed text-center">{aiFeedback}</div>}
+                      <form onSubmit={handleAiSubmit} className="relative mt-2 text-center text-center text-center">
+                        <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-center text-center text-center" disabled={isAiProcessing} />
+                        <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors text-center"><Send size={20} /></button>
                       </form>
                     </div>
                   </div>
                 ) : (
-                  <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-12 h-12 md:w-16 md:h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all text-center"><Sparkles className="w-5 h-5 md:w-7 md:h-7 text-center" /></button>
+                  <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all text-center"><Sparkles className="w-7 h-7 text-center" /></button>
                 )}
               </div>
             </div>
@@ -2077,7 +2073,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
                 <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">이 시트를 삭제하시겠습니까?</p>
                 <div className="flex gap-3 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">
-                  <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
+                  <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
                   <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">삭제</button>
                 </div>
               </div>
@@ -2164,7 +2160,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                         const span = row[`${day}_span`] || 1;
                         const bgColor = printConfig.colorMode === 'color' ? (getCellColor(text) || 'transparent') : 'transparent';
                         return (
-                          <td key={day} rowSpan={span} className="p-0.5 font-bold text-[9px] sm:text-[11px] leading-[1.1] text-slate-800 align-middle overflow-hidden break-all whitespace-pre-wrap tracking-tighter" style={{ ...bStyle, backgroundColor: bgColor }}>
+                          <td key={day} rowSpan={span} className="p-0.5 font-bold text-[9px] sm:text-[11px] leading-[1.1] text-slate-800 align-middle overflow-hidden break-all whitespace-pre-wrap" style={{ ...bStyle, backgroundColor: bgColor }}>
                             <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden text-center max-h-full">
                               {text}
                             </div>
