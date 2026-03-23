@@ -42,15 +42,15 @@ const parseTSV = (text) => {
   return rows;
 };
 
-// 💡 [A/B/C 콤] 스마트 매크로 자동 치환 함수
+// 💡 [A/B/C 콤] 스마트 매크로 자동 치환 함수 (시간 업데이트)
 const processComboText = (text, day) => {
   if (!text) return text;
-  const isSat = (day === 'sat' || day === '토요일' || day === '토');
+  const isSat = (day === 'sat' || day === '토요일' || day === '토' || day === 'sun' || day === '일요일' || day === '일');
   let newText = text;
 
   const times = {
-    a: isSat ? '(2:20 - 3:50)' : '(5:20 - 6:50)',
-    b: isSat ? '(3:55 - 5:25)' : '(6:55 - 8:25)',
+    a: isSat ? '(2:30 - 4:00)' : '(5:30 - 7:00)',
+    b: isSat ? '(4:00 - 5:30)' : '(7:00 - 8:30)',
     c: isSat ? '(5:30 - 7:00)' : '(8:30 - 10:00)'
   };
 
@@ -284,9 +284,57 @@ export default function App() {
       let formattedText = e.target.value;
       if (!isMonthly && id && day) {
         formattedText = processComboText(e.target.value, day);
-        if (formattedText !== e.target.value) {
+        
+        // 💡 [A/B/C콤 스마트 이동 로직]
+        const isWeekend = (day === 'sat' || day === 'sun' || day === '토요일' || day === '일요일' || day === '토' || day === '일');
+        const comboMatch = formattedText.match(/(?:개별지도\s*)?([abc])콤/i);
+        
+        let targetId = id;
+        let isCombo = false;
+        let targetSpan = 1;
+
+        if (comboMatch) {
+          const type = comboMatch[1].toLowerCase();
+          isCombo = true;
+          targetSpan = 3; // 1시간 30분 = 3칸
+          if (isWeekend) {
+            if (type === 'a') targetId = 14;      // 14:30 시작
+            else if (type === 'b') targetId = 17; // 16:00 시작
+            else if (type === 'c') targetId = 20; // 17:30 시작
+          } else {
+            if (type === 'a') targetId = 20;      // 17:30 시작
+            else if (type === 'b') targetId = 23; // 19:00 시작
+            else if (type === 'c') targetId = 26; // 20:30 시작
+          }
+        }
+
+        if (isCombo) {
+          setTimetable((prev) => {
+            let newTt = [...prev];
+            // 원래 입력하던 셀이 타겟 영역이 아닐 경우 내용 및 병합 초기화
+            if (id !== targetId) {
+               newTt[id - 1] = { ...newTt[id - 1], [day]: '', [`${day}_span`]: 1, [`${day}_hidden`]: false };
+            }
+            const startRowIdx = targetId - 1;
+            for (let i = 0; i < 32; i++) {
+              if (i === startRowIdx) {
+                newTt[i] = { ...newTt[i], [`${day}_span`]: targetSpan, [`${day}_hidden`]: false, [day]: formattedText };
+              } else if (i > startRowIdx && i < startRowIdx + targetSpan) {
+                newTt[i] = { ...newTt[i], [`${day}_span`]: 1, [`${day}_hidden`]: true, [day]: '' };
+              } else if (i < startRowIdx) {
+                const priorSpan = newTt[i][`${day}_span`];
+                if (priorSpan > 1 && i + priorSpan > startRowIdx) {
+                  newTt[i] = { ...newTt[i], [`${day}_span`]: startRowIdx - i };
+                }
+              }
+            }
+            return repairTimetable(newTt); // 타겟에 의해 가려지는 셀들 완벽히 재조정
+          });
+        } else if (formattedText !== e.target.value) {
+          // 일반적인 텍스트 변경 처리
           setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: formattedText } : row));
         }
+
       } else if (isMonthly && subject && dateKey) {
         if (subject === 'TEXTBOOK') {
           // 교재 칸은 onChange에서 실시간 처리됨
@@ -331,7 +379,7 @@ export default function App() {
     }
   }, [monthlySelection, editingCell, activeTab]);
 
-  // 💡 [월간 시트] 방향키 이동 계산 로직 (교재 칸 0, 15 포함하여 엑셀처럼 완벽 제어)
+  // 💡 [월간 시트] 방향키 이동 계산 로직
   const moveFocusMonthly = (rIdx, cIdx, dir) => {
     let nextRIdx = rIdx; let nextCIdx = cIdx;
     
@@ -399,6 +447,14 @@ export default function App() {
     const today = new Date(); today.setHours(0, 0, 0, 0); const target = new Date(targetDate); target.setHours(0, 0, 0, 0);
     const diff = target.getTime() - today.getTime(); const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     if (days === 0) return 'D-Day'; return days > 0 ? `D-${days}` : `D+${Math.abs(days)}`;
+  };
+
+  // 💡 [디데이 형식 함수]
+  const formatDDayDate = (dateStr) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) return `${parseInt(parts[1], 10)}.${parseInt(parts[2], 10)}`;
+    return '';
   };
 
   useEffect(() => {
@@ -826,7 +882,7 @@ export default function App() {
   const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
   const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
 
-  // 💡 [AI 조교 지능 100배 향상] 과목 추가 기능 지원 및 교재/일정의 명확한 맥락 분리 적용
+  // 💡 AI 조교 API
   const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
     if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
     for (let i = 0; i < retries; i++) {
@@ -1016,7 +1072,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
 
   if (view === 'LOADING') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div></div>;
   if (view === 'PLANNER_DELETED_BLANK') return <div className="min-h-screen bg-slate-50" />;
-  if (isNotFound && view === 'PLANNER') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6"><h1 className="text-2xl font-black mb-2">삭제된 플래너입니다.</h1><button onClick={() => handleSafeBack('TEACHER_DASHBOARD')} className="px-8 py-3 bg-slate-800 text-white rounded-xl">확인</button></div>;
+  
+  // 💡 [삭제된 시트 확인 버튼 제거 완료]
+  if (isNotFound && view === 'PLANNER') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6"><h1 className="text-2xl font-black text-slate-400">삭제된 시트입니다.</h1></div>;
 
   const wBounds = getSelectionBounds(); const isWMulti = wBounds && (wBounds.minId !== wBounds.maxId || wBounds.minDayIdx !== wBounds.maxDayIdx);
   const mb = getMonthlyBounds();
@@ -1177,9 +1235,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                             {dDay ? (
                               <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
                                 <Calendar className="w-3 h-3" />
+                                {/* 💡 [디데이 포맷 수정] 중간고사(4.23) D-31 */}
                                 <span className="font-bold">
-                                  {dDay.title}
-                                  {dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)})` : ''} {calculateDDay(dDay.date)}
+                                  {dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}
                                 </span>
                                 <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
                               </div>
@@ -1194,15 +1252,16 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           
                           <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto relative">
                             
-                            <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
-                              <Printer className="w-3 h-3" /> <span className="hidden sm:inline">인쇄</span>
+                            {/* 💡 [모바일 환경 인쇄 버튼 숨김] */}
+                            <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="hidden sm:flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                              <Printer className="w-3 h-3" /> <span>인쇄</span>
                             </button>
 
                             <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[60]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
                               <Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span>
                             </button>
 
-                            <div className="h-5 w-px mx-0.5 bg-slate-200"></div>
+                            <div className="h-5 w-px mx-0.5 bg-slate-200 hidden md:block"></div>
 
                             {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 bg-indigo-600 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold text-xs"><Merge className="w-3 h-3" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3" /> <span className="hidden sm:inline">드래그</span></div>}
                             <button onClick={unmergeCells} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3" /> <span className="hidden sm:inline">분할</span></button>
@@ -1210,7 +1269,8 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           </div>
                         </div>
                         
-                        <div className="w-full flex-1 relative select-none rounded-lg border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
+                        {/* 💡 [주간 시트 한눈에 들어오게 모바일 가로 스크롤 제거] */}
+                        <div className="w-full flex-1 relative select-none rounded-lg border-y md:border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto overflow-x-hidden custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
                           <table className="w-full h-full min-h-full text-center border-collapse table-fixed">
                             <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
                               <tr style={{ height: '30px' }}>
@@ -1242,7 +1302,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                 return (
                                   <tr key={row.id} className="group text-center h-[1%]">
                                     <td className={`p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none ${timeBgClass}`}>
-                                      <div className={`flex flex-col items-center justify-center w-full h-full min-h-[28px] ${timeTextClass}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>
+                                      <div className={`flex flex-col items-center justify-center w-full h-full min-h-[22px] md:min-h-[28px] ${timeTextClass}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>
                                         <span>{row.time}</span>
                                       </div>
                                     </td>
@@ -1281,7 +1341,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                           }}
                                           onDoubleClick={() => setEditingCell(cellId)}
                                         >
-                                          <div className="w-full h-full flex flex-col items-center justify-center p-0.5 text-center min-h-[24px] md:min-h-[28px]">
+                                          <div className="w-full h-full flex flex-col items-center justify-center p-0.5 md:p-1 text-center min-h-[22px] md:min-h-[28px]">
                                             <textarea 
                                               id={`textarea-${row.id}-${day}`}
                                               value={row[day] || ''} 
@@ -1295,7 +1355,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
                                                 cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
                                                 fontSize: `${fontSize}px`,
-                                                lineHeight: '1.3'
+                                                lineHeight: '1.2'
                                               }}
                                               onCompositionStart={(e) => {
                                                 if (!isEditingThis && isActiveThis) {
@@ -1362,23 +1422,24 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                   }
                                                 } else if (isEditingThis) {
                                                   if (e.key === 'Enter') {
-                                                    if (e.shiftKey) {
-                                                      // native behavior
-                                                    } else if (e.altKey) {
-                                                      e.preventDefault();
-                                                      const target = e.currentTarget;
-                                                      const start = target.selectionStart;
-                                                      const end = target.selectionEnd;
-                                                      const valStr = target.value;
-                                                      const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                      handleTimetableChange(row.id, day, newVal);
-                                                      setTimeout(() => {
-                                                        const targetEl = document.getElementById(`textarea-${row.id}-${day}`);
-                                                        if (targetEl) {
-                                                          targetEl.setSelectionRange(start + 1, start + 1);
-                                                          autoResize({ target: targetEl });
-                                                        }
-                                                      }, 0);
+                                                    // 💡 [Alt+Enter 및 Shift+Enter 줄바꿈 적용]
+                                                    if (e.shiftKey || e.altKey) {
+                                                      if (e.altKey && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        const target = e.currentTarget;
+                                                        const start = target.selectionStart;
+                                                        const end = target.selectionEnd;
+                                                        const valStr = target.value;
+                                                        const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                                        handleTimetableChange(row.id, day, newVal);
+                                                        setTimeout(() => {
+                                                          const targetEl = document.getElementById(`textarea-${row.id}-${day}`);
+                                                          if (targetEl) {
+                                                            targetEl.setSelectionRange(start + 1, start + 1);
+                                                            autoResize({ target: targetEl });
+                                                          }
+                                                        }, 0);
+                                                      }
                                                     } else {
                                                       e.preventDefault(); 
                                                       setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
@@ -1392,7 +1453,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                   }
                                                 }
                                               }} 
-                                              className={`w-full p-1 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle auto-resize ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
+                                              className={`w-full p-0 md:p-1 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle auto-resize break-words whitespace-pre-wrap ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
                                               rows={1}
                                             />
                                           </div>
@@ -1411,21 +1472,21 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 )}
 
                 {activeTab === 'MONTHLY' && (
-                  <div className="animate-fade-in flex flex-col gap-6 text-center w-full">
+                  <div className="animate-fade-in flex flex-col gap-6 text-center w-full overflow-x-hidden">
                     <div className="p-2 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm w-full text-center">
-                      <div className="flex items-center justify-between mb-6 px-2 text-center">
-                        <div className="flex items-center gap-4 text-center">
+                      <div className="flex items-center justify-between mb-4 md:mb-6 px-2 text-center mt-2 md:mt-0">
+                        <div className="flex items-center gap-2 md:gap-4 text-center">
                           <div className="flex gap-2 text-center">
-                            <button onClick={handlePrev4Weeks} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronLeft size={20}/></button>
-                            <button onClick={handleNext4Weeks} className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronRight size={20}/></button>
+                            <button onClick={handlePrev4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronLeft size={16} className="md:w-5 md:h-5"/></button>
+                            <button onClick={handleNext4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronRight size={16} className="md:w-5 md:h-5"/></button>
                           </div>
-                          <div className="font-extrabold text-slate-600 text-sm hidden sm:block">
+                          <div className="font-extrabold text-slate-600 text-[10px] md:text-sm whitespace-nowrap">
                             {currentDate.getFullYear()}.{String(currentDate.getMonth() + 1).padStart(2, '0')}.{String(currentDate.getDate()).padStart(2, '0')} 기준
                           </div>
                         </div>
-                        <div className="flex gap-3 text-center">
-                          <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-xs md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={16}/> <span className="hidden sm:inline">과목 추가</span></button>
-                          <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-xs md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={16}/> <span className="hidden sm:inline">일정 초기화</span></button>
+                        <div className="flex gap-2 text-center">
+                          <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">과목 추가</span></button>
+                          <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">일정 초기화</span></button>
                         </div>
                       </div>
 
@@ -1433,386 +1494,370 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                         const chunkStartIndex = blockIdx * 14;
                         const chunk = allDates.slice(chunkStartIndex, chunkStartIndex + 14);
                         return (
-                          <div key={blockIdx} className="w-full relative select-none" onMouseLeave={handleMouseUp}>
-                            <table className="w-full border-collapse mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
-                              <thead>
-                                <tr className="bg-slate-50 text-center">
-                                  <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>과목</th>
-                                  <th className="border border-slate-300 w-[6%] py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>교재</th>
-                                  {chunk.map((d, i) => {
-                                    let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                    return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{d.day}</th>;
-                                  })}
-                                </tr>
-                                <tr className="bg-slate-50 text-center">
-                                  {chunk.map((d, i) => {
-                                     let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                     return <th key={i} className={`border border-slate-300 py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>{d.label}</th>;
-                                  })}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                <tr className="bg-white text-center">
-                                  <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-1" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>비고</td>
-                                  {chunk.map((d, i) => {
-                                    const cIdx = blockIdx === 0 ? i + 1 : i + 16;
-                                    const rIdx = 0;
-                                    const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
-                                    const cellId = `note-${d.full}`;
-                                    const isEditingThis = editingCell === cellId;
-                                    const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
-                                    const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
-                                    const val = termScheduler.topNotes[d.full] || '';
+                          // 💡 [월간 시트 가로 스와이프 기능] 모바일에서 찌그러지지 않고 넘겨서 볼 수 있음
+                          <div key={blockIdx} className="w-full relative select-none overflow-x-auto custom-scrollbar pb-3" onMouseLeave={handleMouseUp}>
+                            <div className="min-w-[800px] md:min-w-full">
+                              <table className="w-full border-collapse mb-4 md:mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
+                                <thead>
+                                  <tr className="bg-slate-50 text-center">
+                                    <th className="border border-slate-300 w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>과목</th>
+                                    <th className="border border-slate-300 w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>교재</th>
+                                    {chunk.map((d, i) => {
+                                      let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
+                                      return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{d.day}</th>;
+                                    })}
+                                  </tr>
+                                  <tr className="bg-slate-50 text-center">
+                                    {chunk.map((d, i) => {
+                                       let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
+                                       return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle break-keep ${textColor}`} style={{ fontSize: `${Math.max(8, fontSize - 2)}px` }}>{d.label}</th>;
+                                    })}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  <tr className="bg-white text-center">
+                                    <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-0.5 md:py-1" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>비고</td>
+                                    {chunk.map((d, i) => {
+                                      const cIdx = blockIdx === 0 ? i + 1 : i + 16;
+                                      const rIdx = 0;
+                                      const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
+                                      const cellId = `note-${d.full}`;
+                                      const isEditingThis = editingCell === cellId;
+                                      const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                      const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
+                                      const val = termScheduler.topNotes[d.full] || '';
 
-                                    return (
-                                      <td key={cellId} 
-                                        onMouseDown={(e) => {
-                                          if (e.target.type === 'checkbox') return;
-                                          if (editingCell !== cellId) setEditingCell(null);
-                                          handleMonthlyMouseDown(e, rIdx, cIdx);
-                                        }}
-                                        onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
-                                        onClick={(e) => { 
-                                          if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
-                                            setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
-                                          }
-                                        }}
-                                        onDoubleClick={(e) => { if (e.target.type !== 'checkbox') setEditingCell(cellId); }}
-                                        className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
-                                      >
-                                        <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[30px] relative">
-                                          <textarea 
-                                            id={`monthly-textarea-${rIdx}-${cIdx}`}
-                                            value={val} 
-                                            onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
-                                            onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, 'TOP_NOTE', d.full)} rows={1}
-                                            onCompositionStart={(e) => {
-                                              if (!isEditingThis && isActiveThis) {
-                                                e.currentTarget.value = ''; handleTopNoteChange(d.full, '');
-                                                setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
-                                              }
-                                            }}
-                                            onKeyDown={(e) => { 
-                                              if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                              if (!isEditingThis && isActiveThis) {
-                                                if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
-                                                else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
-                                                else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
-                                                else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
-                                                else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, ''); }
-                                                else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
-                                              } else if (isEditingThis) {
-                                                if (e.key === 'Enter') {
-                                                  if (e.shiftKey) {
-                                                    // native
-                                                  } else if (e.altKey) {
-                                                    e.preventDefault();
-                                                    const target = e.currentTarget;
-                                                    const start = target.selectionStart;
-                                                    const end = target.selectionEnd;
-                                                    const valStr = target.value;
-                                                    const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                    handleTopNoteChange(d.full, newVal);
-                                                    setTimeout(() => {
-                                                      const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
-                                                      if (targetEl) {
-                                                        targetEl.setSelectionRange(start + 1, start + 1);
-                                                        autoResize({ target: targetEl });
-                                                      }
-                                                    }, 0);
-                                                  } else {
-                                                    e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
-                                                  }
+                                      return (
+                                        <td key={cellId} 
+                                          onMouseDown={(e) => {
+                                            if (e.target.type === 'checkbox') return;
+                                            if (editingCell !== cellId) setEditingCell(null);
+                                            handleMonthlyMouseDown(e, rIdx, cIdx);
+                                          }}
+                                          onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
+                                          onClick={(e) => { 
+                                            if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
+                                              setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
+                                            }
+                                          }}
+                                          onDoubleClick={(e) => { if (e.target.type !== 'checkbox') setEditingCell(cellId); }}
+                                          className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
+                                        >
+                                          <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[26px] md:min-h-[30px] relative">
+                                            <textarea 
+                                              id={`monthly-textarea-${rIdx}-${cIdx}`}
+                                              value={val} 
+                                              onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
+                                              onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, 'TOP_NOTE', d.full)} rows={1}
+                                              onCompositionStart={(e) => {
+                                                if (!isEditingThis && isActiveThis) {
+                                                  e.currentTarget.value = ''; handleTopNoteChange(d.full, '');
+                                                  setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
                                                 }
-                                                else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
-                                              }
-                                            }}
-                                            style={{
-                                              fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
-                                              caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                              cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                              zIndex: isEditingThis ? 20 : 0
-                                            }}
-                                            className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
-                                          />
-                                          {!isEditingThis && (
-                                            <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
-                                              <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-bold text-slate-800">{val}</div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      </td>
-                                    )
-                                  })}
-                                </tr>
-                                {termScheduler.subjects.map((sub, sIdx) => {
-                                  const rIdx = sIdx + 1;
-                                  
-                                  // 💡 [수정] 교재(Textbook) 칸 엑셀화 통합 (좌표 0, 15)
-                                  const tbCIdx = blockIdx === 0 ? 0 : 15;
-                                  const isSelTb = mb && rIdx >= mb.minR && rIdx <= mb.maxR && tbCIdx >= mb.minC && tbCIdx <= mb.maxC;
-                                  const cellIdTb = `textbook-${sub}-${blockIdx}`;
-                                  const isEditingTb = editingCell === cellIdTb;
-                                  const isSingleSelTb = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
-                                  const isActiveTb = isSingleSelTb && monthlySelection.r1 === rIdx && monthlySelection.c1 === tbCIdx;
-                                  const tbVal = termScheduler.textbooks[sub] || '';
-
-                                  return (
-                                    <tr key={sub} className="text-center align-middle">
-                                      <td className="border border-slate-300 px-1 py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep">
-                                        <span style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{sub}</span>
-                                        <button onClick={() => removeSubjectRow(sub)} className="absolute right-0.5 top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
-                                      </td>
-                                      
-                                      <td key={cellIdTb}
-                                        onMouseDown={(e) => {
-                                          if (editingCell !== cellIdTb) setEditingCell(null);
-                                          handleMonthlyMouseDown(e, rIdx, tbCIdx);
-                                        }}
-                                        onMouseEnter={() => handleMonthlyMouseEnter(rIdx, tbCIdx)}
-                                        onClick={(e) => { 
-                                          if (!e.shiftKey && !isEditingTb) {
-                                            setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`); if (el) el.focus(); }, 0);
-                                          }
-                                        }}
-                                        onDoubleClick={() => setEditingCell(cellIdTb)}
-                                        className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
-                                      >
-                                        <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[50px] relative">
-                                          <textarea 
-                                            id={`monthly-textarea-${rIdx}-${tbCIdx}`}
-                                            value={tbVal} 
-                                            onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
-                                            onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, 'TEXTBOOK', sub)} rows={1}
-                                            onCompositionStart={(e) => {
-                                              if (!isEditingTb && isActiveTb) {
-                                                e.currentTarget.value = ''; handleTermTextbookChange(sub, '');
-                                                setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx });
-                                              }
-                                            }}
-                                            onKeyDown={(e) => { 
-                                              if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                              if (!isEditingTb && isActiveTb) {
-                                                if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellIdTb); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'DOWN'); }
-                                                else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'UP'); }
-                                                else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'RIGHT'); }
-                                                else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'LEFT'); }
-                                                else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, ''); }
-                                                else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
-                                              } else if (isEditingTb) {
-                                                if (e.key === 'Enter') {
-                                                  if (e.shiftKey) {
-                                                    // native
-                                                  } else if (e.altKey) {
-                                                    e.preventDefault();
-                                                    const target = e.currentTarget;
-                                                    const start = target.selectionStart;
-                                                    const end = target.selectionEnd;
-                                                    const valStr = target.value;
-                                                    const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                    handleTermTextbookChange(sub, newVal);
-                                                    setTimeout(() => {
-                                                      const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`);
-                                                      if (targetEl) {
-                                                        targetEl.setSelectionRange(start + 1, start + 1);
-                                                        autoResize({ target: targetEl });
-                                                      }
-                                                    }, 0);
-                                                  } else {
-                                                    e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, 'DOWN');
-                                                  }
-                                                }
-                                                else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
-                                              }
-                                            }}
-                                            style={{
-                                              fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingTb ? 1 : 0,
-                                              caretColor: (!isEditingTb && isActiveTb) ? 'transparent' : 'auto',
-                                              cursor: (!isEditingTb && isActiveTb) ? 'default' : 'text',
-                                              zIndex: isEditingTb ? 20 : 0
-                                            }}
-                                            className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-700 placeholder:text-slate-300 align-middle auto-resize ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
-                                          />
-                                          {!isEditingTb && (
-                                            <div className="w-full h-full flex flex-col justify-center px-1 min-h-[40px] relative z-10 pointer-events-none">
-                                              {tbVal.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
-                                                <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-words whitespace-pre-wrap pointer-events-none">{tbVal}</div>
-                                              )}
-                                            </div>
-                                          )}
-                                        </div>
-                                      </td>
-
-                                      {/* 💡 날짜 스케줄 셀 영역 */}
-                                      {chunk.map((d, i) => {
-                                        const cIdx = blockIdx === 0 ? i + 1 : i + 16;
-                                        const val = termScheduler.cells[`${sub}-${d.full}`] || '';
-                                        const lines = val.split('\n').filter(l => l.trim() !== '');
-                                        const cellId = `${sub}-${d.full}`;
-                                        const isEditingThis = editingCell === cellId;
-                                        const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
-                                        const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
-                                        const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
-
-                                        return (
-                                          <td key={cellId}
-                                            onMouseDown={(e) => {
-                                              if (e.target.type === 'checkbox') return;
-                                              if (editingCell !== cellId) setEditingCell(null);
-                                              handleMonthlyMouseDown(e, rIdx, cIdx);
-                                            }}
-                                            onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
-                                            onClick={(e) => { 
-                                              if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
-                                                setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
-                                              }
-                                            }}
-                                            onDoubleClick={(e) => {
-                                              if (e.target.type !== 'checkbox') setEditingCell(cellId);
-                                            }}
-                                            className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
-                                          >
-                                            <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[50px] relative">
-                                              <textarea 
-                                                id={`monthly-textarea-${rIdx}-${cIdx}`}
-                                                value={val} 
-                                                onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
-                                                onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, sub, d.full)} rows={1}
-                                                onCompositionStart={(e) => {
-                                                  if (!isEditingThis && isActiveThis) {
-                                                    e.currentTarget.value = ''; handleTermCellChange(sub, d.full, '');
-                                                    setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
-                                                  }
-                                                }}
-                                                onKeyDown={(e) => { 
-                                                  if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                  if (!isEditingThis && isActiveThis) {
-                                                    if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                    else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
-                                                    else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
-                                                    else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
-                                                    else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
-                                                    else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                    else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, d.full, ''); }
-                                                    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
-                                                  } else if (isEditingThis) {
-                                                    if (e.key === 'Enter') {
-                                                      if (e.shiftKey) {
-                                                        // native behavior
-                                                      } else if (e.altKey) {
+                                              }}
+                                              onKeyDown={(e) => { 
+                                                if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                if (!isEditingThis && isActiveThis) {
+                                                  if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                  else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                  else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
+                                                  else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
+                                                  else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
+                                                  else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                  else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, ''); }
+                                                  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+                                                } else if (isEditingThis) {
+                                                  // 💡 Alt+Enter 반영
+                                                  if (e.key === 'Enter') {
+                                                    if (e.shiftKey || e.altKey) {
+                                                      if (e.altKey && !e.shiftKey) {
                                                         e.preventDefault();
                                                         const target = e.currentTarget;
                                                         const start = target.selectionStart;
                                                         const end = target.selectionEnd;
                                                         const valStr = target.value;
                                                         const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                        handleTermCellChange(sub, d.full, newVal);
+                                                        handleTopNoteChange(d.full, newVal);
                                                         setTimeout(() => {
                                                           const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
+                                                          if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
+                                                        }, 0);
+                                                      }
+                                                    } else {
+                                                      e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
+                                                    }
+                                                  }
+                                                  else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                  else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                }
+                                              }}
+                                              style={{
+                                                fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
+                                                caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                zIndex: isEditingThis ? 20 : 0
+                                              }}
+                                              className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                            />
+                                            {!isEditingThis && (
+                                              <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
+                                                <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-bold text-slate-800">{val}</div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </td>
+                                      )
+                                    })}
+                                  </tr>
+                                  {termScheduler.subjects.map((sub, sIdx) => {
+                                    const rIdx = sIdx + 1;
+                                    
+                                    const tbCIdx = blockIdx === 0 ? 0 : 15;
+                                    const isSelTb = mb && rIdx >= mb.minR && rIdx <= mb.maxR && tbCIdx >= mb.minC && tbCIdx <= mb.maxC;
+                                    const cellIdTb = `textbook-${sub}-${blockIdx}`;
+                                    const isEditingTb = editingCell === cellIdTb;
+                                    const isSingleSelTb = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                    const isActiveTb = isSingleSelTb && monthlySelection.r1 === rIdx && monthlySelection.c1 === tbCIdx;
+                                    const tbVal = termScheduler.textbooks[sub] || '';
+
+                                    return (
+                                      <tr key={sub} className="text-center align-middle">
+                                        <td className="border border-slate-300 p-0.5 md:px-1 md:py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep">
+                                          <span style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{sub}</span>
+                                          <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
+                                        </td>
+                                        
+                                        <td key={cellIdTb}
+                                          onMouseDown={(e) => {
+                                            if (editingCell !== cellIdTb) setEditingCell(null);
+                                            handleMonthlyMouseDown(e, rIdx, tbCIdx);
+                                          }}
+                                          onMouseEnter={() => handleMonthlyMouseEnter(rIdx, tbCIdx)}
+                                          onClick={(e) => { 
+                                            if (!e.shiftKey && !isEditingTb) {
+                                              setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`); if (el) el.focus(); }, 0);
+                                            }
+                                          }}
+                                          onDoubleClick={() => setEditingCell(cellIdTb)}
+                                          className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
+                                        >
+                                          <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
+                                            <textarea 
+                                              id={`monthly-textarea-${rIdx}-${tbCIdx}`}
+                                              value={tbVal} 
+                                              onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
+                                              onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, 'TEXTBOOK', sub)} rows={1}
+                                              onCompositionStart={(e) => {
+                                                if (!isEditingTb && isActiveTb) {
+                                                  e.currentTarget.value = ''; handleTermTextbookChange(sub, '');
+                                                  setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx });
+                                                }
+                                              }}
+                                              onKeyDown={(e) => { 
+                                                if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                if (!isEditingTb && isActiveTb) {
+                                                  if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellIdTb); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                  else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'DOWN'); }
+                                                  else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'UP'); }
+                                                  else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'RIGHT'); }
+                                                  else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'LEFT'); }
+                                                  else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                  else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, ''); }
+                                                  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
+                                                } else if (isEditingTb) {
+                                                  // 💡 Alt+Enter 반영
+                                                  if (e.key === 'Enter') {
+                                                    if (e.shiftKey || e.altKey) {
+                                                      if (e.altKey && !e.shiftKey) {
+                                                        e.preventDefault();
+                                                        const target = e.currentTarget;
+                                                        const start = target.selectionStart;
+                                                        const end = target.selectionEnd;
+                                                        const valStr = target.value;
+                                                        const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                                        handleTermTextbookChange(sub, newVal);
+                                                        setTimeout(() => {
+                                                          const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`);
                                                           if (targetEl) {
                                                             targetEl.setSelectionRange(start + 1, start + 1);
                                                             autoResize({ target: targetEl });
                                                           }
                                                         }, 0);
-                                                      } else {
-                                                        e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
                                                       }
+                                                    } else {
+                                                      e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, 'DOWN');
                                                     }
-                                                    else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                    else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
                                                   }
-                                                }}
-                                                style={{
-                                                  fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
-                                                  caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                                  cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                                  zIndex: isEditingThis ? 20 : 0
-                                                }}
-                                                className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
-                                              />
-                                              {!isEditingThis && (
-                                                <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[40px] relative z-10 pointer-events-auto cursor-default">
-                                                  {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
-                                                    lines.map((line, idx) => (
-                                                      <div key={idx} className="flex items-center justify-center gap-1 bg-white/70 rounded px-1 py-1 shadow-sm border border-black/5 mx-auto w-[95%] cursor-default pointer-events-auto">
-                                                        <span style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-words whitespace-pre-wrap pointer-events-none">{line}</span>
-                                                        <input type="checkbox" checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
-                                                          onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
-                                                          onClick={(e) => { 
-                                                            e.stopPropagation(); 
-                                                            setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
-                                                            setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
-                                                          }} 
-                                                          className="w-3 h-3 md:w-4 md:h-4 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
-                                                        />
-                                                      </div>
-                                                    ))
-                                                  )}
-                                                </div>
-                                              )}
-                                            </div>
-                                          </td>
-                                        );
-                                      })}
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
+                                                  else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                  else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                }
+                                              }}
+                                              style={{
+                                                fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingTb ? 1 : 0,
+                                                caretColor: (!isEditingTb && isActiveTb) ? 'transparent' : 'auto',
+                                                cursor: (!isEditingTb && isActiveTb) ? 'default' : 'text',
+                                                zIndex: isEditingTb ? 20 : 0
+                                              }}
+                                              className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-700 placeholder:text-slate-300 align-middle auto-resize break-words whitespace-pre-wrap ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
+                                            />
+                                            {!isEditingTb && (
+                                              <div className="w-full h-full flex flex-col justify-center px-0.5 md:px-1 min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-none">
+                                                {tbVal.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
+                                                  <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none">{tbVal}</div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </td>
+
+                                        {/* 💡 날짜 스케줄 셀 영역 */}
+                                        {chunk.map((d, i) => {
+                                          const cIdx = blockIdx === 0 ? i + 1 : i + 16;
+                                          const val = termScheduler.cells[`${sub}-${d.full}`] || '';
+                                          const lines = val.split('\n').filter(l => l.trim() !== '');
+                                          const cellId = `${sub}-${d.full}`;
+                                          const isEditingThis = editingCell === cellId;
+                                          const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
+                                          const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                          const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
+
+                                          return (
+                                            <td key={cellId}
+                                              onMouseDown={(e) => {
+                                                if (e.target.type === 'checkbox') return;
+                                                if (editingCell !== cellId) setEditingCell(null);
+                                                handleMonthlyMouseDown(e, rIdx, cIdx);
+                                              }}
+                                              onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
+                                              onClick={(e) => { 
+                                                if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
+                                                  setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
+                                                }
+                                              }}
+                                              onDoubleClick={(e) => {
+                                                if (e.target.type !== 'checkbox') setEditingCell(cellId);
+                                              }}
+                                              className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
+                                            >
+                                              <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
+                                                <textarea 
+                                                  id={`monthly-textarea-${rIdx}-${cIdx}`}
+                                                  value={val} 
+                                                  onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
+                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, sub, d.full)} rows={1}
+                                                  onCompositionStart={(e) => {
+                                                    if (!isEditingThis && isActiveThis) {
+                                                      e.currentTarget.value = ''; handleTermCellChange(sub, d.full, '');
+                                                      setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => { 
+                                                    if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                    if (!isEditingThis && isActiveThis) {
+                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                      else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                      else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
+                                                      else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
+                                                      else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, d.full, ''); }
+                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+                                                    } else if (isEditingThis) {
+                                                      // 💡 Alt+Enter 반영
+                                                      if (e.key === 'Enter') {
+                                                        if (e.shiftKey || e.altKey) {
+                                                          if (e.altKey && !e.shiftKey) {
+                                                            e.preventDefault();
+                                                            const target = e.currentTarget;
+                                                            const start = target.selectionStart;
+                                                            const end = target.selectionEnd;
+                                                            const valStr = target.value;
+                                                            const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                                            handleTermCellChange(sub, d.full, newVal);
+                                                            setTimeout(() => {
+                                                              const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
+                                                              if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
+                                                            }, 0);
+                                                          }
+                                                        } else {
+                                                          e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
+                                                        }
+                                                      }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                    }
+                                                  }}
+                                                  style={{
+                                                    fontSize: `${fontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
+                                                    caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                    cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                    zIndex: isEditingThis ? 20 : 0
+                                                  }}
+                                                  className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                                />
+                                                {!isEditingThis && (
+                                                  <div className="w-full h-full flex flex-col gap-1 px-0.5 md:px-1 py-0.5 md:py-1 justify-center min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-auto cursor-default">
+                                                    {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
+                                                      lines.map((line, idx) => (
+                                                        <div key={idx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
+                                                          <span style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
+                                                          <input type="checkbox" checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
+                                                            onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
+                                                            onClick={(e) => { 
+                                                              e.stopPropagation(); 
+                                                              setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
+                                                              setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
+                                                            }} 
+                                                            className="w-[10px] h-[10px] md:w-3 md:h-3 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
+                                                          />
+                                                        </div>
+                                                      ))
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
+                                          );
+                                        })}
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
                           </div>
                         );
                       })}
 
                       {termScheduler.subjects.length > 0 && (
-                        <div className="text-left flex justify-center w-full text-center mt-6">
-                          <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
-                            <thead>
-                              <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
-                                <th className="border border-slate-200 w-[10%] py-3 md:py-4 align-middle text-center break-keep">과목</th>
-                                <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">교재</th>
-                                <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">시작</th>
-                                <th className="border border-slate-200 w-[10%] align-middle text-center break-keep">목표</th>
-                                <th className="border border-slate-200 w-[60%] align-middle text-center break-keep">달성도</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {termScheduler.subjects.map((sub) => {
-                                const textbookVal = termScheduler.textbooks[sub] || '';
-                                const tbNames = Array.from(new Set(textbookVal.split('\n').map(t => t.trim()).filter(t => t !== '')));
-                                const rowData = [];
+                        <div className="text-left flex justify-center w-full text-center mt-2 md:mt-6 overflow-x-auto custom-scrollbar pb-2">
+                          <div className="min-w-[500px] md:min-w-full w-full">
+                            <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-xl md:rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle">
+                              <thead>
+                                <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
+                                  <th className="border border-slate-200 w-[12%] md:w-[10%] py-2 md:py-4 align-middle text-center break-keep">과목</th>
+                                  <th className="border border-slate-200 w-[12%] md:w-[10%] align-middle text-center break-keep">교재</th>
+                                  <th className="border border-slate-200 w-[12%] md:w-[10%] align-middle text-center break-keep">시작</th>
+                                  <th className="border border-slate-200 w-[12%] md:w-[10%] align-middle text-center break-keep">목표</th>
+                                  <th className="border border-slate-200 w-[52%] md:w-[60%] align-middle text-center break-keep">달성도</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {termScheduler.subjects.map((sub) => {
+                                  const textbookVal = termScheduler.textbooks[sub] || '';
+                                  const tbNames = Array.from(new Set(textbookVal.split('\n').map(t => t.trim()).filter(t => t !== '')));
+                                  const rowData = [];
 
-                                if (tbNames.length === 0) {
-                                  let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
-                                  allDates.forEach(d => {
-                                    const val = termScheduler.cells[`${sub}-${d.full}`] || "";
-                                    if (val.trim() !== "") {
-                                      val.split('\n').forEach((lineText, idx) => {
-                                        if (lineText.trim() !== "") {
-                                          if (firstData === "-") firstData = lineText.trim();
-                                          lastData = lineText.trim(); totalItems++;
-                                          if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
-                                        }
-                                      });
-                                    }
-                                  });
-                                  rowData.push({ tbName: "-", firstData, lastData, percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0 });
-                                } else {
-                                  tbNames.forEach((tbName) => {
+                                  if (tbNames.length === 0) {
                                     let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
                                     allDates.forEach(d => {
                                       const val = termScheduler.cells[`${sub}-${d.full}`] || "";
                                       if (val.trim() !== "") {
                                         val.split('\n').forEach((lineText, idx) => {
-                                          if (lineText.trim() !== "" && lineText.trim().includes(tbName)) {
+                                          if (lineText.trim() !== "") {
                                             if (firstData === "-") firstData = lineText.trim();
                                             lastData = lineText.trim(); totalItems++;
                                             if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
@@ -1820,27 +1865,44 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                         });
                                       }
                                     });
-                                    rowData.push({ tbName, firstData, lastData, percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0 });
-                                  });
-                                }
+                                    rowData.push({ tbName: "-", firstData, lastData, percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0 });
+                                  } else {
+                                    tbNames.forEach((tbName) => {
+                                      let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
+                                      allDates.forEach(d => {
+                                        const val = termScheduler.cells[`${sub}-${d.full}`] || "";
+                                        if (val.trim() !== "") {
+                                          val.split('\n').forEach((lineText, idx) => {
+                                            if (lineText.trim() !== "" && lineText.trim().includes(tbName)) {
+                                              if (firstData === "-") firstData = lineText.trim();
+                                              lastData = lineText.trim(); totalItems++;
+                                              if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
+                                            }
+                                          });
+                                        }
+                                      });
+                                      rowData.push({ tbName, firstData, lastData, percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0 });
+                                    });
+                                  }
 
-                                return rowData.map((data, index) => (
-                                  <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
-                                    {index === 0 && <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${fontSize}px` }}>{sub}</span></td>}
-                                    <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.tbName}</span></td>
-                                    <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.firstData}</span></td>
-                                    <td className="border border-slate-200 bg-slate-50/5 text-center font-black px-2 md:px-3 py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.lastData}</span></td>
-                                    <td className="border border-slate-200 p-2 md:p-3 text-center align-middle">
-                                      <div className="relative w-full h-5 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
-                                        <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
-                                        <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[9px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{data.percent}%</span>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ));
-                              })}
-                            </tbody>
-                          </table>
+                                  return rowData.map((data, index) => (
+                                    <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
+                                      {index === 0 && <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${fontSize}px` }}>{sub}</span></td>}
+                                      <td className="border border-slate-200 p-1 md:p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.tbName}</span></td>
+                                      <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.firstData}</span></td>
+                                      <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.lastData}</span></td>
+                                      <td className="border border-slate-200 p-1.5 md:p-3 text-center align-middle">
+                                        <div className="relative w-full h-4 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
+                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
+                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[8px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{data.percent}%</span>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ));
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1848,10 +1910,11 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 )}
 
                 {activeTab === 'YEARLY' && (
-                  <div className="animate-fade-in grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-center text-center">
+                  // 💡 [모바일 연간 시트 가시성 확보] 화면에 꽉 차게 조절
+                  <div className="animate-fade-in grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 md:gap-4 text-center">
                     {yearlyPlan.map((plan, idx) => (
-                      <div key={idx} className="p-6 rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
-                        <h4 className="font-black text-indigo-600 mb-3 text-center text-center">{idx + 1}월 계획</h4>
+                      <div key={idx} className="p-2 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
+                        <h4 className="font-black text-indigo-600 mb-1 md:mb-3 text-[10px] md:text-base text-center">{idx + 1}월 계획</h4>
                         <textarea 
                           value={plan || ''} 
                           onChange={(e) => handleYearlyChange(idx, e.target.value)} 
@@ -1859,18 +1922,21 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && e.altKey) {
                               e.preventDefault();
-                              const target = e.currentTarget;
+                              const target = e.target;
                               const start = target.selectionStart;
                               const end = target.selectionEnd;
                               const valStr = target.value;
                               const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
                               handleYearlyChange(idx, newVal);
-                              setTimeout(() => { target.selectionStart = target.selectionEnd = start + 1; }, 0);
+                              setTimeout(() => { 
+                                target.selectionStart = target.selectionEnd = start + 1; 
+                                autoResize({ target });
+                              }, 0);
                             }
                           }}
                           placeholder={`${idx + 1}월 마일스톤`} 
-                          style={{ fontSize: `${fontSize + 2}px`, lineHeight: '1.4' }}
-                          className="w-full p-4 rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent auto-resize" 
+                          style={{ fontSize: `${Math.max(10, fontSize)}px`, lineHeight: '1.4' }}
+                          className="w-full p-1.5 md:p-4 rounded-lg md:rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent auto-resize min-h-[40px] md:min-h-[80px] break-words whitespace-pre-wrap" 
                         />
                       </div>
                     ))}
