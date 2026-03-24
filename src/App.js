@@ -1,5 +1,5 @@
 /* eslint-disable */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Check, Trash2, Plus, Clock, BookOpen, Calendar, X, Users,
   ChevronLeft, LogOut, Sparkles, Send, MousePointer2, Merge, Split,
@@ -42,7 +42,6 @@ const parseTSV = (text) => {
   return rows;
 };
 
-// 💡 [A/B/C 콤] 스마트 매크로 자동 치환 함수 (텍스트 시간표 원본 복구)
 const processComboText = (text, day) => {
   if (!text) return text;
   const isSat = (day === 'sat' || day === 'sun' || day === '토요일' || day === '일요일' || day === '토' || day === '일');
@@ -60,6 +59,75 @@ const processComboText = (text, day) => {
   });
 
   return newText;
+};
+
+// 💡 [구버전 데이터 마이그레이션] 이전 스케줄 데이터가 날아가지 않고 첫번째 줄에 복구되도록 자동 처리
+const repairTermScheduler = (termData) => {
+  if (!termData) return { subjects: [], cells: {}, textbooks: {}, topNotes: {}, checks: {} };
+  let newCells = { ...termData.cells };
+  let newChecks = { ...termData.checks };
+  const subjects = termData.subjects || [];
+  let migrated = false;
+
+  Object.keys(newCells).forEach(key => {
+    for (const sub of subjects) {
+      if (key.startsWith(`${sub}-`)) {
+        const remainder = key.substring(sub.length + 1);
+        if (!remainder.startsWith('tb')) {
+            const dateMatch = remainder.match(/^(\d{4}-\d{2}-\d{2})$/);
+            if (dateMatch) {
+              const newKey = `${sub}-tb0-${dateMatch[1]}`;
+              if (newCells[newKey] === undefined) newCells[newKey] = newCells[key];
+              delete newCells[key];
+              migrated = true;
+              break;
+            }
+        }
+      }
+    }
+  });
+
+  Object.keys(newChecks).forEach(key => {
+    for (const sub of subjects) {
+      if (key.startsWith(`${sub}-`)) {
+        const remainder = key.substring(sub.length + 1);
+        if (!remainder.startsWith('tb')) {
+            const checkMatch = remainder.match(/^(\d{4}-\d{2}-\d{2})-(\d+)$/);
+            if (checkMatch) {
+              const newKey = `${sub}-tb0-${checkMatch[1]}-${checkMatch[2]}`;
+              if (newChecks[newKey] === undefined) newChecks[newKey] = newChecks[key];
+              delete newChecks[key];
+              migrated = true;
+              break;
+            }
+        }
+      }
+    }
+  });
+
+  return migrated ? { ...termData, cells: newCells, checks: newChecks } : termData;
+};
+
+// 💡 [새로운 구조 매핑] 교재 란에서 줄바꿈이 일어날 때마다 독립된 행(Flat)으로 간주
+const buildFlatRows = (scheduler) => {
+  const rows = [];
+  (scheduler.subjects || []).forEach(sub => {
+    const tbVal = scheduler.textbooks[sub] || '';
+    const tbLines = tbVal.split('\n');
+    if (tbLines.length === 0) tbLines.push(''); 
+    
+    tbLines.forEach((tbName, tbIdx) => {
+      rows.push({
+        sub,
+        tbName,
+        tbIdx,
+        isFirst: tbIdx === 0,
+        rowSpan: tbLines.length,
+        actualRowIdx: rows.length + 1
+      });
+    });
+  });
+  return rows;
 };
 
 export default function App() {
@@ -202,6 +270,9 @@ export default function App() {
   const focusSnapshotRef = useRef(null);
   const historyLoaded = useRef(false);
 
+  // 💡 컴포넌트 내 캐싱용 (렌더링 최적화)
+  const flatRows = useMemo(() => buildFlatRows(termScheduler), [termScheduler.subjects, termScheduler.textbooks]);
+
   const openStudentPlanner = (studentId, newRole, sName = '', skipHistory = false) => {
     let t = 'WEEKLY', d = new Date(2026, 1, 2), fs = 12;
     try {
@@ -279,13 +350,12 @@ export default function App() {
     focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
   };
 
-  const handleBlur = (e, id, day, isMonthly, subject, dateKey) => {
+  const handleBlur = (e, id, day, isMonthly, payload, dateKey) => {
     if (e && e.target) {
       let formattedText = e.target.value;
       if (!isMonthly && id && day) {
         formattedText = processComboText(e.target.value, day);
         
-        // 💡 [A/B/C콤 스마트 이동 로직] (셀 위치는 셀 규격에 맞게, 텍스트는 원본 유지)
         const isWeekend = (day === 'sat' || day === 'sun' || day === '토요일' || day === '일요일' || day === '토' || day === '일');
         const comboMatch = formattedText.match(/(?:개별지도\s*)?([abc])콤/i);
         
@@ -296,22 +366,21 @@ export default function App() {
         if (comboMatch) {
           const type = comboMatch[1].toLowerCase();
           isCombo = true;
-          targetSpan = 3; // 1시간 30분 = 3칸
+          targetSpan = 3; 
           if (isWeekend) {
-            if (type === 'a') targetId = 14;      // 14:30 시작
-            else if (type === 'b') targetId = 17; // 16:00 시작
-            else if (type === 'c') targetId = 20; // 17:30 시작
+            if (type === 'a') targetId = 14;      
+            else if (type === 'b') targetId = 17; 
+            else if (type === 'c') targetId = 20; 
           } else {
-            if (type === 'a') targetId = 20;      // 17:30 시작
-            else if (type === 'b') targetId = 23; // 19:00 시작
-            else if (type === 'c') targetId = 26; // 20:30 시작
+            if (type === 'a') targetId = 20;      
+            else if (type === 'b') targetId = 23; 
+            else if (type === 'c') targetId = 26; 
           }
         }
 
         if (isCombo) {
           setTimetable((prev) => {
             let newTt = [...prev];
-            // 원래 입력하던 셀이 타겟 영역이 아닐 경우 내용 및 병합 초기화
             if (id !== targetId) {
                newTt[id - 1] = { ...newTt[id - 1], [day]: '', [`${day}_span`]: 1, [`${day}_hidden`]: false };
             }
@@ -328,26 +397,23 @@ export default function App() {
                 }
               }
             }
-            return repairTimetable(newTt); // 타겟에 의해 가려지는 셀들 완벽히 재조정
+            return repairTimetable(newTt); 
           });
         } else if (formattedText !== e.target.value) {
-          // 일반적인 텍스트 변경 처리
           setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: formattedText } : row));
         }
 
-      } else if (isMonthly && subject && dateKey) {
-        if (subject === 'TEXTBOOK') {
-          // 교재 칸은 onChange에서 실시간 처리됨
-        } else if (subject === 'TOP_NOTE') {
+      } else if (isMonthly && payload && dateKey) {
+        if (payload.type === 'TOP_NOTE') {
           const dObj = allDates.find(d => d.full === dateKey);
           const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
           formattedText = processComboText(e.target.value, dayType);
           setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: formattedText } }));
-        } else {
+        } else if (payload.type === 'CELL') {
           const dObj = allDates.find(d => d.full === dateKey);
           const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
           formattedText = processComboText(e.target.value, dayType);
-          setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: formattedText } }));
+          setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${payload.sub}-tb${payload.tbIdx}-${dateKey}`]: formattedText } }));
         }
       }
     }
@@ -364,7 +430,6 @@ export default function App() {
     setEditingCell(null);
   };
 
-  // 💡 [월간 시트 전용] 교재 및 스케줄 칸을 통합한 논리 좌표계 (0~29)
   const getColInfo = (c) => {
     if (c === 0 || c === 15) return { type: 'textbook', block: c === 0 ? 0 : 1 };
     if (c >= 1 && c <= 14) return { type: 'date', dIdx: c - 1 };
@@ -379,9 +444,9 @@ export default function App() {
     }
   }, [monthlySelection, editingCell, activeTab]);
 
-  // 💡 [월간 시트] 방향키 이동 계산 로직
   const moveFocusMonthly = (rIdx, cIdx, dir) => {
     let nextRIdx = rIdx; let nextCIdx = cIdx;
+    const maxRIdx = flatRows.length; // 비고란이 0번이므로 전체 길이는 length
     
     while (true) {
       if (dir === 'DOWN') { nextRIdx++; } 
@@ -395,10 +460,7 @@ export default function App() {
         if (nextCIdx < 0) { nextCIdx = 29; nextRIdx--; } 
       }
       
-      // 범위를 벗어나면 이동 중지
-      if (nextRIdx < 0 || nextRIdx > termScheduler.subjects.length) return;
-      
-      // 0번째 행(비고란)에는 교재 칸(0, 15)이 없으므로 해당 좌표에 닿으면 건너뛰고 다음 좌표로 진행
+      if (nextRIdx < 0 || nextRIdx > maxRIdx) return;
       if (nextRIdx === 0 && (nextCIdx === 0 || nextCIdx === 15)) continue;
       
       break;
@@ -440,21 +502,13 @@ export default function App() {
       }); 
     }, 50);
     return () => clearTimeout(timer);
-  }, [activeTab, view, currentDocId, loading, timetable, fontSize, termScheduler, editingCell]);
+  }, [activeTab, view, currentDocId, loading, timetable, fontSize, termScheduler, editingCell, flatRows]);
 
   const calculateDDay = (targetDate) => {
     if (!targetDate) return '';
     const today = new Date(); today.setHours(0, 0, 0, 0); const target = new Date(targetDate); target.setHours(0, 0, 0, 0);
     const diff = target.getTime() - today.getTime(); const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     if (days === 0) return 'D-Day'; return days > 0 ? `D-${days}` : `D+${Math.abs(days)}`;
-  };
-
-  // 💡 [디데이 형식 함수]
-  const formatDDayDate = (dateStr) => {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-');
-    if (parts.length === 3) return `${parseInt(parts[1], 10)}.${parseInt(parts[2], 10)}`;
-    return '';
   };
 
   useEffect(() => {
@@ -501,7 +555,8 @@ export default function App() {
         if (docSnap.exists()) {
           setIsNotFound(false); const data = docSnap.data();
           setTimetable(Array.isArray(data.timetable) ? repairTimetable(data.timetable) : generateTimeSlots());
-          setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {}, ...(data.termScheduler || {}) });
+          const repairedTermScheduler = repairTermScheduler(data.termScheduler); // 💡 구버전 데이터 안전 마이그레이션
+          setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {}, ...repairedTermScheduler });
           setTodos(data.todos || []); setDDay(data.dDay || null); setYearlyPlan(data.yearlyPlan || Array(12).fill('')); setColorRules(data.colorRules || []); setStudentName(data.studentName || '');
           if (!historyLoaded.current) { historyRef.current = { past: [], future: [] }; historyLoaded.current = true; }
           setLoadedDocId(currentDocId); 
@@ -547,7 +602,7 @@ export default function App() {
     return () => unsubscribe();
   }, [user, view]);
 
-  // 💡 [월간 시트] 복사/붙여넣기 엑셀 호환성 유지
+  // 💡 [복사/붙여넣기] 분할된 행 데이터를 지원하도록 호환성 100% 수정
   useEffect(() => {
     const handleCopy = (e) => {
       if (view !== 'PLANNER') return;
@@ -574,9 +629,12 @@ export default function App() {
       } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
         const mb = getMonthlyBounds(); if (!mb) return;
         let copiedData = [];
+        const fRows = buildFlatRows(termScheduler);
+
         for (let r = mb.minR; r <= mb.maxR; r++) {
-          const sub = r === 0 ? null : termScheduler.subjects[r - 1];
+          const rowInfo = r === 0 ? null : fRows[r - 1];
           let rowData = []; let rowCopy = [];
+          
           for (let c = mb.minC; c <= mb.maxC; c++) {
              const colInfo = getColInfo(c);
              if (!colInfo) continue;
@@ -586,7 +644,11 @@ export default function App() {
                  if (colInfo.type === 'textbook') val = ''; 
                  else val = termScheduler.topNotes[allDates[colInfo.dIdx].full] || '';
              } else {
-                 val = colInfo.type === 'textbook' ? (termScheduler.textbooks[sub] || '') : (termScheduler.cells[`${sub}-${allDates[colInfo.dIdx].full}`] || '');
+                 if (colInfo.type === 'textbook') {
+                    val = rowInfo.tbName || '';
+                 } else {
+                    val = termScheduler.cells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] || '';
+                 }
              }
              
              rowData.push(val.includes('\n') || val.includes('\t') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val);
@@ -671,10 +733,13 @@ export default function App() {
         e.preventDefault(); saveToHistory();
         setTermScheduler(prev => {
           let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes }; let newTextbooks = { ...prev.textbooks };
+          const fRows = buildFlatRows(prev);
+          let newTbArrays = {}; 
+
           if (parsedData && pastedType === 'MONTHLY') {
             parsedData.forEach((rowCopy, rOffset) => {
-              const targetRow = mb.minR + rOffset; if (targetRow > prev.subjects.length) return;
-              const sub = targetRow === 0 ? null : prev.subjects[targetRow - 1];
+              const targetRow = mb.minR + rOffset; if (targetRow > fRows.length) return;
+              const rowInfo = targetRow === 0 ? null : fRows[targetRow - 1];
               
               for (let cOffset = 0; cOffset < rowCopy.length; cOffset++) {
                  let targetCol = mb.minC + cOffset;
@@ -691,10 +756,12 @@ export default function App() {
                    }
                  } else {
                    if (colInfo.type === 'textbook') {
-                      newTextbooks[sub] = cellVal;
+                      if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
+                      while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
+                      newTbArrays[rowInfo.sub][rowInfo.tbIdx] = cellVal.replace(/\n/g, ' '); // 엑셀 다중 복붙 충돌 방지용 내부 줄바꿈 무시
                    } else {
                       const formatted = processComboText(cellVal, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                      newCells[`${sub}-${allDates[colInfo.dIdx].full}`] = formatted;
+                      newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
                    }
                  }
               }
@@ -703,7 +770,7 @@ export default function App() {
             const rows = parseTSV(pastedText);
             if (rows.length === 1 && rows[0].length === 1 && !isSingleCell) {
               for (let r = mb.minR; r <= mb.maxR; r++) {
-                const sub = r === 0 ? null : prev.subjects[r - 1];
+                const rowInfo = r === 0 ? null : fRows[r - 1];
                 for (let c = mb.minC; c <= mb.maxC; c++) { 
                   const colInfo = getColInfo(c);
                   if (!colInfo) continue;
@@ -716,18 +783,20 @@ export default function App() {
                      }
                   } else {
                      if (colInfo.type === 'textbook') {
-                       newTextbooks[sub] = colStr;
+                        if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
+                        while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
+                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = colStr.replace(/\n/g, ' ');
                      } else {
                        const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                       newCells[`${sub}-${allDates[colInfo.dIdx].full}`] = formatted;
+                       newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
                      }
                   }
                 }
               }
             } else {
               rows.forEach((rowStrArr, i) => {
-                const rIdx = mb.minR + i; if (rIdx > prev.subjects.length) return;
-                const sub = rIdx === 0 ? null : prev.subjects[rIdx - 1];
+                const rIdx = mb.minR + i; if (rIdx > fRows.length) return;
+                const rowInfo = rIdx === 0 ? null : fRows[rIdx - 1];
                 
                 for (let j = 0; j < rowStrArr.length; j++) {
                    let targetCol = mb.minC + j;
@@ -743,16 +812,23 @@ export default function App() {
                       }
                    } else {
                       if (colInfo.type === 'textbook') {
-                        newTextbooks[sub] = colStr;
+                        if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
+                        while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
+                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = colStr.replace(/\n/g, ' ');
                       } else {
                         const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                        newCells[`${sub}-${allDates[colInfo.dIdx].full}`] = formatted;
+                        newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
                       }
                    }
                 }
               });
             }
           }
+          
+          Object.keys(newTbArrays).forEach(sub => {
+            newTextbooks[sub] = newTbArrays[sub].join('\n');
+          });
+
           return { ...prev, cells: newCells, topNotes: newTopNotes, textbooks: newTextbooks };
         });
         setAiFeedback('✅ 붙여넣기 완료'); setTimeout(() => setAiFeedback(''), 1500);
@@ -786,19 +862,33 @@ export default function App() {
           e.preventDefault(); saveToHistory();
           setTermScheduler(prev => {
             let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes }; let newTextbooks = { ...prev.textbooks };
+            let newTbArrays = {};
+            const fRows = buildFlatRows(prev);
+            
             for (let r = mb.minR; r <= mb.maxR; r++) {
-              const sub = r === 0 ? null : prev.subjects[r - 1];
+              const rowInfo = r === 0 ? null : fRows[r - 1];
               for (let c = mb.minC; c <= mb.maxC; c++) { 
                 const colInfo = getColInfo(c);
                 if (!colInfo) continue;
                 if (r === 0) {
                   if (colInfo.type === 'date') newTopNotes[allDates[colInfo.dIdx].full] = '';
                 } else {
-                  if (colInfo.type === 'textbook') newTextbooks[sub] = '';
-                  else newCells[`${sub}-${allDates[colInfo.dIdx].full}`] = '';
+                  if (colInfo.type === 'textbook') {
+                     if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (prev.textbooks[rowInfo.sub] || '').split('\n');
+                     if(newTbArrays[rowInfo.sub].length > rowInfo.tbIdx) {
+                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = '';
+                     }
+                  } else {
+                     newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = '';
+                  }
                 }
               }
             }
+            
+            Object.keys(newTbArrays).forEach(sub => {
+              newTextbooks[sub] = newTbArrays[sub].join('\n');
+            });
+            
             return { ...prev, cells: newCells, topNotes: newTopNotes, textbooks: newTextbooks };
           });
         }
@@ -875,14 +965,100 @@ export default function App() {
   const handleNext4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 28); return d; });
 
   const handleTimetableChange = (id, day, value) => { setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row)); };
-  const handleTermCellChange = (subject, dateKey, value) => { setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${subject}-${dateKey}`]: value } })); };
-  const handleTermCheckToggle = (subject, dateKey, index) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, checks: { ...prev.checks, [`${subject}-${dateKey}-${index}`]: !prev.checks[`${subject}-${dateKey}-${index}`] } })); };
+  
+  // 💡 [새 구조 반영] 교재(tbIdx)를 기준으로 데이터를 분할 저장하도록 핸들러 업데이트
+  const handleTermCellChange = (sub, tbIdx, dateKey, value) => { 
+    setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${sub}-tb${tbIdx}-${dateKey}`]: value } })); 
+  };
+  
+  const handleTermCheckToggle = (sub, tbIdx, dateKey, index) => { 
+    saveToHistory(); 
+    setTermScheduler(prev => {
+      const newKey = `${sub}-tb${tbIdx}-${dateKey}-${index}`;
+      const currentState = prev.checks[newKey] || false;
+      return { ...prev, checks: { ...prev.checks, [newKey]: !currentState } };
+    }); 
+  };
+  
   const handleTopNoteChange = (dateKey, value) => setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: value } }));
-  const handleTermTextbookChange = (subject, value) => setTermScheduler(prev => ({ ...prev, textbooks: { ...prev.textbooks, [subject]: value } }));
+  
+  // 💡 [핵심] 교재를 줄바꿈할 경우, 기존의 스케줄 데이터들을 안전하게 아래 행으로 밀어내며 스마트하게 Row를 분할
+  const handleTermTextbookChange = (sub, tbIdx, value) => {
+    setTermScheduler(prev => {
+      const prevTbs = (prev.textbooks[sub] || '').split('\n');
+      if (prevTbs.length === 0) prevTbs.push('');
+      
+      const newLinesForThisTb = value.split('\n');
+      const linesAdded = newLinesForThisTb.length - 1;
+      
+      let nextTbs = [...prevTbs];
+      let newCells = { ...prev.cells };
+      let newChecks = { ...prev.checks };
+
+      if (linesAdded > 0) {
+        for (let i = prevTbs.length - 1; i > tbIdx; i--) {
+          const newI = i + linesAdded;
+          Object.keys(newCells).forEach(k => {
+            if (k.startsWith(`${sub}-tb${i}-`)) {
+              newCells[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newCells[k];
+              delete newCells[k];
+            }
+          });
+          Object.keys(newChecks).forEach(k => {
+            if (k.startsWith(`${sub}-tb${i}-`)) {
+              newChecks[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newChecks[k];
+              delete newChecks[k];
+            }
+          });
+        }
+        nextTbs.splice(tbIdx, 1, ...newLinesForThisTb);
+      } else {
+        nextTbs[tbIdx] = value;
+      }
+
+      return { ...prev, textbooks: { ...prev.textbooks, [sub]: nextTbs.join('\n') }, cells: newCells, checks: newChecks };
+    });
+  };
+
+  // 💡 행 완전 삭제 시 아래에 있던 데이터들을 다시 위로 끌어올리며 빈 칸을 없애는 병합 로직
+  const deleteTextbookRow = (sub, tbIdx) => {
+    saveToHistory();
+    setTermScheduler(prev => {
+      const prevTbs = (prev.textbooks[sub] || '').split('\n');
+      if (prevTbs.length <= 1) return prev;
+
+      let newCells = { ...prev.cells };
+      let newChecks = { ...prev.checks };
+
+      Object.keys(newCells).forEach(k => { if (k.startsWith(`${sub}-tb${tbIdx}-`)) delete newCells[k]; });
+      Object.keys(newChecks).forEach(k => { if (k.startsWith(`${sub}-tb${tbIdx}-`)) delete newChecks[k]; });
+
+      for (let i = tbIdx + 1; i < prevTbs.length; i++) {
+        const newI = i - 1;
+        Object.keys(newCells).forEach(k => {
+          if (k.startsWith(`${sub}-tb${i}-`)) {
+            newCells[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newCells[k];
+            delete newCells[k];
+          }
+        });
+        Object.keys(newChecks).forEach(k => {
+          if (k.startsWith(`${sub}-tb${i}-`)) {
+            newChecks[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newChecks[k];
+            delete newChecks[k];
+          }
+        });
+      }
+
+      const nextTbs = [...prevTbs];
+      nextTbs.splice(tbIdx, 1);
+
+      return { ...prev, textbooks: { ...prev.textbooks, [sub]: nextTbs.join('\n') }, cells: newCells, checks: newChecks };
+    });
+  };
+
   const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
   const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
 
-  // 💡 AI 조교 API
   const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
     if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
     for (let i = 0; i < retries; i++) {
@@ -925,16 +1101,16 @@ export default function App() {
   "new_subjects": ["과목명1", "과목명2"],
   "updates": [
     { "target": "textbook", "subject": "과목명", "content": "교재 이름들 (여러 권이면 줄바꿈\\n으로 구분)" },
-    { "target": "cell", "subject": "과목명", "date": "YYYY-MM-DD", "content": "학습 내용" }
+    { "target": "cell", "subject": "과목명", "textbook": "교재명", "date": "YYYY-MM-DD", "content": "학습 내용" }
   ]
 }
 [필수 규칙]
-1. 사용자가 "국어, 수학 추가해 줘" 등 진도나 교재 언급 없이 단순히 과목만 생성하라는 요청을 하면 new_subjects 배열에 과목명들을 담아 응답하세요.
-2. 사용자가 날짜나 분량 언급 없이 "국어 교재 자습서, 평가문제집 추가해 줘" 처럼 단순히 교재명만 나열하면 target을 "textbook"으로 설정하세요. (여러 권일 경우 content에 줄바꿈\\n으로 묶어서 응답)
-3. 사용자가 "월~토 자습서 1단원부터 5단원" 처럼 특정 기간/요일에 분량을 나누어 달라고 요청하면 target을 "cell"로 설정하세요. 기간에 속하는 날짜마다 분배하여 각각 객체를 만드세요.
-4. 과목명: 기존 등록된 과목 [${termScheduler.subjects.join(', ')}] 중 알맞은 과목을 매칭. 없으면 new_subjects에 포함시키세요.
-5. target이 "cell"인 경우 date는 제공된 캘린더 날짜 배열을 참고하여 가장 일치하는 날짜를 YYYY-MM-DD 형식으로 입력하세요.
-6. 복합 요청(과목 추가 + 교재 등록 + 일정 배분)을 받으면 new_subjects 배열과 updates 배열에 각각 빠짐없이 반영하세요.`, 
+1. 사용자가 단순히 과목만 생성하라는 요청을 하면 new_subjects 배열에 과목명들을 담아 응답하세요.
+2. 단순히 교재명만 나열하면 target을 "textbook"으로 설정하세요.
+3. 특정 기간/요일에 분량을 나누어 달라고 요청하면 target을 "cell"로 설정하세요. 
+4. target이 "cell"인 경우, 사용자가 명시한 교재명이 있다면 "textbook" 필드에 입력하세요. 없으면 빈 문자열("")로 두세요.
+5. 과목명: 기존 등록된 과목 [${termScheduler.subjects.join(', ')}] 중 알맞은 과목을 매칭. 없으면 new_subjects에 포함.
+6. 복합 요청(과목 추가 + 교재 등록 + 일정 배분)을 받으면 각각 빠짐없이 반영하세요.`, 
 
       YEARLY: `당신은 연간 플래너 AI 조교입니다. 아래 JSON 포맷으로만 응답하세요. 설명 금지.
 { "type": "UPDATE_YEARLY", "plans": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"] }
@@ -1006,7 +1182,21 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                   if (dObj) {
                     const dayType = dObj.isSat || dObj.day === '토' || dObj.day === '일' ? 'sat' : 'mon';
                     const formattedContent = processComboText(u.content, dayType);
-                    newCells[`${u.subject}-${u.date}`] = newCells[`${u.subject}-${u.date}`] ? `${newCells[`${u.subject}-${u.date}`]}\n${formattedContent}` : formattedContent; 
+                    
+                    let targetTbIdx = 0;
+                    if (u.textbook) {
+                      const tbArr = (newTextbooks[u.subject] || '').split('\n');
+                      const foundIdx = tbArr.findIndex(t => t.trim() === u.textbook.trim());
+                      if (foundIdx !== -1) targetTbIdx = foundIdx;
+                      else {
+                        tbArr.push(u.textbook);
+                        targetTbIdx = tbArr.length - 1;
+                        newTextbooks[u.subject] = tbArr.join('\n');
+                      }
+                    }
+
+                    const cellKey = `${u.subject}-tb${targetTbIdx}-${u.date}`;
+                    newCells[cellKey] = newCells[cellKey] ? `${newCells[cellKey]}\n${formattedContent}` : formattedContent; 
                   }
                 }
               });
@@ -1073,7 +1263,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
   if (view === 'LOADING') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div></div>;
   if (view === 'PLANNER_DELETED_BLANK') return <div className="min-h-screen bg-slate-50" />;
   
-  // 💡 [삭제된 시트 확인 버튼 제거 완료] 완전히 빈 화면에 문구만 출력
   if (isNotFound && view === 'PLANNER') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6"><h1 className="text-2xl font-black text-slate-400">삭제된 시트입니다.</h1></div>;
 
   const wBounds = getSelectionBounds(); const isWMulti = wBounds && (wBounds.minId !== wBounds.maxId || wBounds.minDayIdx !== wBounds.maxDayIdx);
@@ -1235,7 +1424,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                             {dDay ? (
                               <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
                                 <Calendar className="w-3 h-3" />
-                                {/* 💡 [디데이 포맷 수정] 중간고사(4.23) D-31 */}
                                 <span className="font-bold">
                                   {dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}
                                 </span>
@@ -1252,7 +1440,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           
                           <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto relative">
                             
-                            {/* 💡 [모바일 환경 인쇄 버튼 숨김] */}
                             <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="hidden sm:flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
                               <Printer className="w-3 h-3" /> <span>인쇄</span>
                             </button>
@@ -1269,7 +1456,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           </div>
                         </div>
                         
-                        {/* 💡 [주간 시트 한눈에 들어오게 모바일 가로 스크롤 제거] */}
                         <div className="w-full flex-1 relative select-none rounded-lg border-y md:border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto overflow-x-hidden custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
                           <table className="w-full h-full min-h-full text-center border-collapse table-fixed">
                             <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
@@ -1422,7 +1608,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                   }
                                                 } else if (isEditingThis) {
                                                   if (e.key === 'Enter') {
-                                                    // 💡 [Alt+Enter 및 Shift+Enter 줄바꿈 적용]
                                                     if (e.shiftKey || e.altKey) {
                                                       if (e.altKey && !e.shiftKey) {
                                                         e.preventDefault();
@@ -1494,7 +1679,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                         const chunkStartIndex = blockIdx * 14;
                         const chunk = allDates.slice(chunkStartIndex, chunkStartIndex + 14);
                         return (
-                          // 💡 [월간 시트 가로 스와이프 기능] 모바일에서 찌그러지지 않고 넘겨서 볼 수 있음
                           <div key={blockIdx} className="w-full relative select-none overflow-x-auto custom-scrollbar pb-3" onMouseLeave={handleMouseUp}>
                             <div className="min-w-[800px] md:min-w-full">
                               <table className="w-full border-collapse mb-4 md:mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
@@ -1514,7 +1698,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                     })}
                                   </tr>
                                 </thead>
+                                
                                 <tbody>
+                                  {/* 💡 상단 비고란 (0번째 행) */}
                                   <tr className="bg-white text-center">
                                     <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-0.5 md:py-1" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>비고</td>
                                     {chunk.map((d, i) => {
@@ -1548,7 +1734,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                               id={`monthly-textarea-${rIdx}-${cIdx}`}
                                               value={val} 
                                               onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
-                                              onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, 'TOP_NOTE', d.full)} rows={1}
+                                              onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TOP_NOTE' }, d.full)} rows={1}
                                               onCompositionStart={(e) => {
                                                 if (!isEditingThis && isActiveThis) {
                                                   e.currentTarget.value = ''; handleTopNoteChange(d.full, '');
@@ -1568,7 +1754,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                   else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, ''); }
                                                   else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
                                                 } else if (isEditingThis) {
-                                                  // 💡 Alt+Enter 반영
                                                   if (e.key === 'Enter') {
                                                     if (e.shiftKey || e.altKey) {
                                                       if (e.altKey && !e.shiftKey) {
@@ -1610,24 +1795,29 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                       )
                                     })}
                                   </tr>
-                                  {termScheduler.subjects.map((sub, sIdx) => {
-                                    const rIdx = sIdx + 1;
-                                    
+                                  
+                                  {/* 💡 [교재 셀 독립 분리] 교재를 줄바꿈할 경우 평탄화된 독립된 Row로 출력 */}
+                                  {flatRows.map((rowInfo) => {
+                                    const { sub, tbName, tbIdx, isFirst, rowSpan, actualRowIdx } = rowInfo;
+                                    const rIdx = actualRowIdx;
                                     const tbCIdx = blockIdx === 0 ? 0 : 15;
                                     const isSelTb = mb && rIdx >= mb.minR && rIdx <= mb.maxR && tbCIdx >= mb.minC && tbCIdx <= mb.maxC;
-                                    const cellIdTb = `textbook-${sub}-${blockIdx}`;
+                                    const cellIdTb = `textbook-${sub}-${tbIdx}-${blockIdx}`;
                                     const isEditingTb = editingCell === cellIdTb;
                                     const isSingleSelTb = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
                                     const isActiveTb = isSingleSelTb && monthlySelection.r1 === rIdx && monthlySelection.c1 === tbCIdx;
-                                    const tbVal = termScheduler.textbooks[sub] || '';
 
                                     return (
-                                      <tr key={sub} className="text-center align-middle">
-                                        <td className="border border-slate-300 p-0.5 md:px-1 md:py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep">
-                                          <span style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{sub}</span>
-                                          <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center"><X size={10}/></button>
-                                        </td>
+                                      <tr key={`${sub}-tb${tbIdx}`} className="text-center align-middle group/row">
+                                        {/* 병합되는 과목 셀 */}
+                                        {isFirst && (
+                                          <td rowSpan={rowSpan} className="border border-slate-300 p-0.5 md:px-1 md:py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep group/sub">
+                                            <span style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>{sub}</span>
+                                            <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/sub:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
+                                          </td>
+                                        )}
                                         
+                                        {/* 분리되는 교재 셀 */}
                                         <td key={cellIdTb}
                                           onMouseDown={(e) => {
                                             if (editingCell !== cellIdTb) setEditingCell(null);
@@ -1642,15 +1832,19 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                           onDoubleClick={() => setEditingCell(cellIdTb)}
                                           className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
                                         >
+                                          {rowSpan > 1 && (
+                                              <button onClick={(e) => { e.stopPropagation(); deleteTextbookRow(sub, tbIdx); }} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/row:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
+                                          )}
                                           <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
                                             <textarea 
                                               id={`monthly-textarea-${rIdx}-${tbCIdx}`}
-                                              value={tbVal} 
-                                              onChange={(e) => handleTermTextbookChange(sub, e.target.value)} 
-                                              onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, 'TEXTBOOK', sub)} rows={1}
+                                              value={tbName} 
+                                              onChange={(e) => handleTermTextbookChange(sub, tbIdx, e.target.value)} 
+                                              onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TEXTBOOK', sub, tbIdx }, null)} rows={1}
+                                              placeholder={tbIdx === 0 && rowSpan === 1 ? "교재 입력\n(Shift+Enter 행 추가)" : ""}
                                               onCompositionStart={(e) => {
                                                 if (!isEditingTb && isActiveTb) {
-                                                  e.currentTarget.value = ''; handleTermTextbookChange(sub, '');
+                                                  e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, '');
                                                   setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx });
                                                 }
                                               }}
@@ -1664,31 +1858,40 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                   else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'LEFT'); }
                                                   else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
                                                   else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, ''); }
-                                                  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
+                                                  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, tbIdx, ''); }
+                                                  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
                                                 } else if (isEditingTb) {
-                                                  // 💡 Alt+Enter 반영
                                                   if (e.key === 'Enter') {
+                                                    // 💡 Shift+Enter 또는 Alt+Enter 누를 시 줄바꿈(새로운 행 분리)
                                                     if (e.shiftKey || e.altKey) {
-                                                      if (e.altKey && !e.shiftKey) {
                                                         e.preventDefault();
                                                         const target = e.currentTarget;
                                                         const start = target.selectionStart;
-                                                        const end = target.selectionEnd;
                                                         const valStr = target.value;
-                                                        const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                        handleTermTextbookChange(sub, newVal);
+                                                        const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
+                                                        handleTermTextbookChange(sub, tbIdx, newVal);
                                                         setTimeout(() => {
-                                                          const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`);
-                                                          if (targetEl) {
-                                                            targetEl.setSelectionRange(start + 1, start + 1);
-                                                            autoResize({ target: targetEl });
-                                                          }
-                                                        }, 0);
-                                                      }
+                                                          const nextRIdx = rIdx + 1; 
+                                                          setEditingCell(`textbook-${sub}-${tbIdx + 1}-${blockIdx}`);
+                                                          setMonthlySelection({ r1: nextRIdx, c1: tbCIdx, r2: nextRIdx, c2: tbCIdx });
+                                                          const el = document.getElementById(`monthly-textarea-${nextRIdx}-${tbCIdx}`);
+                                                          if(el) { el.focus(); el.setSelectionRange(0, 0); }
+                                                        }, 50);
                                                     } else {
                                                       e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, 'DOWN');
                                                     }
+                                                  }
+                                                  // 💡 빈 칸에서 백스페이스 누르면 행 삭제
+                                                  else if (e.key === 'Backspace' && e.currentTarget.value === '' && rowSpan > 1) {
+                                                      e.preventDefault();
+                                                      deleteTextbookRow(sub, tbIdx);
+                                                      setTimeout(() => {
+                                                         const prevRIdx = Math.max(1, rIdx - 1);
+                                                         setEditingCell(null);
+                                                         setMonthlySelection({ r1: prevRIdx, c1: tbCIdx, r2: prevRIdx, c2: tbCIdx });
+                                                         const el = document.getElementById(`monthly-textarea-${prevRIdx}-${tbCIdx}`);
+                                                         if(el) el.focus();
+                                                      }, 50);
                                                   }
                                                   else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
                                                   else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
@@ -1704,30 +1907,34 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                             />
                                             {!isEditingTb && (
                                               <div className="w-full h-full flex flex-col justify-center px-0.5 md:px-1 min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-none">
-                                                {tbVal.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
-                                                  <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none">{tbVal}</div>
+                                                {tbName.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
+                                                  <div style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none">{tbName}</div>
                                                 )}
                                               </div>
                                             )}
                                           </div>
                                         </td>
 
-                                        {/* 💡 날짜 스케줄 셀 영역 */}
+                                        {/* 독립된 교재 행과 1:1 매칭되는 개별 스케줄 셀들 */}
                                         {chunk.map((d, i) => {
                                           const cIdx = blockIdx === 0 ? i + 1 : i + 16;
-                                          const val = termScheduler.cells[`${sub}-${d.full}`] || '';
+                                          const cellKey = `${sub}-tb${tbIdx}-${d.full}`;
+                                          
+                                          // 이전 구버전 데이터 마이그레이션 적용을 위한 fallback
+                                          const exactVal = termScheduler.cells[cellKey];
+                                          const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
+                                          
                                           const lines = val.split('\n').filter(l => l.trim() !== '');
-                                          const cellId = `${sub}-${d.full}`;
-                                          const isEditingThis = editingCell === cellId;
+                                          const isEditingThis = editingCell === cellKey;
                                           const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
                                           const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
                                           const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
 
                                           return (
-                                            <td key={cellId}
+                                            <td key={cellKey}
                                               onMouseDown={(e) => {
                                                 if (e.target.type === 'checkbox') return;
-                                                if (editingCell !== cellId) setEditingCell(null);
+                                                if (editingCell !== cellKey) setEditingCell(null);
                                                 handleMonthlyMouseDown(e, rIdx, cIdx);
                                               }}
                                               onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
@@ -1737,7 +1944,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 }
                                               }}
                                               onDoubleClick={(e) => {
-                                                if (e.target.type !== 'checkbox') setEditingCell(cellId);
+                                                if (e.target.type !== 'checkbox') setEditingCell(cellKey);
                                               }}
                                               className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
                                             >
@@ -1745,43 +1952,39 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 <textarea 
                                                   id={`monthly-textarea-${rIdx}-${cIdx}`}
                                                   value={val} 
-                                                  onChange={(e) => handleTermCellChange(sub, d.full, e.target.value)} 
-                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, sub, d.full)} rows={1}
+                                                  onChange={(e) => handleTermCellChange(sub, tbIdx, d.full, e.target.value)} 
+                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'CELL', sub, tbIdx }, d.full)} rows={1}
                                                   onCompositionStart={(e) => {
                                                     if (!isEditingThis && isActiveThis) {
-                                                      e.currentTarget.value = ''; handleTermCellChange(sub, d.full, '');
-                                                      setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                      e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, '');
+                                                      setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
                                                     }
                                                   }}
                                                   onKeyDown={(e) => { 
                                                     if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
                                                     if (!isEditingThis && isActiveThis) {
-                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellKey); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
                                                       else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
                                                       else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
                                                       else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
                                                       else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
                                                       else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
                                                       else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, d.full, ''); }
-                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, tbIdx, d.full, ''); }
+                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, ''); setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
                                                     } else if (isEditingThis) {
-                                                      // 💡 Alt+Enter 반영
                                                       if (e.key === 'Enter') {
                                                         if (e.shiftKey || e.altKey) {
-                                                          if (e.altKey && !e.shiftKey) {
                                                             e.preventDefault();
                                                             const target = e.currentTarget;
                                                             const start = target.selectionStart;
-                                                            const end = target.selectionEnd;
                                                             const valStr = target.value;
-                                                            const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                            handleTermCellChange(sub, d.full, newVal);
+                                                            const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
+                                                            handleTermCellChange(sub, tbIdx, d.full, newVal);
                                                             setTimeout(() => {
                                                               const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
                                                               if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
                                                             }, 0);
-                                                          }
                                                         } else {
                                                           e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
                                                         }
@@ -1801,20 +2004,25 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 {!isEditingThis && (
                                                   <div className="w-full h-full flex flex-col gap-1 px-0.5 md:px-1 py-0.5 md:py-1 justify-center min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-auto cursor-default">
                                                     {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${fontSize}px` }}>.</span> ) : (
-                                                      lines.map((line, idx) => (
-                                                        <div key={idx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
-                                                          <span style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
-                                                          <input type="checkbox" checked={termScheduler.checks[`${sub}-${d.full}-${idx}`] || false} 
-                                                            onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, d.full, idx); }} 
-                                                            onClick={(e) => { 
-                                                              e.stopPropagation(); 
-                                                              setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
-                                                              setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
-                                                            }} 
-                                                            className="w-[10px] h-[10px] md:w-3 md:h-3 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
-                                                          />
-                                                        </div>
-                                                      ))
+                                                      lines.map((line, lIdx) => {
+                                                        const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                                        const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                                        
+                                                        return (
+                                                          <div key={lIdx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
+                                                            <span style={{ fontSize: `${fontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
+                                                            <input type="checkbox" checked={isChecked} 
+                                                              onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, tbIdx, d.full, lIdx); }} 
+                                                              onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
+                                                                setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
+                                                              }} 
+                                                              className="w-[10px] h-[10px] md:w-3 md:h-3 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
+                                                            />
+                                                          </div>
+                                                        );
+                                                      })
                                                     )}
                                                   </div>
                                                 )}
@@ -1832,6 +2040,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                         );
                       })}
 
+                      {/* 💡 [스마트 정리 테이블] 텍스트 검색 없이 독립된 행을 기준으로 자동 달성도 계산 */}
                       {termScheduler.subjects.length > 0 && (
                         <div className="text-left flex justify-center w-full text-center mt-2 md:mt-6 overflow-x-auto custom-scrollbar pb-2">
                           <div className="min-w-[500px] md:min-w-full w-full">
@@ -1846,59 +2055,45 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                 </tr>
                               </thead>
                               <tbody>
-                                {termScheduler.subjects.map((sub) => {
-                                  const textbookVal = termScheduler.textbooks[sub] || '';
-                                  const tbNames = Array.from(new Set(textbookVal.split('\n').map(t => t.trim()).filter(t => t !== '')));
-                                  const rowData = [];
-
-                                  if (tbNames.length === 0) {
-                                    let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
-                                    allDates.forEach(d => {
-                                      const val = termScheduler.cells[`${sub}-${d.full}`] || "";
-                                      if (val.trim() !== "") {
-                                        val.split('\n').forEach((lineText, idx) => {
-                                          if (lineText.trim() !== "") {
-                                            if (firstData === "-") firstData = lineText.trim();
-                                            lastData = lineText.trim(); totalItems++;
-                                            if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
-                                          }
-                                        });
-                                      }
-                                    });
-                                    rowData.push({ tbName: "-", firstData, lastData, percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0 });
-                                  } else {
-                                    tbNames.forEach((tbName) => {
-                                      let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
-                                      allDates.forEach(d => {
-                                        const val = termScheduler.cells[`${sub}-${d.full}`] || "";
-                                        if (val.trim() !== "") {
-                                          val.split('\n').forEach((lineText, idx) => {
-                                            if (lineText.trim() !== "" && lineText.trim().includes(tbName)) {
-                                              if (firstData === "-") firstData = lineText.trim();
-                                              lastData = lineText.trim(); totalItems++;
-                                              if (termScheduler.checks[`${sub}-${d.full}-${idx}`]) checkedItems++;
-                                            }
-                                          });
+                                {flatRows.map((rowInfo) => {
+                                  const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
+                                  let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
+                                  
+                                  allDates.forEach(d => {
+                                    const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
+                                    const fallbackVal = (tbIdx === 0 && exactVal === undefined) ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '';
+                                    const val = exactVal !== undefined ? exactVal : fallbackVal;
+                                    
+                                    if (val.trim() !== "") {
+                                      val.split('\n').forEach((lineText, lIdx) => {
+                                        if (lineText.trim() !== "") {
+                                          if (firstData === "-") firstData = lineText.trim();
+                                          lastData = lineText.trim(); totalItems++;
+                                          
+                                          const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                          const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                          if (isChecked) checkedItems++;
                                         }
                                       });
-                                      rowData.push({ tbName, firstData, lastData, percent: totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0 });
-                                    });
-                                  }
+                                    }
+                                  });
+                                  
+                                  const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
 
-                                  return rowData.map((data, index) => (
-                                    <tr key={`status-${sub}-${index}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
-                                      {index === 0 && <td rowSpan={rowData.length} className="border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${fontSize}px` }}>{sub}</span></td>}
-                                      <td className="border border-slate-200 p-1 md:p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.tbName}</span></td>
-                                      <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.firstData}</span></td>
-                                      <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{data.lastData}</span></td>
+                                  return (
+                                    <tr key={`status-${sub}-${tbIdx}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(9, fontSize - 1)}px` }}>
+                                      {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${fontSize}px` }}>{sub}</span></td>}
+                                      <td className="border border-slate-200 p-1 md:p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{tbName || '-'}</span></td>
+                                      <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{firstData}</span></td>
+                                      <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${fontSize}px` }}>{lastData}</span></td>
                                       <td className="border border-slate-200 p-1.5 md:p-3 text-center align-middle">
                                         <div className="relative w-full h-4 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
-                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${data.percent}%` }} />
-                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[8px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{data.percent}%</span>
+                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${percent}%` }} />
+                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[8px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
                                         </div>
                                       </td>
                                     </tr>
-                                  ));
+                                  );
                                 })}
                               </tbody>
                             </table>
@@ -1910,7 +2105,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 )}
 
                 {activeTab === 'YEARLY' && (
-                  // 💡 [모바일 연간 시트 가시성 확보] 화면에 꽉 차게 조절
                   <div className="animate-fade-in grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 md:gap-4 text-center">
                     {yearlyPlan.map((plan, idx) => (
                       <div key={idx} className="p-2 md:p-6 rounded-2xl md:rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center">
@@ -2069,7 +2263,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
           {studentToDelete && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setStudentToDelete(null)}>
               <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
-                <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
+                <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
                 <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
                 <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">이 시트를 삭제하시겠습니까?</p>
                 <div className="flex gap-3 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">
