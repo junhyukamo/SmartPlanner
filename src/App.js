@@ -148,6 +148,8 @@ export default function App() {
   const [showColorModal, setShowColorModal] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); 
+  
+  // 💡 삭제 대상을 저장할 때 객체(student) 형태로 저장되도록 활용
   const [studentToDelete, setStudentToDelete] = useState(null); 
   const [copyFeedback, setCopyFeedback] = useState(null);
   const [aiFeedback, setAiFeedback] = useState('');
@@ -1244,15 +1246,21 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
   };
 
   const handleYearlyChange = (index, value) => { const newPlan = [...yearlyPlan]; newPlan[index] = value; setYearlyPlan(newPlan); };
-  const handleDeleteStudent = (e, studentId) => { e.stopPropagation(); setStudentToDelete(studentId); };
   
+  // 💡 [변경됨] 삭제 시 학생 전체 데이터를 넘겨받음 (이름 표시를 위함)
+  const handleDeleteStudent = (e, student) => { 
+    e.stopPropagation(); 
+    setStudentToDelete(student); 
+  };
+  
+  // 💡 [변경됨] studentToDelete가 객체이므로 .id 로 참조하여 삭제 수행
   const executeDeleteStudent = async () => { 
     if (!studentToDelete) return; 
     try { 
-      await deleteDoc(doc(db, 'planners', studentToDelete)); 
+      await deleteDoc(doc(db, 'planners', studentToDelete.id)); 
       try {
         const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
-        delete saved[studentToDelete];
+        delete saved[studentToDelete.id];
         localStorage.setItem('planner_student_prefs', JSON.stringify(saved));
       } catch (e) {}
       setStudentToDelete(null); 
@@ -1357,7 +1365,8 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                             <span className="text-xl font-extrabold text-slate-800 block mb-1">{student.studentName || '이름 없음'}</span>
                             <span className="text-[10px] text-slate-400 font-mono">{student.id.substring(0, 13)}...</span>
                           </div>
-                          <button onClick={(e) => handleDeleteStudent(e, student.id)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18} /></button>
+                          {/* 💡 [변경됨] 학생 삭제 시 전체 객체 전달 */}
+                          <button onClick={(e) => handleDeleteStudent(e, student)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18} /></button>
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => copyStudentLink(student.id)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${copyFeedback === student.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{copyFeedback === student.id ? <><Check size={14}/> 복사됨</> : <><LinkIcon size={14}/> 링크 복사</>}</button>
@@ -1429,7 +1438,6 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                 <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
                               </div>
                             ) : (
-                              // 💡 [엔터 키 지원 폼 구조] onSubmit을 활용하여 엔터를 누르면 자동 저장
                               <form onSubmit={(e) => {
                                 e.preventDefault();
                                 if (dDayInput.title) {
@@ -2202,7 +2210,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 </div>
 
                 <div className="flex gap-3 mt-8 text-center">
-                  <button onClick={() => setShowPrintModal(false)} className="flex-1 py-4 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition-colors">취소</button>
+                  <button onClick={() => setShowPrintModal(false)} className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
                   <button onClick={() => { setShowPrintModal(false); setTimeout(() => window.print(), 100); }} className="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-colors">인쇄 시작</button>
                 </div>
               </div>
@@ -2212,7 +2220,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
           {/* 🎨 [색상 설정 중앙 모달창] */}
           {showColorModal && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowColorModal(false)}>
-              <div className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-slate-200 bg-white animate-fade-in text-center cursor-default" onClick={(e) => e.stopPropagation()}>
+              <div className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-slate-200 bg-white animate-fade-in cursor-default" onClick={(e) => e.stopPropagation()}>
                 <div className="flex items-center justify-between mb-6">
                   <h4 className="font-extrabold text-xl flex items-center justify-center gap-2 text-slate-800"><Palette className="text-indigo-600 w-6 h-6"/> 키워드 색상 지정</h4>
                   <button onClick={() => setShowColorModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
@@ -2225,9 +2233,9 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 </div>
                 
                 <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                  {colorRules.length === 0 && <div className="text-slate-400 font-bold p-4 text-xs">등록된 색상이 없습니다.</div>}
+                  {colorRules.length === 0 && <div className="text-slate-400 font-bold p-4 text-xs text-center">등록된 색상이 없습니다.</div>}
                   {colorRules.map((rule) => (
-                    <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors text-center">
+                    <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors">
                       <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
                       <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
                     </div>
@@ -2238,42 +2246,45 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
           )}
 
           {showResetConfirm && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowResetConfirm(false)}>
-              <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center text-center text-center">
-                <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center"><AlertCircle size={32} /></div>
-                <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center">데이터 초기화</h3>
-                <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center">현재 탭의 데이터를 모두 지울까요?</p>
-                <div className="flex gap-3 text-center text-center text-center text-center text-center">
-                  <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center">취소</button>
-                  <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg text-center text-center text-center text-center text-center text-center">확인</button>
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowResetConfirm(false)}>
+              <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
+                <h3 className="font-black text-xl mb-2 text-slate-800">데이터 초기화</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep">현재 탭의 데이터를 모두 지울까요?</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">확인</button>
                 </div>
               </div>
             </div>
           )}
 
           {showLogoutConfirm && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setShowLogoutConfirm(false)}>
-              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center" onClick={(e) => e.stopPropagation()}>
-                <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center"><LogOut size={32} /></div>
-                <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center">로그아웃</h3>
-                <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center">정말 로그아웃 하시겠습니까?</p>
-                <div className="flex gap-3 text-center text-center text-center text-center text-center text-center text-center">
-                  <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
-                  <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 text-center text-center text-center text-center text-center text-center text-center text-center">로그아웃</button>
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowLogoutConfirm(false)}>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4"><LogOut size={32} /></div>
+                <h3 className="font-black text-xl mb-2 text-slate-800">로그아웃</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep">정말 로그아웃 하시겠습니까?</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black shadow-lg shadow-indigo-100 transition-colors">로그아웃</button>
                 </div>
               </div>
             </div>
           )}
 
+          {/* 💡 [수정됨] 삭제 대상의 학생 이름이 표시되는 모달창 */}
           {studentToDelete && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in text-center print:hidden" onClick={() => setStudentToDelete(null)}>
-              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 text-center bg-white text-center text-center text-center text-center text-center" onClick={(e) => e.stopPropagation()}>
-                <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center"><Trash2 size={32} /></div>
-                <h3 className="font-black text-xl mb-2 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">데이터 삭제</h3>
-                <p className="text-sm mb-8 text-slate-500 font-bold text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">이 시트를 삭제하시겠습니까?</p>
-                <div className="flex gap-3 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">
-                  <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">취소</button>
-                  <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-black shadow-lg text-center text-center text-center text-center text-center text-center text-center text-center text-center text-center">삭제</button>
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setStudentToDelete(null)}>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
+                <h3 className="font-black text-xl mb-3 text-slate-800">데이터 삭제</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep leading-relaxed">
+                  <span className="text-red-500 font-black text-base">[{studentToDelete.studentName || '이름 없음'}]</span><br/>학생의 플래너를 삭제하시겠습니까?
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">삭제</button>
                 </div>
               </div>
             </div>
