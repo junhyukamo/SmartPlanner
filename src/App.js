@@ -256,7 +256,6 @@ export default function App() {
   const [termScheduler, setTermScheduler] = useState({ cells: {}, status: {}, textbooks: {}, subjects: [], topNotes: {}, checks: {} });
   const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 2)); 
   const [colorRules, setColorRules] = useState([]);
-  const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#bfdbfe' });
   const [studentList, setStudentList] = useState([]);
   const [editingCell, setEditingCell] = useState(null); 
 
@@ -1430,11 +1429,17 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                 <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center">
+                              // 💡 [엔터 키 지원 폼 구조] onSubmit을 활용하여 엔터를 누르면 자동 저장
+                              <form onSubmit={(e) => {
+                                e.preventDefault();
+                                if (dDayInput.title) {
+                                  setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory();
+                                }
+                              }} className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center">
                                 <input type="text" placeholder="D-day 제목" className="w-20 md:w-28 p-1 text-xs rounded outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
                                 <input type="date" className="w-24 p-1 text-[10px] md:text-xs rounded outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
-                                <button onClick={() => { if (dDayInput.title) { setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory(); } }} className="px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
-                              </div>
+                                <button type="submit" className="px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
+                              </form>
                             )}
                           </div>
                           
