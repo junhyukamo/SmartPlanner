@@ -61,6 +61,7 @@ const processComboText = (text, day) => {
   return newText;
 };
 
+// 💡 [학생 정보 탭 기본 데이터 및 템플릿 구조]
 const defaultStudentInfo = {
   topHeaders: ['', 'ID', 'PW', '2학년 선택과목', '3학년 선택과목'],
   websites: [
@@ -357,7 +358,6 @@ export default function App() {
   const isDragging = useRef(false);
   const [selection, setSelection] = useState({ startDay: null, endDay: null, startId: null, endId: null });
   const [monthlySelection, setMonthlySelection] = useState({ r1: null, c1: null, r2: null, c2: null });
-  // 💡 INFO 탭 전용 선택 영역 상태 추가
   const [infoSelection, setInfoSelection] = useState({ section: null, rIdx: null, cIdx: null }); 
   const isMonthlyDragging = useRef(false);
 
@@ -568,7 +568,6 @@ export default function App() {
     setEditingCell(null);
   };
 
-  // 💡 INFO 탭 내 방향키 이동 및 선택 로직 재작성
   const moveFocusInfo = (section, rIdx, cIdx, dir) => {
     const grid = studentInfo[section];
     if (!Array.isArray(grid)) return;
@@ -1215,7 +1214,6 @@ export default function App() {
   const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
   const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
 
-  // 💡 INFO 탭 셀 변경 로직 및 렌더링 통합 (주간/월간 탭과 동일한 UI/UX, 중앙 정렬 등)
   const handleInfoChange = (section, rIdx, cIdx, val) => {
     setStudentInfo(prev => {
       const next = { ...prev };
@@ -1234,6 +1232,7 @@ export default function App() {
     });
   };
 
+  // 💡 INFO 탭 셀 렌더링 로직 (삭제 버튼 위치 및 hover 조건 최적화)
   const renderInfoCell = (section, rIdx, cIdx, val, options = {}) => {
     const { tag = 'td', extraClass = "", extraStyle = {}, rowSpan = 1, showDeleteBtn = false, onDelete = null } = options;
     const Tag = tag;
@@ -1261,17 +1260,17 @@ export default function App() {
             setEditingCell(cellId);
           }
         }}
-        className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isActiveThis ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'} ${extraClass}`}
+        className={`border border-slate-300 p-0 align-middle transition-colors relative text-center group/cell ${isActiveThis ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'} ${extraClass}`}
       >
-        <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[30px] relative group/cell">
+        <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[30px] relative">
           {showDeleteBtn && (
             <button 
               onClick={(e) => { 
                 e.stopPropagation(); 
                 if (onDelete) onDelete();
               }} 
-              className="absolute left-1 top-1/2 transform -translate-y-1/2 opacity-0 group-hover/row:opacity-100 bg-white text-red-500 border border-red-200 rounded-full p-0.5 hover:bg-red-500 hover:text-white transition-all text-center z-30 shadow-md cursor-pointer">
-              <X size={14}/>
+              className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/cell:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30 cursor-pointer">
+              <X size={10}/>
             </button>
           )}
           
