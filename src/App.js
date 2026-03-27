@@ -358,7 +358,7 @@ export default function App() {
   const [dDay, setDDay] = useState(null);
   const [dDayInput, setDDayInput] = useState({ title: '', date: '' });
   const [yearlyPlan, setYearlyPlan] = useState(Array(12).fill(''));
-  const [termScheduler, setTermScheduler] = useState({ cells: {}, status: {}, textbooks: {}, subjects: [], topNotes: {}, checks: {} });
+  const [termScheduler, setTermScheduler] = useState({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
   const [studentInfo, setStudentInfo] = useState(defaultStudentInfo);
   const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 2)); 
   const [colorRules, setColorRules] = useState([]);
@@ -1597,6 +1597,25 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
   const monthlyBlocks = [0, 1];
   const chunkSize = 14;
 
+  // 💡 [모바일] 글자 길이에 따른 스마트 폰트 크기 계산 (주간 탭 전용)
+  const getSmartMobileFontSize = (text) => {
+    if (!text) return '8px';
+    const lines = text.split('\n');
+    let maxLength = 0;
+    lines.forEach(line => {
+      const len = line.trim().length;
+      if (len > maxLength) maxLength = len;
+    });
+
+    if (maxLength <= 4) return '8px';
+    if (maxLength <= 5) return '7.5px';
+    if (maxLength <= 6) return '6.5px';
+    if (maxLength <= 7) return '6px';
+    if (maxLength <= 8) return '5.5px';
+    if (maxLength <= 9) return '5px';
+    return '4.5px';
+  };
+
   // 💡 [모바일] 주간 시간표 데이터 렌더링
   const renderMobileWeeklyTable = () => {
     const printDays = DAYS;
@@ -1639,10 +1658,19 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 const text = row[day] || '';
                 const span = row[`${day}_span`] || 1;
                 const bgColor = getCellColor(text) || 'transparent';
+                
+                // 💡 [모바일] 줄바꿈 방지 및 폰트 크기 자동 계산
+                const lines = text.split('\n').filter(l => l !== '');
+                const smartFontSize = getSmartMobileFontSize(text);
+                
                 return (
-                  <td key={day} rowSpan={span} className="border-b border-r border-slate-200 p-[1px] text-[8px] font-bold text-slate-800 leading-[1.15] align-middle overflow-hidden break-all whitespace-pre-wrap" style={{ backgroundColor: bgColor }}>
-                    <div className="w-full h-full flex items-center justify-center overflow-hidden max-h-full">
-                      {text}
+                  <td key={day} rowSpan={span} className="border-b border-r border-slate-200 p-[1px] align-middle overflow-hidden" style={{ backgroundColor: bgColor }}>
+                    <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden max-h-full gap-[1px]">
+                      {lines.map((line, lIdx) => (
+                        <span key={lIdx} className="font-bold text-slate-800 w-full text-center tracking-tighter" style={{ fontSize: smartFontSize, lineHeight: '1.15', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+                           {line}
+                        </span>
+                      ))}
                     </div>
                   </td>
                 );
@@ -2115,18 +2143,20 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                       const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
                                                       const lines = val.split('\n').filter(l => l.trim() !== '');
                                                       return (
-                                                         <td key={d.full} className="border border-slate-200 align-top p-0.5">
+                                                         <td key={d.full} className="border border-slate-200 align-top p-[2px]">
                                                             {lines.map((line, lIdx) => {
                                                                const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
                                                                const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                                               
+                                                               // 💡 [모바일] 체크박스 우측 정렬 (justify-between) 및 크기 축소 반영
                                                                return (
-                                                                  <div key={lIdx} className="flex items-start gap-1 text-left mb-0.5 leading-[1.1]">
+                                                                  <div key={lIdx} className="flex justify-between items-start gap-1 text-left mb-[3px] leading-[1.1]">
+                                                                     <span className="font-bold text-slate-800 break-words whitespace-pre-wrap text-[7.5px] flex-1">{line}</span>
                                                                      {isChecked ? (
-                                                                        <span className="flex-shrink-0 text-[7px] mt-[1px]">✅</span>
+                                                                        <span className="flex-shrink-0 text-[6px] mt-[1px] leading-none">✅</span>
                                                                      ) : (
-                                                                        <div className="w-[8px] h-[8px] border border-slate-300 rounded-[1px] mt-[1.5px] flex-shrink-0 bg-slate-50"></div>
+                                                                        <div className="w-[6px] h-[6px] border border-slate-300 rounded-[1px] mt-[2px] flex-shrink-0 bg-slate-50 shadow-sm"></div>
                                                                      )}
-                                                                     <span className="font-bold text-slate-800 break-all whitespace-pre-wrap text-[7.5px]">{line}</span>
                                                                   </div>
                                                                )
                                                             })}
