@@ -211,7 +211,12 @@ const buildFlatRows = (scheduler) => {
     
     tbLines.forEach((tbName, tbIdx) => {
       rows.push({
-        sub, tbName, tbIdx, isFirst: tbIdx === 0, rowSpan: tbLines.length, actualRowIdx: rows.length + 1
+        sub,
+        tbName,
+        tbIdx,
+        isFirst: tbIdx === 0,
+        rowSpan: tbLines.length,
+        actualRowIdx: rows.length + 1
       });
     });
   });
@@ -245,14 +250,18 @@ export default function App() {
   const [showAiModal, setShowAiModal] = useState(false);
   
   const [fontSize, setFontSize] = useState(12);
-  const [isMobile, setIsMobile] = useState(false); 
-  const [newColorRule, setNewColorRule] = useState({ keyword: '', color: '#ffed4a' });
+  const [isMobile, setIsMobile] = useState(false);
 
   const [showPrintModal, setShowPrintModal] = useState(false);
-  const [printConfig, setPrintConfig] = useState({ orientation: 'portrait', scope: 'all', colorMode: 'color' });
+  const [printConfig, setPrintConfig] = useState({
+    orientation: 'portrait', 
+    scope: 'all',            
+    colorMode: 'color'       
+  });
 
   const hasNavigated = useRef(false); 
 
+  // 💡 기기 화면 너비 감지 로직
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
     checkMobile();
@@ -1233,25 +1242,28 @@ export default function App() {
     });
   };
 
+  // 💡 [학생 정보] 탭의 셀 렌더링 (모바일인 경우 읽기 전용 <div>로 대체)
   const renderInfoCell = (section, rIdx, cIdx, val, options = {}) => {
     const { tag = 'td', extraClass = "", extraStyle = {}, rowSpan = 1, showDeleteBtn = false, onDelete = null } = options;
     const Tag = tag;
     const cellId = `info-${section}-${rIdx}-${cIdx}`;
-    
-    // 💡 모바일 최적화 (읽기 전용으로 축소 렌더링)
+    const isActiveThis = !isMobile && infoSelection.section === section && infoSelection.rIdx === rIdx && infoSelection.cIdx === cIdx;
+    const isEditingThis = !isMobile && editingCell === cellId;
+    const isDynamicGrid = section === 'schoolGrades' || section === 'mockGrades';
+
     if (isMobile) {
       return (
         <Tag key={cellId} rowSpan={rowSpan} className={`border border-slate-300 p-0.5 align-middle text-center bg-white ${extraClass}`}>
-          <div className="w-full h-full flex items-center justify-center min-h-[14px]">
-             <span style={{ ...extraStyle, fontSize: `${Math.max(6, displayFontSize - 1)}px`, lineHeight: '1.1', minHeight: 'auto' }} className="whitespace-pre-wrap break-words text-slate-800 text-center">{val}</span>
+          <div className="w-full h-full flex flex-col justify-center items-center px-0.5 py-1 min-h-[24px]">
+             {val.trim() === '' ? (
+                <span className="text-transparent select-none w-full h-full flex items-center justify-center" style={{...extraStyle}}>.</span>
+             ) : (
+                <div style={{ ...extraStyle, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap break-words text-center">{val}</div>
+             )}
           </div>
         </Tag>
       );
     }
-
-    const isActiveThis = infoSelection.section === section && infoSelection.rIdx === rIdx && infoSelection.cIdx === cIdx;
-    const isEditingThis = editingCell === cellId;
-    const isDynamicGrid = section === 'schoolGrades' || section === 'mockGrades';
 
     return (
       <Tag
@@ -1582,15 +1594,73 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
   const wBounds = getSelectionBounds(); const isWMulti = wBounds && (wBounds.minId !== wBounds.maxId || wBounds.minDayIdx !== wBounds.maxDayIdx);
   const mb = getMonthlyBounds();
 
-  // 💡 모바일 월간 탭의 블록 렌더링 설정
-  const monthlyBlocks = isMobile ? [0, 1, 2, 3] : [0, 1];
-  const chunkSize = isMobile ? 7 : 14;
+  const monthlyBlocks = [0, 1];
+  const chunkSize = 14;
+
+  // 💡 [모바일] 주간 시간표 데이터 렌더링
+  const renderMobileWeeklyTable = () => {
+    const printDays = DAYS;
+    const printRows = [];
+
+    for (let r = 0; r < 32; r++) {
+      const origRow = timetable[r];
+      if (!origRow) continue;
+      
+      const newRow = { id: origRow.id, time: origRow.time };
+      
+      printDays.forEach((day) => {
+        if (origRow[`${day}_hidden`]) {
+          newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1;
+        } else {
+          const span = origRow[`${day}_span`] || 1;
+          newRow[day] = origRow[day]; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(span, 32 - r);
+        }
+      });
+      printRows.push(newRow);
+    }
+    const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
+
+    return (
+      <table className="w-full h-full border-collapse text-center table-fixed">
+        <thead>
+          <tr>
+            <th className="border-b border-r border-slate-200 bg-slate-100 text-[8px] text-slate-500 font-black w-[30px] py-1">시간</th>
+            {printDays.map((d, i) => (
+              <th key={d} className={`border-b border-r border-slate-200 bg-slate-100 text-[9px] font-black py-1 ${d === 'sat' ? 'text-blue-500' : d === 'sun' ? 'text-red-500' : 'text-slate-600'}`}>{labelsShort[i]}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {printRows.map(row => (
+            <tr key={row.id} className="h-[1%]">
+              <td className="border-b border-r border-slate-200 bg-slate-50/50 text-[8px] font-bold text-slate-400 p-0 leading-none align-middle">{row.time}</td>
+              {printDays.map(day => {
+                if (row[`${day}_hidden`]) return null;
+                const text = row[day] || '';
+                const span = row[`${day}_span`] || 1;
+                const bgColor = getCellColor(text) || 'transparent';
+                return (
+                  <td key={day} rowSpan={span} className="border-b border-r border-slate-200 p-[1px] text-[8px] font-bold text-slate-800 leading-[1.15] align-middle overflow-hidden break-all whitespace-pre-wrap" style={{ backgroundColor: bgColor }}>
+                    <div className="w-full h-full flex items-center justify-center overflow-hidden max-h-full">
+                      {text}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
+
+  const isNoScrollTab = activeTab === 'WEEKLY' || activeTab === 'YEARLY' || activeTab === 'INFO';
+  const forceHFull = view === 'PLANNER' && (isMobile ? isNoScrollTab : activeTab === 'WEEKLY');
 
   return (
     <>
-      {/* 💡 모바일 환경에서 스크롤을 막고 100vh에 꽉 채우도록 outer div 조건 변경 */}
-      <div className={`print:hidden bg-slate-50 text-slate-800 transition-colors duration-300 ${(isMobile && activeTab !== 'MONTHLY') || (view === 'PLANNER' && activeTab === 'WEEKLY') ? 'h-screen h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen'}`}>
-        <div className={`w-full mx-auto flex-1 flex flex-col min-h-0`}>
+      <div className={`print:hidden bg-slate-50 text-slate-800 transition-colors duration-300 ${forceHFull ? 'h-screen h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen flex flex-col'}`}>
+        <div className={`w-full mx-auto ${forceHFull ? 'flex-1 flex flex-col min-h-0' : 'flex-1 flex flex-col'}`}>
           
           {dbError && (
             <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[200] w-full max-w-2xl px-4 animate-fade-in">
@@ -1720,7 +1790,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                           setSelection({ startDay: null, endDay: null, startId: null, endId: null }); 
                           setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); 
                           setInfoSelection({ section: null, rIdx: null, cIdx: null }); 
-                        }} className={`flex-1 md:flex-none px-3 md:px-5 py-1 md:py-2 rounded-lg text-[10px] md:text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>
+                        }} className={`flex-1 md:flex-none px-3 md:px-5 py-1 md:py-2 rounded-lg text-xs md:text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>
                           {tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : tab === 'YEARLY' ? '연간' : '학생 정보'}
                         </button>
                       ))}
@@ -1734,395 +1804,213 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                 </div>
               </header>
 
-              {/* 💡 모바일일 때 스크롤 특성을 동적으로 조정 */}
-              <main className={`flex-1 w-full mx-auto relative text-center flex flex-col custom-scrollbar ${isMobile && activeTab !== 'MONTHLY' ? 'p-1 pb-1 overflow-hidden' : 'p-2 md:p-6 pb-24 overflow-y-auto'}`}>
+              <main className={`flex-1 min-h-0 w-full mx-auto relative text-center flex flex-col ${(activeTab === 'WEEKLY' || (isMobile && activeTab === 'YEARLY')) ? 'p-1 md:p-2' : 'p-2 md:p-6 pb-24'} overflow-y-auto custom-scrollbar`}>
                 
                 {activeTab === 'WEEKLY' && (
-                  <div className="animate-fade-in flex flex-col text-center h-full w-full">
-                    <div className={`flex flex-col h-full bg-white relative z-30 w-full ${isMobile ? 'rounded-lg border border-slate-200 p-0.5' : 'rounded-xl shadow-sm border border-slate-200 p-1 md:p-2'}`}>
-                      
-                      {/* 💡 모바일에서 불필요한 컨트롤바 완전히 숨김 */}
-                      {!isMobile && (
-                        <div className="flex flex-wrap items-center justify-between gap-1 mb-1 md:mb-2 flex-shrink-0 px-1 relative z-40">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {dDay ? (
-                              <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
-                                <Calendar className="w-3 h-3" />
-                                <span className="font-bold">
-                                  {dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}
-                                </span>
-                                <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
-                              </div>
-                            ) : (
-                              <form onSubmit={(e) => {
-                                e.preventDefault();
-                                if (dDayInput.title) {
-                                  setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory();
-                                }
-                              }} className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center">
-                                <input type="text" placeholder="D-day 제목" className="w-20 md:w-28 p-1 text-xs rounded outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
-                                <input type="date" className="w-24 p-1 text-[10px] md:text-xs rounded outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
-                                <button type="submit" className="px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
-                              </form>
-                            )}
+                  isMobile ? (
+                    <div className="w-full h-full flex flex-col bg-white overflow-hidden animate-fade-in pt-1 pb-1 px-1">
+                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1 px-1 flex-shrink-0">
+                         {dDay && (
+                           <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded shadow-sm text-[10px] font-bold">
+                             <Calendar className="w-3 h-3" />
+                             <span>{dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}</span>
+                           </div>
+                         )}
+                      </div>
+                      <div className="w-full flex-1 relative select-none rounded-lg border-y border-slate-200 bg-white shadow-inner text-center overflow-hidden z-10 flex flex-col">
+                        {renderMobileWeeklyTable()}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="animate-fade-in flex flex-col text-center h-full">
+                      <div className="flex-1 flex flex-col min-h-0">
+                        <div className="p-1 md:p-2 rounded-xl shadow-sm border border-slate-200 bg-white flex flex-col h-full relative z-30">
+                          
+                          <div className="flex flex-wrap items-center justify-between gap-1 mb-1 md:mb-2 flex-shrink-0 px-1 relative z-40">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {dDay ? (
+                                <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
+                                  <Calendar className="w-3 h-3" />
+                                  <span className="font-bold">
+                                    {dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}
+                                  </span>
+                                  <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
+                                </div>
+                              ) : (
+                                <form onSubmit={(e) => {
+                                  e.preventDefault();
+                                  if (dDayInput.title) {
+                                    setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory();
+                                  }
+                                }} className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center">
+                                  <input type="text" placeholder="D-day 제목" className="w-20 md:w-28 p-1 text-xs rounded outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
+                                  <input type="date" className="w-24 p-1 text-[10px] md:text-xs rounded outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
+                                  <button type="submit" className="px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
+                                </form>
+                              )}
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto relative">
+                              <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="hidden sm:flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                                <Printer className="w-3 h-3" /> <span>인쇄</span>
+                              </button>
+                              <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[60]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+                                <Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span>
+                              </button>
+                              <div className="h-5 w-px mx-0.5 bg-slate-200 hidden md:block"></div>
+                              {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 bg-indigo-600 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold text-xs"><Merge className="w-3 h-3" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3" /> <span className="hidden sm:inline">드래그</span></div>}
+                              <button onClick={unmergeCells} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3" /> <span className="hidden sm:inline">분할</span></button>
+                              <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors ml-0 bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"><Trash2 className="w-3 h-3" /> <span className="hidden sm:inline">초기화</span></button>
+                            </div>
                           </div>
                           
-                          <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto relative">
-                            <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="hidden sm:flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
-                              <Printer className="w-3 h-3" /> <span>인쇄</span>
-                            </button>
-                            <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[60]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
-                              <Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span>
-                            </button>
-                            <div className="h-5 w-px mx-0.5 bg-slate-200 hidden md:block"></div>
-                            {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 bg-indigo-600 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold text-xs"><Merge className="w-3 h-3" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3" /> <span className="hidden sm:inline">드래그</span></div>}
-                            <button onClick={unmergeCells} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3" /> <span className="hidden sm:inline">분할</span></button>
-                            <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors ml-0 bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"><Trash2 className="w-3 h-3" /> <span className="hidden sm:inline">초기화</span></button>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* 💡 모바일 뷰 상단에 예쁘게 D-Day 별도 노출 */}
-                      {isMobile && dDay && (
-                        <div className="w-full text-center py-1 mb-1 bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[10px] font-bold rounded-t-lg shadow-sm">
-                          {dDay.title} {dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}
-                        </div>
-                      )}
-                      
-                      <div className={`w-full flex-1 relative select-none text-center z-10 ${isMobile ? 'overflow-hidden rounded-md' : 'rounded-lg border-2 border-slate-200 bg-white shadow-inner overflow-y-auto overflow-x-hidden custom-scrollbar'}`} onMouseLeave={handleMouseUp}>
-                        <table className="w-full h-full min-h-full text-center border-collapse table-fixed weekly-mobile-table">
-                          <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
-                            <tr style={{ height: isMobile ? '24px' : '30px' }}>
-                              <th className={`border-r border-slate-200 uppercase font-black z-20 align-middle transition-colors duration-200 time-col ${wBounds ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`} style={{ width: isMobile ? '26px' : '45px', fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>
-                                <span className="md:hidden">시간</span>
-                                <span className="hidden md:inline">Time</span>
-                              </th>
-                              {DAYS.map((d, i) => {
-                                const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
-                                const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
-                                const isColSelected = activeTab === 'WEEKLY' && wBounds && i >= wBounds.minDayIdx && i <= wBounds.maxDayIdx;
-                                let defaultTextColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : 'text-slate-600';
-                                let textColor = isColSelected ? 'text-indigo-700' : defaultTextColor;
-                                let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-transparent';
-                                return (
-                                  <th key={d} className={`font-black border-r border-slate-200 z-20 align-middle transition-colors duration-200 py-0 px-0 ${textColor} ${bgColor}`} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>
-                                    <span className="hidden md:inline">{labelsLong[i]}</span>
-                                    <span className="md:hidden">{labelsShort[i]}</span>
+                          <div className="w-full flex-1 relative select-none rounded-lg border-y md:border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto overflow-x-hidden custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
+                            <table className="w-full h-full min-h-full text-center border-collapse table-fixed">
+                              <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
+                                <tr style={{ height: '30px' }}>
+                                  <th className={`border-r border-slate-200 uppercase font-black z-20 align-middle transition-colors duration-200 time-col ${wBounds ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`} style={{ width: '45px', fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>
+                                    <span className="hidden md:inline">Time</span>
                                   </th>
-                                );
-                              })}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {timetable.map((row) => {
-                              const isRowSelected = activeTab === 'WEEKLY' && wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId;
-                              const timeBgClass = isRowSelected ? "bg-indigo-100/70 shadow-inner border-indigo-200" : "bg-slate-50/50";
-                              const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-400 font-medium";
-                              return (
-                                <tr key={row.id} className="group text-center h-[1%]">
-                                  <td className={`p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none time-col ${timeBgClass}`}>
-                                    <div className={`flex flex-col items-center justify-center w-full h-full min-h-[10px] md:min-h-[28px] time-col-inner ${timeTextClass}`} style={{ fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>
-                                      <span>{row.time}</span>
-                                    </div>
-                                  </td>
-                                  {DAYS.map((day) => {
-                                    if (row[`${day}_hidden`]) return null;
-                                    const dayIdx = DAYS.indexOf(day);
-                                    
-                                    const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
-                                    const isSingleSelection = wBounds && wBounds.minId === wBounds.maxId && wBounds.minDayIdx === wBounds.maxDayIdx;
-                                    const isActiveThis = isSingleSelection && selection.startId === row.id && selection.startDay === day;
-                                    
-                                    const cellId = `WEEKLY-${day}-${row.id}`;
-                                    const isEditingThis = editingCell === cellId;
-                                    
-                                    const keywordColor = getCellColor(row[day]);
-                                    const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
-                                    
+                                  {DAYS.map((d, i) => {
+                                    const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+                                    const isColSelected = activeTab === 'WEEKLY' && wBounds && i >= wBounds.minDayIdx && i <= wBounds.maxDayIdx;
+                                    let defaultTextColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : 'text-slate-600';
+                                    let textColor = isColSelected ? 'text-indigo-700' : defaultTextColor;
+                                    let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-transparent';
                                     return (
-                                      <td 
-                                        key={day} 
-                                        className={`p-0 relative align-top border-b border-r border-slate-200 transition-colors duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${!isMobile && isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
-                                        style={{ backgroundColor: bgColor }} 
-                                        rowSpan={row[`${day}_span`] || 1} 
-                                        onMouseDown={(e) => {
-                                          if (isMobile) return;
-                                          if (editingCell !== cellId) setEditingCell(null);
-                                          handleMouseDown(e, day, row.id);
-                                        }} 
-                                        onMouseEnter={() => {
-                                          if (isMobile) return;
-                                          handleMouseEnter(day, row.id)
-                                        }}
-                                        onClick={(e) => { 
-                                          if (isMobile) return;
-                                          if (!e.shiftKey) { 
-                                            const area = document.getElementById(`textarea-${row.id}-${day}`); 
-                                            if (area && document.activeElement !== area) {
-                                              setTimeout(() => area.focus(), 0);
-                                            } 
-                                          } 
-                                        }}
-                                        onDoubleClick={() => {
-                                          if (isMobile) return;
-                                          setEditingCell(cellId);
-                                        }}
-                                      >
-                                        <div className="w-full h-full flex flex-col items-center justify-center p-0 md:p-1 text-center min-h-[14px] md:min-h-[28px]">
-                                          {/* 💡 모바일 최적화 (읽기 전용 텍스트 노출) */}
-                                          {isMobile ? (
-                                            <div className="w-full h-full flex items-center justify-center px-0.5 py-0 overflow-hidden">
-                                              <span style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.1' }} className="font-bold text-slate-800 whitespace-pre-wrap break-all text-center">
-                                                {row[day] || ''}
-                                              </span>
-                                            </div>
-                                          ) : (
-                                            <textarea 
-                                              id={`textarea-${row.id}-${day}`}
-                                              value={row[day] || ''} 
-                                              onChange={(e) => {
-                                                handleTimetableChange(row.id, day, e.target.value);
-                                                autoResize(e);
-                                              }} 
-                                              onFocus={handleFocus} 
-                                              onBlur={(e) => handleBlur(e, row.id, day, false)}
-                                              style={{
-                                                caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                                cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                                fontSize: `${displayFontSize}px`,
-                                                lineHeight: '1.2'
-                                              }}
-                                              onCompositionStart={(e) => {
-                                                if (!isEditingThis && isActiveThis) {
-                                                  e.currentTarget.value = '';
-                                                  handleTimetableChange(row.id, day, '');
-                                                  setEditingCell(cellId);
-                                                  setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
-                                                }
-                                              }}
-                                              onKeyDown={(e) => {
-                                                if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                
-                                                const moveFocus = (rId, dIdx, dir) => {
-                                                  let nextRId = rId; let nextDIdx = dIdx;
-                                                  if (dir === 'DOWN') {
-                                                     const span = timetable[nextRId - 1][`${DAYS[nextDIdx]}_span`] || 1;
-                                                     nextRId += span;
-                                                     while(nextRId <= 32 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId++;
-                                                     if (nextRId > 32) return;
-                                                  } else if (dir === 'UP') {
-                                                     nextRId -= 1;
-                                                     while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                     if (nextRId < 1) return;
-                                                  } else if (dir === 'RIGHT') {
-                                                     nextDIdx += 1;
-                                                     if (nextDIdx > 6) { nextDIdx = 0; nextRId += 1; }
-                                                     if (nextRId > 32) return;
-                                                     while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                     if (nextRId < 1) nextRId = 1;
-                                                  } else if (dir === 'LEFT') {
-                                                     nextDIdx -= 1;
-                                                     if (nextDIdx < 0) { nextDIdx = 6; nextRId -= 1; }
-                                                     if (nextRId < 1) return;
-                                                     while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                     if (nextRId < 1) nextRId = 1;
-                                                  }
-                                                  
-                                                  const nextDay = DAYS[nextDIdx];
-                                                  setSelection({ startDay: nextDay, endDay: nextDay, startId: nextRId, endId: nextRId });
-                                                  setEditingCell(null);
-                                                  setTimeout(() => {
-                                                    const el = document.getElementById(`textarea-${nextRId}-${nextDay}`);
-                                                    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
-                                                  }, 0);
-                                                };
-                                                
-                                                if (!isEditingThis && isActiveThis) {
-                                                  if (e.key === 'Enter' || e.key === 'F2') {
-                                                    e.preventDefault();
-                                                    setEditingCell(cellId);
-                                                    e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                  } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(row.id, dayIdx, 'DOWN');
-                                                  } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus(row.id, dayIdx, 'UP');
-                                                  } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocus(row.id, dayIdx, 'RIGHT');
-                                                  } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocus(row.id, dayIdx, 'LEFT');
-                                                  } else if (e.key === 'Tab') { e.preventDefault(); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                  } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
-                                                  } else if (e.key === 'Delete' || e.key === 'Backspace') { 
-                                                    e.preventDefault(); saveToHistory(); handleTimetableChange(row.id, day, '');
-                                                  } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                                                    e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
-                                                    setEditingCell(cellId);
-                                                    setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
-                                                  }
-                                                } else if (isEditingThis) {
-                                                  if (e.key === 'Enter') {
-                                                    if (e.shiftKey || e.altKey) {
-                                                      if (e.altKey && !e.shiftKey) {
-                                                        e.preventDefault();
-                                                        const target = e.currentTarget;
-                                                        const start = target.selectionStart;
-                                                        const end = target.selectionEnd;
-                                                        const valStr = target.value;
-                                                        const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                        handleTimetableChange(row.id, day, newVal);
-                                                        setTimeout(() => {
-                                                          const targetEl = document.getElementById(`textarea-${row.id}-${day}`);
-                                                          if (targetEl) {
-                                                            targetEl.setSelectionRange(start + 1, start + 1);
-                                                            autoResize({ target: targetEl });
-                                                          }
-                                                        }, 0);
-                                                      }
-                                                    } else {
-                                                      e.preventDefault(); 
-                                                      setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
-                                                    }
-                                                  } else if (e.key === 'Tab') {
-                                                    e.preventDefault(); 
-                                                      setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                  } else if (e.key === 'Escape') {
-                                                    e.preventDefault(); setEditingCell(null);
-                                                    e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                  }
-                                                }
-                                              }} 
-                                              className={`w-full p-0.5 md:p-1 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle auto-resize break-words whitespace-pre-wrap ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
-                                              rows={1}
-                                            />
-                                          )}
-                                        </div>
-                                      </td>
+                                      <th key={d} className={`font-black border-r border-slate-200 z-20 align-middle transition-colors duration-200 py-0 px-0 ${textColor} ${bgColor}`} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>
+                                        <span className="hidden md:inline">{labelsLong[i]}</span>
+                                      </th>
                                     );
                                   })}
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'MONTHLY' && (
-                  <div className="animate-fade-in flex flex-col gap-6 text-center w-full overflow-x-hidden">
-                    <div className={`bg-white w-full text-center ${isMobile ? 'p-1' : 'rounded-3xl border border-slate-200 shadow-sm p-6'}`}>
-                      <div className="flex items-center justify-between mb-2 md:mb-6 px-2 mt-2 md:mt-0">
-                        <div className="flex items-center gap-2 md:gap-4 text-center">
-                          <div className="flex gap-2 text-center">
-                            <button onClick={handlePrev4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronLeft size={16} className="md:w-5 md:h-5"/></button>
-                            <button onClick={handleNext4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronRight size={16} className="md:w-5 md:h-5"/></button>
-                          </div>
-                          <div className="font-extrabold text-slate-600 text-[10px] md:text-sm whitespace-nowrap">
-                            {currentDate.getFullYear()}.{String(currentDate.getMonth() + 1).padStart(2, '0')}.{String(currentDate.getDate()).padStart(2, '0')} 기준
-                          </div>
-                        </div>
-                        {/* 💡 모바일에서는 편집 기능 숨김 */}
-                        {!isMobile && (
-                          <div className="flex gap-2 text-center">
-                            <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">과목 추가</span></button>
-                            <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">일정 초기화</span></button>
-                          </div>
-                        )}
-                      </div>
-
-                      {monthlyBlocks.map((blockIdx) => {
-                        const chunkStartIndex = blockIdx * chunkSize;
-                        const chunk = allDates.slice(chunkStartIndex, chunkStartIndex + chunkSize);
-                        
-                        const isDuplicateTb = isMobile && (blockIdx === 1 || blockIdx === 3);
-                        const getTbTextareaId = (r, c) => isDuplicateTb ? `monthly-textarea-${r}-${c}-dup` : `monthly-textarea-${r}-${c}`;
-
-                        return (
-                          <div key={blockIdx} className={`w-full relative select-none ${isMobile ? 'pb-2' : 'overflow-x-auto custom-scrollbar pb-3'}`} onMouseLeave={handleMouseUp}>
-                            {isMobile && <div className="text-left font-black text-indigo-600 text-[10px] mb-0.5 pl-1">{blockIdx + 1}주차</div>}
-                            <div className={isMobile ? "w-full" : "min-w-[800px] md:min-w-full"}>
-                              <table className={`w-full border-collapse table-fixed text-center align-middle ${isMobile ? 'mb-1 text-[8px] monthly-mobile-table' : 'mb-4 md:mb-10 text-[9px] md:text-[11px]'}`}>
-                                <thead>
-                                  <tr className="bg-slate-50 text-center">
-                                    <th className="border border-slate-300 w-[12%] md:w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>과목</th>
-                                    <th className="border border-slate-300 w-[12%] md:w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>교재</th>
-                                    {chunk.map((d, i) => {
-                                      let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                      return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>{d.day}</th>;
-                                    })}
-                                  </tr>
-                                  <tr className="bg-slate-50 text-center">
-                                    {chunk.map((d, i) => {
-                                       let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                       return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle break-keep ${textColor}`} style={{ fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>{d.label}</th>;
-                                    })}
-                                  </tr>
-                                </thead>
-                                
-                                <tbody>
-                                  <tr className="bg-white text-center">
-                                    <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-0.5 md:py-1" style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>비고</td>
-                                    {chunk.map((d, i) => {
-                                      const cIdx = isMobile ? (blockIdx < 2 ? blockIdx * 7 + i + 1 : (blockIdx - 2) * 7 + i + 16) : (blockIdx === 0 ? i + 1 : i + 16);
-                                      const rIdx = 0;
-                                      const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
-                                      const cellId = `note-${d.full}`;
-                                      const isEditingThis = editingCell === cellId;
-                                      const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
-                                      const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
-                                      const val = termScheduler.topNotes[d.full] || '';
-
-                                      return (
-                                        <td key={cellId} 
-                                          onMouseDown={(e) => {
-                                            if (isMobile) return;
-                                            if (e.target.type === 'checkbox') return;
-                                            if (editingCell !== cellId) setEditingCell(null);
-                                            handleMonthlyMouseDown(e, rIdx, cIdx);
-                                          }}
-                                          onMouseEnter={() => {
-                                            if (isMobile) return;
-                                            handleMonthlyMouseEnter(rIdx, cIdx)
-                                          }}
-                                          onClick={(e) => { 
-                                            if (isMobile) return;
-                                            if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
-                                              setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
-                                            }
-                                          }}
-                                          onDoubleClick={(e) => { 
-                                            if (isMobile) return;
-                                            if (e.target.type !== 'checkbox') setEditingCell(cellId); 
-                                          }}
-                                          className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${!isMobile && isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
-                                        >
-                                          {/* 💡 모바일 최적화 (읽기 전용 텍스트 노출) */}
-                                          {isMobile ? (
-                                            <div className="w-full h-full flex items-center justify-center p-0.5 min-h-[20px]">
-                                               <span className="font-bold text-[8px] leading-[1.1] text-slate-800 whitespace-pre-wrap break-words">{val}</span>
-                                            </div>
-                                          ) : (
-                                            <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[30px] relative">
+                              </thead>
+                              <tbody>
+                                {timetable.map((row) => {
+                                  const isRowSelected = activeTab === 'WEEKLY' && wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId;
+                                  const timeBgClass = isRowSelected ? "bg-indigo-100/70 shadow-inner border-indigo-200" : "bg-slate-50/50";
+                                  const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-400 font-medium";
+                                  return (
+                                    <tr key={row.id} className="group text-center h-[1%]">
+                                      <td className={`p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none time-col ${timeBgClass}`}>
+                                        <div className={`flex flex-col items-center justify-center w-full h-full min-h-[16px] md:min-h-[28px] time-col-inner ${timeTextClass}`} style={{ fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>
+                                          <span>{row.time}</span>
+                                        </div>
+                                      </td>
+                                      {DAYS.map((day) => {
+                                        if (row[`${day}_hidden`]) return null;
+                                        const dayIdx = DAYS.indexOf(day);
+                                        
+                                        const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
+                                        const isSingleSelection = wBounds && wBounds.minId === wBounds.maxId && wBounds.minDayIdx === wBounds.maxDayIdx;
+                                        const isActiveThis = isSingleSelection && selection.startId === row.id && selection.startDay === day;
+                                        
+                                        const cellId = `WEEKLY-${day}-${row.id}`;
+                                        const isEditingThis = editingCell === cellId;
+                                        
+                                        const keywordColor = getCellColor(row[day]);
+                                        const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
+                                        
+                                        return (
+                                          <td 
+                                            key={day} 
+                                            className={`p-0 relative align-top border-b border-r border-slate-200 transition-colors duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
+                                            style={{ backgroundColor: bgColor }} 
+                                            rowSpan={row[`${day}_span`] || 1} 
+                                            onMouseDown={(e) => {
+                                              if (editingCell !== cellId) setEditingCell(null);
+                                              handleMouseDown(e, day, row.id);
+                                            }} 
+                                            onMouseEnter={() => handleMouseEnter(day, row.id)}
+                                            onClick={(e) => { 
+                                              if (!e.shiftKey) { 
+                                                const area = document.getElementById(`textarea-${row.id}-${day}`); 
+                                                if (area && document.activeElement !== area) {
+                                                  setTimeout(() => area.focus(), 0);
+                                                } 
+                                              } 
+                                            }}
+                                            onDoubleClick={() => setEditingCell(cellId)}
+                                          >
+                                            <div className="w-full h-full flex flex-col items-center justify-center p-0 md:p-1 text-center min-h-[16px] md:min-h-[28px]">
                                               <textarea 
-                                                id={`monthly-textarea-${rIdx}-${cIdx}`}
-                                                value={val} 
-                                                onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
-                                                onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TOP_NOTE' }, d.full)} rows={1}
+                                                id={`textarea-${row.id}-${day}`}
+                                                value={row[day] || ''} 
+                                                onChange={(e) => {
+                                                  handleTimetableChange(row.id, day, e.target.value);
+                                                  autoResize(e);
+                                                }} 
+                                                onFocus={handleFocus} 
+                                                onBlur={(e) => handleBlur(e, row.id, day, false)}
+                                                style={{
+                                                  caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                  cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                  fontSize: `${displayFontSize}px`,
+                                                  lineHeight: '1.2'
+                                                }}
                                                 onCompositionStart={(e) => {
                                                   if (!isEditingThis && isActiveThis) {
-                                                    e.currentTarget.value = ''; handleTopNoteChange(d.full, '');
-                                                    setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                    e.currentTarget.value = '';
+                                                    handleTimetableChange(row.id, day, '');
+                                                    setEditingCell(cellId);
+                                                    setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
                                                   }
                                                 }}
-                                                onKeyDown={(e) => { 
+                                                onKeyDown={(e) => {
                                                   if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                  
+                                                  const moveFocus = (rId, dIdx, dir) => {
+                                                    let nextRId = rId; let nextDIdx = dIdx;
+                                                    if (dir === 'DOWN') {
+                                                       const span = timetable[nextRId - 1][`${DAYS[nextDIdx]}_span`] || 1;
+                                                       nextRId += span;
+                                                       while(nextRId <= 32 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId++;
+                                                       if (nextRId > 32) return;
+                                                    } else if (dir === 'UP') {
+                                                       nextRId -= 1;
+                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                       if (nextRId < 1) return;
+                                                    } else if (dir === 'RIGHT') {
+                                                       nextDIdx += 1;
+                                                       if (nextDIdx > 6) { nextDIdx = 0; nextRId += 1; }
+                                                       if (nextRId > 32) return;
+                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                       if (nextRId < 1) nextRId = 1;
+                                                    } else if (dir === 'LEFT') {
+                                                       nextDIdx -= 1;
+                                                       if (nextDIdx < 0) { nextDIdx = 6; nextRId -= 1; }
+                                                       if (nextRId < 1) return;
+                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                       if (nextRId < 1) nextRId = 1;
+                                                    }
+                                                    
+                                                    const nextDay = DAYS[nextDIdx];
+                                                    setSelection({ startDay: nextDay, endDay: nextDay, startId: nextRId, endId: nextRId });
+                                                    setEditingCell(null);
+                                                    setTimeout(() => {
+                                                      const el = document.getElementById(`textarea-${nextRId}-${nextDay}`);
+                                                      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+                                                    }, 0);
+                                                  };
+                                                  
                                                   if (!isEditingThis && isActiveThis) {
-                                                    if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                    else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
-                                                    else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
-                                                    else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
-                                                    else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
-                                                    else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                    else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, ''); }
-                                                    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+                                                    if (e.key === 'Enter' || e.key === 'F2') {
+                                                      e.preventDefault();
+                                                      setEditingCell(cellId);
+                                                      e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                                                    } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(row.id, dayIdx, 'DOWN');
+                                                    } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus(row.id, dayIdx, 'UP');
+                                                    } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocus(row.id, dayIdx, 'RIGHT');
+                                                    } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocus(row.id, dayIdx, 'LEFT');
+                                                    } else if (e.key === 'Tab') { e.preventDefault(); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                    } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
+                                                    } else if (e.key === 'Delete' || e.key === 'Backspace') { 
+                                                      e.preventDefault(); saveToHistory(); handleTimetableChange(row.id, day, '');
+                                                    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                                                      e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
+                                                      setEditingCell(cellId);
+                                                      setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
+                                                    }
                                                   } else if (isEditingThis) {
                                                     if (e.key === 'Enter') {
                                                       if (e.shiftKey || e.altKey) {
@@ -2133,651 +2021,869 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                           const end = target.selectionEnd;
                                                           const valStr = target.value;
                                                           const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                          handleTopNoteChange(d.full, newVal);
+                                                          handleTimetableChange(row.id, day, newVal);
                                                           setTimeout(() => {
-                                                            const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
-                                                            if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
+                                                            const targetEl = document.getElementById(`textarea-${row.id}-${day}`);
+                                                            if (targetEl) {
+                                                              targetEl.setSelectionRange(start + 1, start + 1);
+                                                              autoResize({ target: targetEl });
+                                                            }
                                                           }, 0);
                                                         }
                                                       } else {
-                                                        e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
+                                                        e.preventDefault(); 
+                                                        setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
                                                       }
+                                                    } else if (e.key === 'Tab') {
+                                                      e.preventDefault(); 
+                                                      setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                    } else if (e.key === 'Escape') {
+                                                      e.preventDefault(); setEditingCell(null);
+                                                      e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
                                                     }
-                                                    else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                    else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
                                                   }
-                                                }}
-                                                style={{
-                                                  fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
-                                                  caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                                  cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                                  zIndex: isEditingThis ? 20 : 0
-                                                }}
-                                                className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                                }} 
+                                                className={`w-full p-0.5 md:p-1 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle auto-resize break-words whitespace-pre-wrap ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
+                                                rows={1}
                                               />
-                                              {!isEditingThis && (
-                                                <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
-                                                  <div style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-bold text-slate-800">{val}</div>
-                                                </div>
-                                              )}
                                             </div>
-                                          )}
-                                        </td>
-                                      )
-                                    })}
-                                  </tr>
-                                  
-                                  {flatRows.map((rowInfo) => {
-                                    const { sub, tbName, tbIdx, isFirst, rowSpan, actualRowIdx } = rowInfo;
-                                    const rIdx = actualRowIdx;
-                                    
-                                    const tbCIdx = isMobile ? (blockIdx < 2 ? 0 : 15) : (blockIdx === 0 ? 0 : 15);
-
-                                    const isSelTb = mb && rIdx >= mb.minR && rIdx <= mb.maxR && tbCIdx >= mb.minC && tbCIdx <= mb.maxC;
-                                    const cellIdTb = isMobile ? `textbook-${sub}-${tbIdx}-m${blockIdx}` : `textbook-${sub}-${tbIdx}-${blockIdx}`;
-                                    const isEditingTb = editingCell === cellIdTb;
-                                    const isSingleSelTb = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
-                                    const isActiveTb = isSingleSelTb && monthlySelection.r1 === rIdx && monthlySelection.c1 === tbCIdx;
-
-                                    return (
-                                      <tr key={`${sub}-tb${tbIdx}`} className="text-center align-middle group/row">
-                                        {isFirst && (
-                                          <td rowSpan={rowSpan} className="border border-slate-300 p-0.5 md:px-1 md:py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep group/sub">
-                                            <span style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>{sub}</span>
-                                            {!isMobile && <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/sub:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>}
                                           </td>
-                                        )}
-                                        
-                                        <td key={cellIdTb}
-                                          onMouseDown={(e) => {
-                                            if (isMobile) return;
-                                            if (editingCell !== cellIdTb) setEditingCell(null);
-                                            handleMonthlyMouseDown(e, rIdx, tbCIdx);
-                                          }}
-                                          onMouseEnter={() => {
-                                            if (isMobile) return;
-                                            handleMonthlyMouseEnter(rIdx, tbCIdx);
-                                          }}
-                                          onClick={(e) => { 
-                                            if (isMobile) return;
-                                            if (!e.shiftKey && !isEditingTb) {
-                                              setTimeout(() => { const el = document.getElementById(getTbTextareaId(rIdx, tbCIdx)); if (el) el.focus(); }, 0);
-                                            }
-                                          }}
-                                          onDoubleClick={() => {
-                                            if (isMobile) return;
-                                            setEditingCell(cellIdTb);
-                                          }}
-                                          className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${!isMobile && isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
-                                        >
-                                          {/* 💡 모바일 최적화 (읽기 전용 텍스트 노출) */}
-                                          {isMobile ? (
-                                            <div className="w-full h-full flex items-center justify-center p-0.5 min-h-[24px]">
-                                              <span className="font-bold text-[8px] leading-[1.1] text-slate-700 whitespace-pre-wrap break-words">{tbName || '-'}</span>
-                                            </div>
-                                          ) : (
-                                            <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
-                                              {rowSpan > 1 && (
-                                                  <button onClick={(e) => { e.stopPropagation(); deleteTextbookRow(sub, tbIdx); }} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/row:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
-                                              )}
-                                              <textarea 
-                                                id={getTbTextareaId(rIdx, tbCIdx)}
-                                                value={tbName} 
-                                                onChange={(e) => handleTermTextbookChange(sub, tbIdx, e.target.value)} 
-                                                onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TEXTBOOK', sub, tbIdx }, null)} rows={1}
-                                                placeholder={tbIdx === 0 && rowSpan === 1 ? "교재 입력\n(Shift+Enter 행 추가)" : ""}
-                                                onCompositionStart={(e) => {
-                                                  if (!isEditingTb && isActiveTb) {
-                                                    e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, '');
-                                                    setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx });
-                                                  }
-                                                }}
-                                                onKeyDown={(e) => { 
-                                                  if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                  if (!isEditingTb && isActiveTb) {
-                                                    if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellIdTb); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                    else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'DOWN'); }
-                                                    else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'UP'); }
-                                                    else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'RIGHT'); }
-                                                    else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'LEFT'); }
-                                                    else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                    else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                    else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, tbIdx, ''); }
-                                                    else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
-                                                  } else if (isEditingTb) {
-                                                    if (e.key === 'Enter') {
-                                                      if (e.shiftKey || e.altKey) {
-                                                        e.preventDefault();
-                                                        const target = e.currentTarget;
-                                                        const start = target.selectionStart;
-                                                        const valStr = target.value;
-                                                        const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
-                                                        handleTermTextbookChange(sub, tbIdx, newVal);
-                                                        setTimeout(() => {
-                                                          const nextRIdx = rIdx + 1; 
-                                                          setEditingCell(isMobile ? `textbook-${sub}-${tbIdx + 1}-m${blockIdx}` : `textbook-${sub}-${tbIdx + 1}-${blockIdx}`);
-                                                          setMonthlySelection({ r1: nextRIdx, c1: tbCIdx, r2: nextRIdx, c2: tbCIdx });
-                                                          const el = document.getElementById(getTbTextareaId(nextRIdx, tbCIdx));
-                                                          if(el) { el.focus(); el.setSelectionRange(0, 0); }
-                                                        }, 50);
-                                                      } else {
-                                                        e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, 'DOWN');
-                                                      }
-                                                    }
-                                                    else if (e.key === 'Backspace' && e.currentTarget.value === '' && rowSpan > 1) {
-                                                      e.preventDefault();
-                                                      deleteTextbookRow(sub, tbIdx);
-                                                      setTimeout(() => {
-                                                         const prevRIdx = Math.max(1, rIdx - 1);
-                                                         setEditingCell(null);
-                                                         setMonthlySelection({ r1: prevRIdx, c1: tbCIdx, r2: prevRIdx, c2: tbCIdx });
-                                                         const el = document.getElementById(getTbTextareaId(prevRIdx, tbCIdx));
-                                                         if(el) el.focus();
-                                                      }, 50);
-                                                    }
-                                                    else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                    else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
-                                                  }
-                                                }}
-                                                style={{
-                                                  fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingTb ? 1 : 0,
-                                                  caretColor: (!isEditingTb && isActiveTb) ? 'transparent' : 'auto',
-                                                  cursor: (!isEditingTb && isActiveTb) ? 'default' : 'text',
-                                                  zIndex: isEditingTb ? 20 : 0
-                                                }}
-                                                className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-700 placeholder:text-slate-300 align-middle auto-resize break-words whitespace-pre-wrap ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
-                                              />
-                                              {!isEditingTb && (
-                                                <div className="w-full h-full flex flex-col justify-center px-0.5 md:px-1 min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-none">
-                                                  {tbName.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${displayFontSize}px` }}>.</span> ) : (
-                                                    <div style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none">{tbName}</div>
-                                                  )}
-                                                </div>
-                                              )}
-                                            </div>
-                                          )}
-                                        </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
 
+                {activeTab === 'MONTHLY' && (
+                  <div className="animate-fade-in flex flex-col gap-6 text-center w-full overflow-x-hidden">
+                    <div className="p-2 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm w-full text-center flex flex-col items-center">
+                      <div className="flex w-full items-center justify-between mb-4 md:mb-6 px-2 text-center mt-2 md:mt-0">
+                        <div className="flex items-center gap-2 md:gap-4 text-center">
+                          <div className="flex gap-2 text-center">
+                            <button onClick={handlePrev4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronLeft size={16} className="md:w-5 md:h-5"/></button>
+                            <button onClick={handleNext4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronRight size={16} className="md:w-5 md:h-5"/></button>
+                          </div>
+                          <div className="font-extrabold text-slate-600 text-[10px] md:text-sm whitespace-nowrap">
+                            {currentDate.getFullYear()}.{String(currentDate.getMonth() + 1).padStart(2, '0')}.{String(currentDate.getDate()).padStart(2, '0')} 기준
+                          </div>
+                        </div>
+                        {!isMobile && (
+                          <div className="flex gap-2 text-center">
+                            <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">과목 추가</span></button>
+                            <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">일정 초기화</span></button>
+                          </div>
+                        )}
+                      </div>
+
+                      {isMobile ? (
+                        <div className="flex flex-col gap-3 w-full pb-4">
+                           {[0, 1, 2, 3].map(blockIdx => {
+                              const chunkStart = blockIdx * 7;
+                              const chunk = allDates.slice(chunkStart, chunkStart + 7);
+                              return (
+                                 <div key={blockIdx} className="w-full">
+                                    <div className="text-left font-black text-indigo-600 text-[10px] mb-1 pl-1">{blockIdx + 1}주차</div>
+                                    <table className="w-full border-collapse table-fixed text-center text-[8px] bg-white border border-slate-200">
+                                       <thead>
+                                          <tr className="bg-slate-50">
+                                             <th className="border border-slate-200 w-[12%] py-1">과목</th>
+                                             <th className="border border-slate-200 w-[14%] py-1">교재</th>
+                                             {chunk.map(d => <th key={d.full} className={`border border-slate-200 py-1 ${d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : ''}`}>{d.day}<br/>{d.label}</th>)}
+                                          </tr>
+                                       </thead>
+                                       <tbody>
+                                          <tr>
+                                             <td colSpan={2} className="border border-slate-200 bg-slate-50 font-black py-1">비고</td>
+                                             {chunk.map(d => <td key={d.full} className="border border-slate-200 p-0.5 whitespace-pre-wrap font-bold text-slate-700">{termScheduler.topNotes[d.full] || ''}</td>)}
+                                          </tr>
+                                          {flatRows.map(rowInfo => {
+                                             const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
+                                             return (
+                                                <tr key={`${sub}-${tbIdx}`}>
+                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 font-black break-keep">{sub}</td>}
+                                                   <td className="border border-slate-200 font-bold whitespace-pre-wrap break-all p-0.5 text-[7px] text-slate-700">{tbName}</td>
+                                                   {chunk.map(d => {
+                                                      const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
+                                                      const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
+                                                      const lines = val.split('\n').filter(l => l.trim() !== '');
+                                                      return (
+                                                         <td key={d.full} className="border border-slate-200 align-top p-0.5">
+                                                            {lines.map((line, lIdx) => {
+                                                               const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                                               const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                                               return (
+                                                                  <div key={lIdx} className="flex items-start gap-1 text-left mb-0.5 leading-[1.1]">
+                                                                     {isChecked ? (
+                                                                        <span className="flex-shrink-0 text-[7px] mt-[1px]">✅</span>
+                                                                     ) : (
+                                                                        <div className="w-[8px] h-[8px] border border-slate-300 rounded-[1px] mt-[1.5px] flex-shrink-0 bg-slate-50"></div>
+                                                                     )}
+                                                                     <span className="font-bold text-slate-800 break-all whitespace-pre-wrap text-[7.5px]">{line}</span>
+                                                                  </div>
+                                                               )
+                                                            })}
+                                                         </td>
+                                                      )
+                                                   })}
+                                                </tr>
+                                             )
+                                          })}
+                                       </tbody>
+                                    </table>
+                                 </div>
+                              )
+                           })}
+
+                           {termScheduler.subjects.length > 0 && (
+                              <div className="w-full mt-2">
+                                  <table className="w-full border-collapse text-[8px] shadow-sm rounded-lg overflow-hidden border border-slate-200 text-center table-fixed align-middle">
+                                      <thead>
+                                          <tr className="bg-slate-100 font-black text-slate-800">
+                                             <th className="border border-slate-200 w-[14%] py-1.5 break-keep">과목</th>
+                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">교재</th>
+                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">시작</th>
+                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">목표</th>
+                                             <th className="border border-slate-200 w-[38%] py-1.5 break-keep">달성도</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody>
+                                          {flatRows.map(rowInfo => {
+                                             const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
+                                             let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
+                                             allDates.forEach(d => {
+                                                const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
+                                                const fallbackVal = (tbIdx === 0 && exactVal === undefined) ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '';
+                                                const val = exactVal !== undefined ? exactVal : fallbackVal;
+                                                if (val.trim() !== "") {
+                                                   val.split('\n').forEach((lineText, lIdx) => {
+                                                      if (lineText.trim() !== "") {
+                                                         if (firstData === "-") firstData = lineText.trim();
+                                                         lastData = lineText.trim(); totalItems++;
+                                                         const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                                         const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                                         if (isChecked) checkedItems++;
+                                                      }
+                                                   });
+                                                }
+                                             });
+                                             const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
+                                             return (
+                                                <tr key={`status-m-${sub}-${tbIdx}`} className="bg-white">
+                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 font-black bg-slate-50/50">{sub}</td>}
+                                                   <td className="border border-slate-200 p-1 font-bold text-slate-700 break-words whitespace-pre-wrap">{tbName || '-'}</td>
+                                                   <td className="border border-slate-200 p-1 font-black text-indigo-700 break-words whitespace-pre-wrap">{firstData}</td>
+                                                   <td className="border border-slate-200 p-1 font-black text-rose-700 break-words whitespace-pre-wrap">{lastData}</td>
+                                                   <td className="border border-slate-200 p-1 align-middle">
+                                                      <div className="relative w-full h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
+                                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200" style={{ width: `${percent}%` }} />
+                                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[7px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
+                                                      </div>
+                                                   </td>
+                                                </tr>
+                                             )
+                                          })}
+                                      </tbody>
+                                  </table>
+                              </div>
+                           )}
+                        </div>
+                      ) : (
+                        <>
+                          {monthlyBlocks.map((blockIdx) => {
+                            const chunkStartIndex = blockIdx * chunkSize;
+                            const chunk = allDates.slice(chunkStartIndex, chunkStartIndex + chunkSize);
+                            
+                            return (
+                              <div key={blockIdx} className="w-full relative select-none overflow-x-auto custom-scrollbar pb-3" onMouseLeave={handleMouseUp}>
+                                <div className="min-w-[800px] md:min-w-full">
+                                  <table className="w-full border-collapse mb-4 md:mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
+                                    <thead>
+                                      <tr className="bg-slate-50 text-center">
+                                        <th className="border border-slate-300 w-[12%] md:w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>과목</th>
+                                        <th className="border border-slate-300 w-[12%] md:w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>교재</th>
                                         {chunk.map((d, i) => {
-                                          const cIdx = isMobile ? (blockIdx < 2 ? blockIdx * 7 + i + 1 : (blockIdx - 2) * 7 + i + 16) : (blockIdx === 0 ? i + 1 : i + 16);
-                                          const cellKey = `${sub}-tb${tbIdx}-${d.full}`;
-                                          
-                                          const exactVal = termScheduler.cells[cellKey];
-                                          const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
-                                          
-                                          const lines = val.split('\n').filter(l => l.trim() !== '');
-                                          const isEditingThis = editingCell === cellKey;
+                                          let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
+                                          return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>{d.day}</th>;
+                                        })}
+                                      </tr>
+                                      <tr className="bg-slate-50 text-center">
+                                        {chunk.map((d, i) => {
+                                            let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
+                                            return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle break-keep ${textColor}`} style={{ fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>{d.label}</th>;
+                                        })}
+                                      </tr>
+                                    </thead>
+                                    
+                                    <tbody>
+                                      <tr className="bg-white text-center">
+                                        <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-0.5 md:py-1" style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>비고</td>
+                                        {chunk.map((d, i) => {
+                                          const cIdx = blockIdx === 0 ? i + 1 : i + 16;
+                                          const rIdx = 0;
                                           const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
+                                          const cellId = `note-${d.full}`;
+                                          const isEditingThis = editingCell === cellId;
                                           const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
                                           const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
+                                          const val = termScheduler.topNotes[d.full] || '';
 
                                           return (
-                                            <td key={cellKey}
+                                            <td key={cellId} 
                                               onMouseDown={(e) => {
-                                                if (isMobile) return;
                                                 if (e.target.type === 'checkbox') return;
-                                                if (editingCell !== cellKey) setEditingCell(null);
+                                                if (editingCell !== cellId) setEditingCell(null);
                                                 handleMonthlyMouseDown(e, rIdx, cIdx);
                                               }}
-                                              onMouseEnter={() => {
-                                                if (isMobile) return;
-                                                handleMonthlyMouseEnter(rIdx, cIdx);
-                                              }}
+                                              onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
                                               onClick={(e) => { 
-                                                if (isMobile) return;
                                                 if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
                                                   setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
                                                 }
                                               }}
-                                              onDoubleClick={(e) => {
-                                                if (isMobile) return;
-                                                if (e.target.type !== 'checkbox') setEditingCell(cellKey);
-                                              }}
-                                              className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${!isMobile && isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
+                                              onDoubleClick={(e) => { if (e.target.type !== 'checkbox') setEditingCell(cellId); }}
+                                              className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
                                             >
-                                              {/* 💡 모바일 최적화 (읽기 전용 체크박스 리스트) */}
-                                              {isMobile ? (
-                                                <div className="w-full h-full flex flex-col gap-0.5 p-0.5 justify-center min-h-[24px]">
-                                                  {val.trim() === '' ? null : lines.map((line, lIdx) => {
-                                                    const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
-                                                    const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
-                                                    return (
-                                                      <div key={lIdx} className={`flex items-center justify-center gap-0.5 rounded px-0.5 py-0.5 w-full ${isChecked ? 'bg-slate-50' : 'bg-slate-100/80 shadow-sm border border-black/5'}`}>
-                                                        <span className={`font-black text-[8px] leading-[1.1] break-words whitespace-pre-wrap text-center ${isChecked ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{line}</span>
-                                                      </div>
-                                                    )
-                                                  })}
-                                                </div>
-                                              ) : (
-                                                <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
-                                                  <textarea 
-                                                    id={`monthly-textarea-${rIdx}-${cIdx}`}
-                                                    value={val} 
-                                                    onChange={(e) => handleTermCellChange(sub, tbIdx, d.full, e.target.value)} 
-                                                    onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'CELL', sub, tbIdx }, d.full)} rows={1}
-                                                    onCompositionStart={(e) => {
-                                                      if (!isEditingThis && isActiveThis) {
-                                                        e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, '');
-                                                        setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
-                                                      }
-                                                    }}
-                                                    onKeyDown={(e) => { 
-                                                      if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                      if (!isEditingThis && isActiveThis) {
-                                                        if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellKey); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                        else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
-                                                        else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
-                                                        else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
-                                                        else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
-                                                        else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                        else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                        else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, tbIdx, d.full, ''); }
-                                                        else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, ''); setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
-                                                      } else if (isEditingThis) {
-                                                        if (e.key === 'Enter') {
-                                                          if (e.shiftKey || e.altKey) {
+                                              <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[26px] md:min-h-[30px] relative">
+                                                <textarea 
+                                                  id={`monthly-textarea-${rIdx}-${cIdx}`}
+                                                  value={val} 
+                                                  onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
+                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TOP_NOTE' }, d.full)} rows={1}
+                                                  onCompositionStart={(e) => {
+                                                    if (!isEditingThis && isActiveThis) {
+                                                      e.currentTarget.value = ''; handleTopNoteChange(d.full, '');
+                                                      setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => { 
+                                                    if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                    if (!isEditingThis && isActiveThis) {
+                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                      else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                      else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
+                                                      else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
+                                                      else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, ''); }
+                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+                                                    } else if (isEditingThis) {
+                                                      if (e.key === 'Enter') {
+                                                        if (e.shiftKey || e.altKey) {
+                                                          if (e.altKey && !e.shiftKey) {
                                                             e.preventDefault();
                                                             const target = e.currentTarget;
                                                             const start = target.selectionStart;
+                                                            const end = target.selectionEnd;
                                                             const valStr = target.value;
-                                                            const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
-                                                            handleTermCellChange(sub, tbIdx, d.full, newVal);
+                                                            const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                                            handleTopNoteChange(d.full, newVal);
                                                             setTimeout(() => {
                                                               const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
                                                               if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
                                                             }, 0);
-                                                          } else {
-                                                            e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
                                                           }
+                                                        } else {
+                                                          e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
                                                         }
-                                                        else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                        else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
                                                       }
-                                                    }}
-                                                    style={{
-                                                      fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
-                                                      caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                                      cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                                      zIndex: isEditingThis ? 20 : 0
-                                                    }}
-                                                    className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
-                                                  />
-                                                  {!isEditingThis && (
-                                                    <div className="w-full h-full flex flex-col gap-1 px-0.5 md:px-1 py-0.5 md:py-1 justify-center min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-auto cursor-default">
-                                                      {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${displayFontSize}px` }}>.</span> ) : (
-                                                        lines.map((line, lIdx) => {
-                                                          const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
-                                                          const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
-                                                          
-                                                          return (
-                                                            <div key={lIdx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
-                                                              <span style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
-                                                              <input type="checkbox" checked={isChecked} 
-                                                                onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, tbIdx, d.full, lIdx); }} 
-                                                                onClick={(e) => { 
-                                                                  e.stopPropagation(); 
-                                                                  setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
-                                                                  setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
-                                                                }} 
-                                                                className="w-[10px] h-[10px] md:w-3 md:h-3 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
-                                                              />
-                                                            </div>
-                                                          );
-                                                        })
-                                                      )}
-                                                    </div>
-                                                  )}
-                                                </>
+                                                      else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                    }
+                                                  }}
+                                                  style={{
+                                                    fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
+                                                    caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                    cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                    zIndex: isEditingThis ? 20 : 0
+                                                  }}
+                                                  className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                                />
+                                                {!isEditingThis && (
+                                                  <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
+                                                    <div style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-bold text-slate-800">{val}</div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
+                                          )
+                                        })}
+                                      </tr>
+                                      
+                                      {flatRows.map((rowInfo) => {
+                                        const { sub, tbName, tbIdx, isFirst, rowSpan, actualRowIdx } = rowInfo;
+                                        const rIdx = actualRowIdx;
+                                        const tbCIdx = blockIdx === 0 ? 0 : 15;
+
+                                        const isSelTb = mb && rIdx >= mb.minR && rIdx <= mb.maxR && tbCIdx >= mb.minC && tbCIdx <= mb.maxC;
+                                        const cellIdTb = `textbook-${sub}-${tbIdx}-${blockIdx}`;
+                                        const isEditingTb = editingCell === cellIdTb;
+                                        const isSingleSelTb = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                        const isActiveTb = isSingleSelTb && monthlySelection.r1 === rIdx && monthlySelection.c1 === tbCIdx;
+
+                                        return (
+                                          <tr key={`${sub}-tb${tbIdx}`} className="text-center align-middle group/row">
+                                            {isFirst && (
+                                              <td rowSpan={rowSpan} className="border border-slate-300 p-0.5 md:px-1 md:py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep group/sub">
+                                                <span style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>{sub}</span>
+                                                <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/sub:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
+                                              </td>
+                                            )}
+                                            
+                                            <td key={cellIdTb}
+                                              onMouseDown={(e) => {
+                                                if (editingCell !== cellIdTb) setEditingCell(null);
+                                                handleMonthlyMouseDown(e, rIdx, tbCIdx);
+                                              }}
+                                              onMouseEnter={() => handleMonthlyMouseEnter(rIdx, tbCIdx)}
+                                              onClick={(e) => { 
+                                                if (!e.shiftKey && !isEditingTb) {
+                                                  setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`); if (el) el.focus(); }, 0);
+                                                }
+                                              }}
+                                              onDoubleClick={() => setEditingCell(cellIdTb)}
+                                              className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
+                                            >
+                                              {rowSpan > 1 && (
+                                                  <button onClick={(e) => { e.stopPropagation(); deleteTextbookRow(sub, tbIdx); }} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/row:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
                                               )}
+                                              <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
+                                                <textarea 
+                                                  id={`monthly-textarea-${rIdx}-${tbCIdx}`}
+                                                  value={tbName} 
+                                                  onChange={(e) => handleTermTextbookChange(sub, tbIdx, e.target.value)} 
+                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TEXTBOOK', sub, tbIdx }, null)} rows={1}
+                                                  placeholder={tbIdx === 0 && rowSpan === 1 ? "교재 입력\n(Shift+Enter 행 추가)" : ""}
+                                                  onCompositionStart={(e) => {
+                                                    if (!isEditingTb && isActiveTb) {
+                                                      e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, '');
+                                                      setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx });
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => { 
+                                                    if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                    if (!isEditingTb && isActiveTb) {
+                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellIdTb); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                      else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'DOWN'); }
+                                                      else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'UP'); }
+                                                      else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'RIGHT'); }
+                                                      else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'LEFT'); }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, tbIdx, ''); }
+                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
+                                                    } else if (isEditingTb) {
+                                                      if (e.key === 'Enter') {
+                                                        if (e.shiftKey || e.altKey) {
+                                                          e.preventDefault();
+                                                          const target = e.currentTarget;
+                                                          const start = target.selectionStart;
+                                                          const valStr = target.value;
+                                                          const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
+                                                          handleTermTextbookChange(sub, tbIdx, newVal);
+                                                          setTimeout(() => {
+                                                            const nextRIdx = rIdx + 1; 
+                                                            setEditingCell(`textbook-${sub}-${tbIdx + 1}-${blockIdx}`);
+                                                            setMonthlySelection({ r1: nextRIdx, c1: tbCIdx, r2: nextRIdx, c2: tbCIdx });
+                                                            const el = document.getElementById(`monthly-textarea-${nextRIdx}-${tbCIdx}`);
+                                                            if(el) { el.focus(); el.setSelectionRange(0, 0); }
+                                                          }, 50);
+                                                        } else {
+                                                          e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, 'DOWN');
+                                                        }
+                                                      }
+                                                      else if (e.key === 'Backspace' && e.currentTarget.value === '' && rowSpan > 1) {
+                                                        e.preventDefault();
+                                                        deleteTextbookRow(sub, tbIdx);
+                                                        setTimeout(() => {
+                                                           const prevRIdx = Math.max(1, rIdx - 1);
+                                                           setEditingCell(null);
+                                                           setMonthlySelection({ r1: prevRIdx, c1: tbCIdx, r2: prevRIdx, c2: tbCIdx });
+                                                           const el = document.getElementById(`monthly-textarea-${prevRIdx}-${tbCIdx}`);
+                                                           if(el) el.focus();
+                                                        }, 50);
+                                                      }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                    }
+                                                  }}
+                                                  style={{
+                                                    fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingTb ? 1 : 0,
+                                                    caretColor: (!isEditingTb && isActiveTb) ? 'transparent' : 'auto',
+                                                    cursor: (!isEditingTb && isActiveTb) ? 'default' : 'text',
+                                                    zIndex: isEditingTb ? 20 : 0
+                                                  }}
+                                                  className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-700 placeholder:text-slate-300 align-middle auto-resize break-words whitespace-pre-wrap ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
+                                                />
+                                                {!isEditingTb && (
+                                                  <div className="w-full h-full flex flex-col justify-center px-0.5 md:px-1 min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-none">
+                                                    {tbName.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${displayFontSize}px` }}>.</span> ) : (
+                                                      <div style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none">{tbName}</div>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
+
+                                            {chunk.map((d, i) => {
+                                              const cIdx = blockIdx === 0 ? i + 1 : i + 16;
+                                              const cellKey = `${sub}-tb${tbIdx}-${d.full}`;
+                                              
+                                              const exactVal = termScheduler.cells[cellKey];
+                                              const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
+                                              
+                                              const lines = val.split('\n').filter(l => l.trim() !== '');
+                                              const isEditingThis = editingCell === cellKey;
+                                              const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
+                                              const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                              const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
+
+                                              return (
+                                                <td key={cellKey}
+                                                  onMouseDown={(e) => {
+                                                    if (e.target.type === 'checkbox') return;
+                                                    if (editingCell !== cellKey) setEditingCell(null);
+                                                    handleMonthlyMouseDown(e, rIdx, cIdx);
+                                                  }}
+                                                  onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
+                                                  onClick={(e) => { 
+                                                    if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
+                                                      setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
+                                                    }
+                                                  }}
+                                                  onDoubleClick={(e) => {
+                                                    if (e.target.type !== 'checkbox') setEditingCell(cellKey);
+                                                  }}
+                                                  className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
+                                                >
+                                                  <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
+                                                    <textarea 
+                                                      id={`monthly-textarea-${rIdx}-${cIdx}`}
+                                                      value={val} 
+                                                      onChange={(e) => handleTermCellChange(sub, tbIdx, d.full, e.target.value)} 
+                                                      onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'CELL', sub, tbIdx }, d.full)} rows={1}
+                                                      onCompositionStart={(e) => {
+                                                        if (!isEditingThis && isActiveThis) {
+                                                          e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, '');
+                                                          setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                        }
+                                                      }}
+                                                      onKeyDown={(e) => { 
+                                                        if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                        if (!isEditingThis && isActiveThis) {
+                                                          if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellKey); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                          else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                          else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
+                                                          else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
+                                                          else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
+                                                          else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                          else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                          else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, tbIdx, d.full, ''); }
+                                                          else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, ''); setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+                                                        } else if (isEditingThis) {
+                                                          if (e.key === 'Enter') {
+                                                            if (e.shiftKey || e.altKey) {
+                                                                e.preventDefault();
+                                                                const target = e.currentTarget;
+                                                                const start = target.selectionStart;
+                                                                const valStr = target.value;
+                                                                const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
+                                                                handleTermCellChange(sub, tbIdx, d.full, newVal);
+                                                                setTimeout(() => {
+                                                                  const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
+                                                                  if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
+                                                                }, 0);
+                                                            } else {
+                                                              e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
+                                                            }
+                                                          }
+                                                          else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                          else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                        }
+                                                      }}
+                                                      style={{
+                                                        fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
+                                                        caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                        cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                        zIndex: isEditingThis ? 20 : 0
+                                                      }}
+                                                      className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                                    />
+                                                    {!isEditingThis && (
+                                                      <div className="w-full h-full flex flex-col gap-1 px-0.5 md:px-1 py-0.5 md:py-1 justify-center min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-auto cursor-default">
+                                                        {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${displayFontSize}px` }}>.</span> ) : (
+                                                          lines.map((line, lIdx) => {
+                                                            const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                                            const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                                            
+                                                            return (
+                                                              <div key={lIdx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
+                                                                <span style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
+                                                                <input type="checkbox" checked={isChecked} 
+                                                                  onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, tbIdx, d.full, lIdx); }} 
+                                                                  onClick={(e) => { 
+                                                                    e.stopPropagation(); 
+                                                                    setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
+                                                                    setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
+                                                                  }} 
+                                                                  className="w-[10px] h-[10px] md:w-3 md:h-3 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
+                                                                />
+                                                              </div>
+                                                            );
+                                                          })
+                                                        )}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </td>
+                                              );
+                                            })}
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {termScheduler.subjects.length > 0 && (
+                            <div className="text-left flex justify-center w-full text-center mt-2 md:mt-6 overflow-x-auto custom-scrollbar pb-2">
+                              <div className="w-full md:min-w-full">
+                                <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-xl md:rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle monthly-summary-table">
+                                  <thead>
+                                    <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(8, displayFontSize - 1)}px` }}>
+                                      <th className="border border-slate-200 w-[14%] md:w-[10%] py-2 md:py-4 align-middle text-center break-keep">과목</th>
+                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">교재</th>
+                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">시작</th>
+                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">목표</th>
+                                      <th className="border border-slate-200 w-[44%] md:w-[60%] align-middle text-center break-keep">달성도</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {flatRows.map((rowInfo) => {
+                                      const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
+                                      let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
+                                      
+                                      allDates.forEach(d => {
+                                        const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
+                                        const fallbackVal = (tbIdx === 0 && exactVal === undefined) ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '';
+                                        const val = exactVal !== undefined ? exactVal : fallbackVal;
+                                        
+                                        if (val.trim() !== "") {
+                                          val.split('\n').forEach((lineText, lIdx) => {
+                                            if (lineText.trim() !== "") {
+                                              if (firstData === "-") firstData = lineText.trim();
+                                              lastData = lineText.trim(); totalItems++;
+                                              
+                                              const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                              const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                              if (isChecked) checkedItems++;
+                                            }
+                                          });
+                                        }
+                                      });
+                                      
+                                      const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
+
+                                      return (
+                                        <tr key={`status-${sub}-${tbIdx}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(8, displayFontSize - 1)}px` }}>
+                                          {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${displayFontSize}px` }}>{sub}</span></td>}
+                                          <td className="border border-slate-200 p-1 md:p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{tbName || '-'}</span></td>
+                                          <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{firstData}</span></td>
+                                          <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{lastData}</span></td>
+                                          <td className="border border-slate-200 p-1.5 md:p-3 text-center align-middle">
+                                            <div className="relative w-full h-4 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
+                                              <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${percent}%` }} />
+                                              <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[8px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
                                             </div>
-                                          )}
-                                        </td>
+                                          </td>
+                                        </tr>
                                       );
                                     })}
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'YEARLY' && (
+                  <div className={`animate-fade-in grid ${isMobile ? 'grid-cols-3 gap-1 h-full' : 'grid-cols-3 md:grid-cols-6 gap-2 md:gap-4'} text-center yearly-mobile-grid`}>
+                    {yearlyPlan.map((plan, idx) => (
+                      <div key={idx} className={`p-1 md:p-6 rounded-xl md:rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center flex flex-col ${isMobile ? 'h-full' : ''}`}>
+                        <h4 className={`font-black text-indigo-600 text-center ${isMobile ? 'text-[10px] mb-1' : 'mb-1 md:mb-3 text-[10px] md:text-base'}`}>{idx + 1}월 계획</h4>
+                        {isMobile ? (
+                           <div className="w-full flex-1 p-0.5 text-[8px] font-bold text-slate-800 break-words whitespace-pre-wrap overflow-hidden text-center flex items-center justify-center">
+                             {plan || ''}
+                           </div>
+                        ) : (
+                          <textarea 
+                            value={plan || ''} 
+                            onChange={(e) => handleYearlyChange(idx, e.target.value)} 
+                            onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, null, null)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && e.altKey) {
+                                e.preventDefault();
+                                const target = e.target;
+                                const start = target.selectionStart;
+                                const end = target.selectionEnd;
+                                const valStr = target.value;
+                                const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                handleYearlyChange(idx, newVal);
+                                setTimeout(() => { 
+                                  target.selectionStart = target.selectionEnd = start + 1; 
+                                  autoResize({ target });
+                                }, 0);
+                              }
+                            }}
+                            placeholder={`${idx + 1}월 마일스톤`} 
+                            style={{ fontSize: `${Math.max(8, displayFontSize)}px`, lineHeight: '1.4' }}
+                            className="w-full flex-1 p-1.5 md:p-4 rounded-lg md:rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent auto-resize min-h-[60px] md:min-h-[80px] break-words whitespace-pre-wrap" 
+                          />
+                        )}
                       </div>
-                    );
-                  })}
+                    ))}
+                  </div>
+                )}
 
-                  {termScheduler.subjects.length > 0 && (
-                    <div className="text-left flex justify-center w-full text-center mt-2 md:mt-6 overflow-x-hidden pb-2">
-                      <div className="w-full">
-                        <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-xl md:rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle monthly-summary-table">
-                          <thead>
-                            <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(8, displayFontSize - 1)}px` }}>
-                              <th className="border border-slate-200 w-[14%] md:w-[10%] py-2 md:py-4 align-middle text-center break-keep">과목</th>
-                              <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">교재</th>
-                              <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">시작</th>
-                              <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">목표</th>
-                              <th className="border border-slate-200 w-[44%] md:w-[60%] align-middle text-center break-keep">달성도</th>
+                {activeTab === 'INFO' && (
+                  <div className={`animate-fade-in flex flex-col w-full text-center overflow-hidden bg-white rounded-xl border border-slate-200 shadow-sm ${isMobile ? 'p-1 h-full gap-1' : 'p-2 md:p-4 gap-4 info-mobile-fit'}`}>
+                    <div className="w-full flex-shrink-0">
+                      <table className={`w-full border-collapse text-center table-fixed min-w-full ${!isMobile && 'md:min-w-[700px] info-mobile-table'}`}>
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-700">
+                            {[0, 1, 2].map(i => renderInfoCell('topHeaders', 0, i, studentInfo.topHeaders[i], { tag: 'th', extraClass: 'w-[10%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } }))}
+                            {renderInfoCell('topHeaders', 0, 3, studentInfo.topHeaders[3], { tag: 'th', extraClass: 'w-[30%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } })}
+                            {renderInfoCell('topHeaders', 0, 4, studentInfo.topHeaders[4], { tag: 'th', extraClass: 'w-[40%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } })}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {studentInfo.websites.map((row, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-slate-50 transition-colors">
+                              {[0, 1, 2].map(cIdx => renderInfoCell('websites', rIdx, cIdx, row[cIdx], { extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 } }))}
+                              
+                              {rIdx === 0 && renderInfoCell('electives', 0, 0, studentInfo.electives[0], { rowSpan: studentInfo.websites.length, extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700, minHeight: isMobile ? 'auto' : '80px' } })}
+                              {rIdx === 0 && renderInfoCell('electives', 0, 1, studentInfo.electives[1], { rowSpan: studentInfo.websites.length, extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700, minHeight: isMobile ? 'auto' : '80px' } })}
                             </tr>
-                          </thead>
-                          <tbody>
-                            {flatRows.map((rowInfo) => {
-                              const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
-                              let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
-                              
-                              allDates.forEach(d => {
-                                const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
-                                const fallbackVal = (tbIdx === 0 && exactVal === undefined) ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '';
-                                const val = exactVal !== undefined ? exactVal : fallbackVal;
-                                
-                                if (val.trim() !== "") {
-                                  val.split('\n').forEach((lineText, lIdx) => {
-                                    if (lineText.trim() !== "") {
-                                      if (firstData === "-") firstData = lineText.trim();
-                                      lastData = lineText.trim(); totalItems++;
-                                      
-                                      const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
-                                      const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
-                                      if (isChecked) checkedItems++;
-                                    }
-                                  });
-                                }
-                              });
-                              
-                              const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                              return (
-                                <tr key={`status-${sub}-${tbIdx}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(8, displayFontSize - 1)}px` }}>
-                                  {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${displayFontSize}px` }}>{sub}</span></td>}
-                                  <td className="border border-slate-200 p-1 md:p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{tbName || '-'}</span></td>
-                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{firstData}</span></td>
-                                  <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{lastData}</span></td>
-                                  <td className="border border-slate-200 p-1.5 md:p-3 text-center align-middle">
-                                    <div className={`relative w-full ${isMobile ? 'h-3' : 'h-6'} bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto`}>
-                                      <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${percent}%` }} />
-                                      <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[7px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
+                    <div className={`flex ${isMobile ? 'flex-row gap-1' : 'flex-col xl:flex-row gap-4'} w-full mt-1 flex-1 min-h-0`}>
+                      <div className="flex-1 w-full overflow-x-hidden flex flex-col min-h-0">
+                        <div className="bg-slate-100 border border-slate-300 p-0 font-black text-center mb-0 border-b-0 rounded-t-lg shadow-sm">
+                          {renderInfoCell('midHeaders', 0, null, studentInfo.midHeaders[0], { tag: 'div', extraClass: 'w-full !border-none', extraStyle: { fontSize: isMobile ? '9px' : `${Math.max(10, displayFontSize + 2)}px`, fontWeight: 900 } })}
+                        </div>
+                        <table className={`w-full min-w-full border-collapse text-center table-fixed bg-white shadow-sm rounded-b-lg overflow-hidden h-full ${!isMobile && 'md:min-w-[600px] info-mobile-table'}`}>
+                          <tbody>
+                            {studentInfo.schoolGrades.map((row, rIdx) => (
+                              <tr key={`sg-${rIdx}`} className="hover:bg-indigo-50/30 transition-colors group/row relative">
+                                {row.map((cellVal, cIdx) => renderInfoCell('schoolGrades', rIdx, cIdx, cellVal, { 
+                                  extraClass: row.join('').trim() === '' ? 'bg-red-50/30' : '', 
+                                  extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 },
+                                  showDeleteBtn: cIdx === 0 && rIdx > 0 && studentInfo.schoolGrades.length > 1,
+                                  onDelete: () => {
+                                    saveToHistory();
+                                    const newInfo = { ...studentInfo, schoolGrades: [...studentInfo.schoolGrades] };
+                                    newInfo.schoolGrades.splice(rIdx, 1);
+                                    setStudentInfo(newInfo);
+                                    setInfoSelection({ section: null, rIdx: null, cIdx: null });
+                                    setEditingCell(null);
+                                  }
+                                }))}
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>
+
+                      <div className="flex-1 w-full overflow-x-hidden flex flex-col min-h-0">
+                        <div className="bg-slate-100 border border-slate-300 p-0 font-black text-center mb-0 border-b-0 rounded-t-lg shadow-sm">
+                          {renderInfoCell('midHeaders', 1, null, studentInfo.midHeaders[1], { tag: 'div', extraClass: 'w-full !border-none', extraStyle: { fontSize: isMobile ? '9px' : `${Math.max(10, displayFontSize + 2)}px`, fontWeight: 900 } })}
+                        </div>
+                        <table className={`w-full min-w-full border-collapse text-center table-fixed bg-white shadow-sm rounded-b-lg overflow-hidden h-full ${!isMobile && 'md:min-w-[500px] info-mobile-table'}`}>
+                          <tbody>
+                            {studentInfo.mockGrades.map((row, rIdx) => (
+                              <tr key={`mg-${rIdx}`} className="hover:bg-indigo-50/30 transition-colors group/row relative">
+                                {row.map((cellVal, cIdx) => renderInfoCell('mockGrades', rIdx, cIdx, cellVal, { 
+                                  extraClass: row.join('').trim() === '' ? 'bg-red-50/30' : '', 
+                                  extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 },
+                                  showDeleteBtn: cIdx === 0 && rIdx > 0 && studentInfo.mockGrades.length > 1,
+                                  onDelete: () => {
+                                    saveToHistory();
+                                    const newInfo = { ...studentInfo, mockGrades: [...studentInfo.mockGrades] };
+                                    newInfo.mockGrades.splice(rIdx, 1);
+                                    setStudentInfo(newInfo);
+                                    setInfoSelection({ section: null, rIdx: null, cIdx: null });
+                                    setEditingCell(null);
+                                  }
+                                }))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
                     </div>
+                  </div>
+                )}
+              </main>
+
+              {!isMobile && (
+                <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center print:hidden">
+                  {showAiModal ? (
+                    <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in text-center">
+                      <div className="bg-indigo-600 p-5 text-white flex justify-between items-center text-center">
+                        <h3 className="font-extrabold text-lg flex items-center justify-center gap-2 w-full text-center"><Sparkles size={20}/> AI 매직 플래너</h3>
+                        <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5 text-center" /></button>
+                      </div>
+                      <div className="p-6 text-center text-center text-center">
+                        {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs leading-relaxed text-center">{aiFeedback}</div>}
+                        <form onSubmit={handleAiSubmit} className="relative mt-2 text-center text-center text-center">
+                          <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-center text-center text-center" disabled={isAiProcessing} />
+                          <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors text-center"><Send size={20} /></button>
+                        </form>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all text-center"><Sparkles className="w-7 h-7 text-center" /></button>
                   )}
                 </div>
-              </div>
-            )}
-
-            {activeTab === 'YEARLY' && (
-              <div className={`animate-fade-in grid gap-2 md:gap-4 text-center ${isMobile ? 'grid-cols-3 grid-rows-4 h-full w-full' : 'grid-cols-3 md:grid-cols-6'}`}>
-                {yearlyPlan.map((plan, idx) => (
-                  <div key={idx} className={`border border-slate-200 bg-white shadow-sm transition-all text-center flex flex-col ${isMobile ? 'p-1 rounded-xl' : 'p-6 rounded-3xl hover:shadow-md'}`}>
-                    <h4 className={`font-black text-indigo-600 text-center ${isMobile ? 'text-[10px] mb-1' : 'mb-3 text-base'}`}>{idx + 1}월 계획</h4>
-                    {isMobile ? (
-                      <div className="w-full flex-1 flex items-center justify-center overflow-hidden p-0.5">
-                         <span className="font-bold text-slate-800 whitespace-pre-wrap break-words leading-tight text-center" style={{ fontSize: `${displayFontSize}px` }}>{plan || ''}</span>
-                      </div>
-                    ) : (
-                      <textarea 
-                        value={plan || ''} 
-                        onChange={(e) => handleYearlyChange(idx, e.target.value)} 
-                        onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, null, null)}
-                        placeholder={`${idx + 1}월 마일스톤`} 
-                        style={{ fontSize: `${Math.max(8, displayFontSize)}px`, lineHeight: '1.4' }}
-                        className="w-full p-1.5 md:p-4 rounded-lg md:rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent auto-resize min-h-[60px] md:min-h-[80px] break-words whitespace-pre-wrap flex-1" 
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && e.altKey) {
-                            e.preventDefault();
-                            const target = e.target;
-                            const start = target.selectionStart;
-                            const end = target.selectionEnd;
-                            const valStr = target.value;
-                            const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                            handleYearlyChange(idx, newVal);
-                            setTimeout(() => { 
-                              target.selectionStart = target.selectionEnd = start + 1; 
-                              autoResize({ target });
-                            }, 0);
-                          }
-                        }}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {activeTab === 'INFO' && (
-              <div className={`animate-fade-in flex flex-col w-full text-center bg-white border border-slate-200 shadow-sm ${isMobile ? 'p-1 gap-1 h-full overflow-hidden rounded-xl info-mobile-fit' : 'p-2 md:p-4 gap-4 overflow-x-hidden rounded-3xl'}`}>
-                {/* 상단: 웹사이트 및 선택과목 */}
-                <div className={`w-full ${isMobile ? 'flex-[0_0_auto]' : 'overflow-x-auto custom-scrollbar'}`}>
-                  <table className={`w-full border-collapse text-center table-fixed ${isMobile ? 'info-mobile-table h-full' : 'min-w-[700px] min-w-full'}`}>
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-700">
-                        {[0, 1, 2].map(i => renderInfoCell('topHeaders', 0, i, studentInfo.topHeaders[i], { tag: 'th', extraClass: 'w-[10%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } }))}
-                        {renderInfoCell('topHeaders', 0, 3, studentInfo.topHeaders[3], { tag: 'th', extraClass: 'w-[30%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } })}
-                        {renderInfoCell('topHeaders', 0, 4, studentInfo.topHeaders[4], { tag: 'th', extraClass: 'w-[40%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } })}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {studentInfo.websites.map((row, rIdx) => (
-                        <tr key={rIdx} className="hover:bg-slate-50 transition-colors">
-                          {[0, 1, 2].map(cIdx => renderInfoCell('websites', rIdx, cIdx, row[cIdx], { extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 } }))}
-                          
-                          {rIdx === 0 && renderInfoCell('electives', 0, 0, studentInfo.electives[0], { rowSpan: studentInfo.websites.length, extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700, minHeight: isMobile ? 'auto' : '80px' } })}
-                          {rIdx === 0 && renderInfoCell('electives', 0, 1, studentInfo.electives[1], { rowSpan: studentInfo.websites.length, extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700, minHeight: isMobile ? 'auto' : '80px' } })}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className={`flex flex-col xl:flex-row w-full ${isMobile ? 'flex-1 gap-1 min-h-0' : 'gap-4 mt-2'}`}>
-                  {/* 💡 내신 성적 테이블 */}
-                  <div className={`flex-1 w-full flex flex-col ${isMobile ? 'min-h-0' : 'overflow-x-auto custom-scrollbar'}`}>
-                    <div className="bg-slate-100 border border-slate-300 p-0 font-black text-center mb-0 border-b-0 rounded-t-xl overflow-hidden shadow-sm">
-                      {renderInfoCell('midHeaders', 0, null, studentInfo.midHeaders[0], { tag: 'div', extraClass: 'w-full bg-slate-100 !border-none', extraStyle: { fontSize: `${Math.max(8, displayFontSize + 2)}px`, fontWeight: 900 } })}
-                    </div>
-                    <table className={`w-full border-collapse text-center table-fixed bg-white shadow-sm overflow-hidden ${isMobile ? 'info-mobile-table h-full' : 'md:min-w-[600px] min-w-full rounded-b-xl'}`}>
-                      <tbody>
-                        {studentInfo.schoolGrades.map((row, rIdx) => (
-                          <tr key={`sg-${rIdx}`} className="hover:bg-indigo-50/30 transition-colors group/row relative">
-                            {row.map((cellVal, cIdx) => renderInfoCell('schoolGrades', rIdx, cIdx, cellVal, { 
-                              extraClass: row.join('').trim() === '' ? 'bg-red-50/30' : '', 
-                              extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 },
-                              showDeleteBtn: !isMobile && cIdx === 0 && rIdx > 0 && studentInfo.schoolGrades.length > 1,
-                              onDelete: () => {
-                                saveToHistory();
-                                const newInfo = { ...studentInfo, schoolGrades: [...studentInfo.schoolGrades] };
-                                newInfo.schoolGrades.splice(rIdx, 1);
-                                setStudentInfo(newInfo);
-                                setInfoSelection({ section: null, rIdx: null, cIdx: null });
-                                setEditingCell(null);
-                              }
-                            }))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* 💡 모의고사 성적 테이블 */}
-                  <div className={`flex-1 w-full flex flex-col ${isMobile ? 'min-h-0 mt-0' : 'overflow-x-auto custom-scrollbar mt-2 xl:mt-0'}`}>
-                    <div className="bg-slate-100 border border-slate-300 p-0 font-black text-center mb-0 border-b-0 rounded-t-xl overflow-hidden shadow-sm">
-                      {renderInfoCell('midHeaders', 1, null, studentInfo.midHeaders[1], { tag: 'div', extraClass: 'w-full bg-slate-100 !border-none', extraStyle: { fontSize: `${Math.max(8, displayFontSize + 2)}px`, fontWeight: 900 } })}
-                    </div>
-                    <table className={`w-full border-collapse text-center table-fixed bg-white shadow-sm overflow-hidden ${isMobile ? 'info-mobile-table h-full' : 'md:min-w-[500px] min-w-full rounded-b-xl'}`}>
-                      <tbody>
-                        {studentInfo.mockGrades.map((row, rIdx) => (
-                          <tr key={`mg-${rIdx}`} className="hover:bg-indigo-50/30 transition-colors group/row relative">
-                            {row.map((cellVal, cIdx) => renderInfoCell('mockGrades', rIdx, cIdx, cellVal, { 
-                              extraClass: row.join('').trim() === '' ? 'bg-red-50/30' : '', 
-                              extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 },
-                              showDeleteBtn: !isMobile && cIdx === 0 && rIdx > 0 && studentInfo.mockGrades.length > 1,
-                              onDelete: () => {
-                                saveToHistory();
-                                const newInfo = { ...studentInfo, mockGrades: [...studentInfo.mockGrades] };
-                                newInfo.mockGrades.splice(rIdx, 1);
-                                setStudentInfo(newInfo);
-                                setInfoSelection({ section: null, rIdx: null, cIdx: null });
-                                setEditingCell(null);
-                              }
-                            }))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                </div>
-              </div>
-            )}
-          </main>
-
-          {/* 💡 모바일에서는 AI 모달 버튼도 숨김 처리하여 화면 공간 확보 */}
-          {!isMobile && (
-            <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center print:hidden">
-              {showAiModal ? (
-                <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in text-center">
-                  <div className="bg-indigo-600 p-5 text-white flex justify-between items-center text-center">
-                    <h3 className="font-extrabold text-lg flex items-center justify-center gap-2 w-full text-center"><Sparkles size={20}/> AI 매직 플래너</h3>
-                    <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5 text-center" /></button>
-                  </div>
-                  <div className="p-6 text-center text-center text-center">
-                    {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs leading-relaxed text-center">{aiFeedback}</div>}
-                    <form onSubmit={handleAiSubmit} className="relative mt-2 text-center text-center text-center">
-                      <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-center text-center text-center" disabled={isAiProcessing} />
-                      <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors text-center"><Send size={20} /></button>
-                    </form>
-                  </div>
-                </div>
-              ) : (
-                <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all text-center"><Sparkles className="w-7 h-7 text-center" /></button>
               )}
+            </div>
+          )}
+
+          {showPrintModal && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowPrintModal(false)}>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-6 bg-white text-left cursor-default" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-black text-xl flex items-center gap-2 text-slate-800"><Printer className="text-indigo-600 w-6 h-6" /> 인쇄 설정</h3>
+                  <button onClick={() => setShowPrintModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
+                </div>
+
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-sm font-bold text-slate-600 mb-2 block">용지 방향</label>
+                    <div className="flex gap-2 text-center">
+                      <button onClick={() => setPrintConfig({...printConfig, orientation: 'portrait'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.orientation === 'portrait' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>세로</button>
+                      <button onClick={() => setPrintConfig({...printConfig, orientation: 'landscape'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.orientation === 'landscape' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>가로</button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-bold text-slate-600 mb-2 block">인쇄 영역</label>
+                    <div className="flex gap-2 text-center">
+                      <button onClick={() => setPrintConfig({...printConfig, scope: 'all'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.scope === 'all' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>전체 시간표</button>
+                      <button onClick={() => setPrintConfig({...printConfig, scope: 'selection'})} disabled={!getSelectionBounds() || (getSelectionBounds().minId === getSelectionBounds().maxId && getSelectionBounds().minDayIdx === getSelectionBounds().maxDayIdx)} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.scope === 'selection' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'} disabled:opacity-50 disabled:cursor-not-allowed`}>선택 영역만</button>
+                    </div>
+                    {(!getSelectionBounds() || (getSelectionBounds().minId === getSelectionBounds().maxId && getSelectionBounds().minDayIdx === getSelectionBounds().maxDayIdx)) && <p className="text-[11px] text-slate-400 mt-2 font-medium break-keep text-center">* 표에서 여러 셀을 드래그하여 영역 지정 시 활성화됨.</p>}
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-bold text-slate-600 mb-2 block">색상 모드</label>
+                    <div className="flex gap-2 text-center">
+                      <button onClick={() => setPrintConfig({...printConfig, colorMode: 'color'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.colorMode === 'color' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>컬러</button>
+                      <button onClick={() => setPrintConfig({...printConfig, colorMode: 'grayscale'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.colorMode === 'grayscale' ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>흑백</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 mt-8 text-center">
+                  <button onClick={() => setShowPrintModal(false)} className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={() => { setShowPrintModal(false); setTimeout(() => window.print(), 100); }} className="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-colors">인쇄 시작</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showColorModal && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowColorModal(false)}>
+              <div className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-slate-200 bg-white animate-fade-in cursor-default" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="font-extrabold text-xl flex items-center justify-center gap-2 text-slate-800"><Palette className="text-indigo-600 w-6 h-6"/> 키워드 색상 지정</h4>
+                  <button onClick={() => setShowColorModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
+                </div>
+                
+                <div className="flex gap-2 mb-4">
+                  <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-3 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
+                  <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
+                  <button onClick={addColorRule} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md text-sm">추가</button>
+                </div>
+                
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  {colorRules.length === 0 && <div className="text-slate-400 font-bold p-4 text-xs text-center">등록된 색상이 없습니다.</div>}
+                  {colorRules.map((rule) => (
+                    <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors">
+                      <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
+                      <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showResetConfirm && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowResetConfirm(false)}>
+              <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
+                <h3 className="font-black text-xl mb-2 text-slate-800">데이터 초기화</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep">현재 탭의 데이터를 모두 지울까요?</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">확인</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showLogoutConfirm && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowLogoutConfirm(false)}>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4"><LogOut size={32} /></div>
+                <h3 className="font-black text-xl mb-2 text-slate-800">로그아웃</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep">정말 로그아웃 하시겠습니까?</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black shadow-lg shadow-indigo-100 transition-colors">로그아웃</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {studentToDelete && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setStudentToDelete(null)}>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
+                <h3 className="font-black text-xl mb-3 text-slate-800">데이터 삭제</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep leading-relaxed">
+                  <span className="text-red-500 font-black text-base">[{studentToDelete.studentName || '이름 없음'}]</span><br/>학생의 플래너를 삭제하시겠습니까?
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">삭제</button>
+                </div>
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* 인쇄 설정 모달 */}
-      {showPrintModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowPrintModal(false)}>
-          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-6 bg-white text-left cursor-default" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="font-black text-xl flex items-center gap-2 text-slate-800"><Printer className="text-indigo-600 w-6 h-6" /> 인쇄 설정</h3>
-              <button onClick={() => setShowPrintModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
-            </div>
-
-            <div className="space-y-6">
-              <div>
-                <label className="text-sm font-bold text-slate-600 mb-2 block">용지 방향</label>
-                <div className="flex gap-2 text-center">
-                  <button onClick={() => setPrintConfig({...printConfig, orientation: 'portrait'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.orientation === 'portrait' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>세로</button>
-                  <button onClick={() => setPrintConfig({...printConfig, orientation: 'landscape'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.orientation === 'landscape' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>가로</button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-bold text-slate-600 mb-2 block">인쇄 영역</label>
-                <div className="flex gap-2 text-center">
-                  <button onClick={() => setPrintConfig({...printConfig, scope: 'all'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.scope === 'all' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>전체 시간표</button>
-                  <button onClick={() => setPrintConfig({...printConfig, scope: 'selection'})} disabled={!getSelectionBounds() || (getSelectionBounds().minId === getSelectionBounds().maxId && getSelectionBounds().minDayIdx === getSelectionBounds().maxDayIdx)} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.scope === 'selection' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'} disabled:opacity-50 disabled:cursor-not-allowed`}>선택 영역만</button>
-                </div>
-                {(!getSelectionBounds() || (getSelectionBounds().minId === getSelectionBounds().maxId && getSelectionBounds().minDayIdx === getSelectionBounds().maxDayIdx)) && <p className="text-[11px] text-slate-400 mt-2 font-medium break-keep text-center">* 표에서 여러 셀을 드래그하여 영역 지정 시 활성화됨.</p>}
-              </div>
-
-              <div>
-                <label className="text-sm font-bold text-slate-600 mb-2 block">색상 모드</label>
-                <div className="flex gap-2 text-center">
-                  <button onClick={() => setPrintConfig({...printConfig, colorMode: 'color'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.colorMode === 'color' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>컬러</button>
-                  <button onClick={() => setPrintConfig({...printConfig, colorMode: 'grayscale'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.colorMode === 'grayscale' ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>흑백</button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-8 text-center">
-              <button onClick={() => setShowPrintModal(false)} className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
-              <button onClick={() => { setShowPrintModal(false); setTimeout(() => window.print(), 100); }} className="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-colors">인쇄 시작</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 색상 설정 모달 */}
-      {showColorModal && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowColorModal(false)}>
-          <div className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-slate-200 bg-white animate-fade-in cursor-default" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h4 className="font-extrabold text-xl flex items-center justify-center gap-2 text-slate-800"><Palette className="text-indigo-600 w-6 h-6"/> 키워드 색상 지정</h4>
-              <button onClick={() => setShowColorModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
-            </div>
-            
-            <div className="flex gap-2 mb-4">
-              <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-3 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
-              <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
-              <button onClick={addColorRule} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md text-sm">추가</button>
-            </div>
-            
-            <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-              {colorRules.length === 0 && <div className="text-slate-400 font-bold p-4 text-xs text-center">등록된 색상이 없습니다.</div>}
-              {colorRules.map((rule) => (
-                <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors">
-                  <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
-                  <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 데이터 초기화 모달 */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowResetConfirm(false)}>
-          <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
-            <h3 className="font-black text-xl mb-2 text-slate-800">데이터 초기화</h3>
-            <p className="text-sm mb-8 text-slate-500 font-bold break-keep">현재 탭의 데이터를 모두 지울까요?</p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
-              <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">확인</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 로그아웃 모달 */}
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowLogoutConfirm(false)}>
-          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4"><LogOut size={32} /></div>
-            <h3 className="font-black text-xl mb-2 text-slate-800">로그아웃</h3>
-            <p className="text-sm mb-8 text-slate-500 font-bold break-keep">정말 로그아웃 하시겠습니까?</p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
-              <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black shadow-lg shadow-indigo-100 transition-colors">로그아웃</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 삭제 모달 */}
-      {studentToDelete && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setStudentToDelete(null)}>
-          <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
-            <h3 className="font-black text-xl mb-3 text-slate-800">데이터 삭제</h3>
-            <p className="text-sm mb-8 text-slate-500 font-bold break-keep leading-relaxed">
-              <span className="text-red-500 font-black text-base">[{studentToDelete.studentName || '이름 없음'}]</span><br/>학생의 플래너를 삭제하시겠습니까?
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
-              <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">삭제</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 숨겨진 실제 프린트 뷰 영역 */}
       <div className="hidden print:flex flex-col absolute inset-0 bg-white print-container box-border" style={{ filter: printConfig.colorMode === 'grayscale' ? 'grayscale(100%)' : 'none' }}>
         {view === 'PLANNER' && activeTab === 'WEEKLY' && (() => {
           const getPrintTimetable = () => {
@@ -2878,28 +2984,18 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
         .animate-fade-in { animation: fadeIn 0.3s forwards; } 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* 📱 [모바일 한정] 가로/세로 스크롤 방지 및 인쇄물 비율 강제 조정 */
+        /* 📱 [모바일 한정] 가로 스크롤 방지 및 순수 열람용 최적화 */
         @media (max-width: 767px) {
-          /* 주간 탭 */
-          .weekly-mobile-table { height: 100%; border: 1px solid #cbd5e1; }
-          .weekly-mobile-table th { padding: 1px 0 !important; font-size: 9px !important; border: 1px solid #cbd5e1; }
-          .weekly-mobile-table td { padding: 0 !important; border: 1px solid #cbd5e1; height: 1%; }
-          .weekly-mobile-table .time-col { width: 26px !important; }
-          .weekly-mobile-table .time-col-inner { min-height: 10px !important; padding: 0 !important; font-size: 8px !important; }
-
-          /* 월간 탭 */
-          .monthly-mobile-table th, .monthly-mobile-table td { padding: 1px !important; font-size: 9px !important; }
-          .monthly-summary-table { min-width: 100% !important; width: 100% !important; }
-          .monthly-summary-table th, .monthly-summary-table td { padding: 2px !important; word-break: keep-all; font-size: 8px !important; }
-          
-          /* 연간 탭 */
-          .yearly-mobile-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; grid-template-rows: repeat(4, minmax(0, 1fr)) !important; height: 100%; gap: 4px !important; }
-          .yearly-mobile-grid > div { padding: 4px !important; border-radius: 8px !important; }
-
-          /* 정보 탭 */
-          .info-mobile-table { min-width: 100% !important; width: 100% !important; height: 100% !important; table-layout: fixed !important; }
-          .info-mobile-table th, .info-mobile-table td { padding: 0px !important; height: 1%; font-size: 7px !important; }
-          .info-mobile-fit { padding: 4px !important; overflow: hidden !important; }
+          /* 연간 탭이 전체 높이를 꽉 채우도록 설정 (스크롤 없음) */
+          .yearly-mobile-grid { 
+             grid-template-columns: repeat(3, minmax(0, 1fr)) !important; 
+             grid-template-rows: repeat(4, minmax(0, 1fr)) !important;
+             gap: 4px !important; 
+             height: 100% !important;
+          }
+          .yearly-mobile-grid > div {
+             min-height: 0 !important;
+          }
         }
 
         @media print {
