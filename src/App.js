@@ -1594,26 +1594,54 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
   const wBounds = getSelectionBounds(); const isWMulti = wBounds && (wBounds.minId !== wBounds.maxId || wBounds.minDayIdx !== wBounds.maxDayIdx);
   const mb = getMonthlyBounds();
 
-  const monthlyBlocks = [0, 1];
-  const chunkSize = 14;
+  const monthlyBlocks = [0, 1, 2, 3];
+  const chunkSize = 7;
 
-  // 💡 [모바일] 글자 길이에 따른 스마트 폰트 크기 계산 (주간 탭 전용)
+  // 💡 [모바일] 글자 길이에 따른 스마트 폰트 크기 계산 (공통)
   const getSmartMobileFontSize = (text) => {
     if (!text) return '8px';
     const lines = text.split('\n');
     let maxLength = 0;
     lines.forEach(line => {
       const len = line.trim().length;
-      if (len > maxLength) maxLength = len;
+      let calcLen = 0;
+      for (let i = 0; i < len; i++) {
+        if (line.charCodeAt(i) > 128) calcLen += 1;
+        else calcLen += 0.6; // 영문/숫자는 폭이 좁으므로 가중치 조절
+      }
+      if (calcLen > maxLength) maxLength = calcLen;
     });
 
     if (maxLength <= 4) return '8px';
-    if (maxLength <= 5) return '7.5px';
-    if (maxLength <= 6) return '6.5px';
-    if (maxLength <= 7) return '6px';
-    if (maxLength <= 8) return '5.5px';
-    if (maxLength <= 9) return '5px';
-    return '4.5px';
+    if (maxLength <= 5.5) return '7.5px';
+    if (maxLength <= 6.5) return '6.5px';
+    if (maxLength <= 7.5) return '5.8px';
+    if (maxLength <= 8.5) return '5px';
+    if (maxLength <= 9.5) return '4.5px';
+    return '4px';
+  };
+
+  // 💡 [모바일] 글자 길이에 따른 스마트 폰트 크기 계산 (월간 탭 전용 - 폭이 더 좁음)
+  const getSmartMobileFontSizeMonthly = (text) => {
+    if (!text) return '7.5px';
+    const lines = text.split('\n');
+    let maxLength = 0;
+    lines.forEach(line => {
+      const len = line.trim().length;
+      let calcLen = 0;
+      for (let i = 0; i < len; i++) {
+        if (line.charCodeAt(i) > 128) calcLen += 1;
+        else calcLen += 0.6;
+      }
+      if (calcLen > maxLength) maxLength = calcLen;
+    });
+
+    if (maxLength <= 3.5) return '7.5px';
+    if (maxLength <= 4.5) return '6.5px';
+    if (maxLength <= 5.5) return '5.5px';
+    if (maxLength <= 7) return '4.5px';
+    if (maxLength <= 8) return '4px';
+    return '3.5px';
   };
 
   // 💡 [모바일] 주간 시간표 데이터 렌더링
@@ -2129,37 +2157,75 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                        </thead>
                                        <tbody>
                                           <tr>
-                                             <td colSpan={2} className="border border-slate-200 bg-slate-50 font-black py-1">비고</td>
-                                             {chunk.map(d => <td key={d.full} className="border border-slate-200 p-0.5 whitespace-pre-wrap font-bold text-slate-700">{termScheduler.topNotes[d.full] || ''}</td>)}
+                                             <td colSpan={2} className="border border-slate-200 bg-slate-50 font-black py-1 text-[8px]">비고</td>
+                                             {chunk.map(d => {
+                                                const noteText = termScheduler.topNotes[d.full] || '';
+                                                const noteLines = noteText.split('\n').filter(l => l !== '');
+                                                const smartSize = getSmartMobileFontSizeMonthly(noteText);
+                                                return (
+                                                   <td key={d.full} className="border border-slate-200 p-[1px] align-middle overflow-hidden bg-slate-50/30">
+                                                     <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                       {noteLines.map((line, lIdx) => (
+                                                         <span key={lIdx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ fontSize: smartSize, lineHeight: '1.15', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+                                                           {line}
+                                                         </span>
+                                                       ))}
+                                                     </div>
+                                                   </td>
+                                                )
+                                             })}
                                           </tr>
                                           {flatRows.map(rowInfo => {
                                              const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
+                                             const tbLines = (tbName||'').split('\n').filter(l => l !== '');
+                                             const tbSmartSize = getSmartMobileFontSizeMonthly(tbName);
+                                             const subLines = (sub||'').split('\n').filter(l => l !== '');
+                                             const subSmartSize = getSmartMobileFontSizeMonthly(sub);
+                                             
                                              return (
                                                 <tr key={`${sub}-${tbIdx}`}>
-                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 font-black break-keep">{sub}</td>}
-                                                   <td className="border border-slate-200 font-bold whitespace-pre-wrap break-all p-0.5 text-[7px] text-slate-700">{tbName}</td>
+                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 align-middle overflow-hidden p-[1px]">
+                                                      <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {subLines.map((line, lIdx) => (
+                                                            <span key={lIdx} className="font-black text-slate-800 w-full text-center tracking-tighter" style={{ fontSize: subSmartSize, lineHeight: '1.15', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                      </div>
+                                                   </td>}
+                                                   <td className="border border-slate-200 align-middle overflow-hidden p-[1px]">
+                                                     <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                       {tbLines.map((line, lIdx) => (
+                                                         <span key={lIdx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ fontSize: tbSmartSize, lineHeight: '1.15', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+                                                           {line}
+                                                         </span>
+                                                       ))}
+                                                     </div>
+                                                   </td>
                                                    {chunk.map(d => {
                                                       const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
                                                       const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
                                                       const lines = val.split('\n').filter(l => l.trim() !== '');
+                                                      const cellSmartSize = getSmartMobileFontSizeMonthly(val);
                                                       return (
-                                                         <td key={d.full} className="border border-slate-200 align-top p-[2px]">
+                                                         <td key={d.full} className="border border-slate-200 align-top p-[1.5px] overflow-hidden">
+                                                            <div className="w-full h-full flex flex-col items-center justify-start overflow-hidden gap-[2px]">
                                                             {lines.map((line, lIdx) => {
                                                                const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
                                                                const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
                                                                
-                                                               // 💡 [모바일] 체크박스 우측 정렬 (justify-between) 및 크기 축소 반영
                                                                return (
-                                                                  <div key={lIdx} className="flex justify-between items-start gap-1 text-left mb-[3px] leading-[1.1]">
-                                                                     <span className="font-bold text-slate-800 break-words whitespace-pre-wrap text-[7.5px] flex-1">{line}</span>
+                                                                  <div key={lIdx} className="flex justify-between items-center gap-[1px] text-left w-full overflow-hidden leading-[1.15] mb-[1.5px]">
+                                                                     <span className="font-bold text-slate-800 tracking-tighter text-left" style={{ flex: '1 1 auto', minWidth: 0, fontSize: cellSmartSize, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+                                                                        {line}
+                                                                     </span>
                                                                      {isChecked ? (
-                                                                        <span className="flex-shrink-0 text-[6px] mt-[1px] leading-none">✅</span>
+                                                                        <span className="flex-shrink-0 leading-none" style={{ fontSize: '4.5px', flex: '0 0 auto' }}>✅</span>
                                                                      ) : (
-                                                                        <div className="w-[6px] h-[6px] border border-slate-300 rounded-[1px] mt-[2px] flex-shrink-0 bg-slate-50 shadow-sm"></div>
+                                                                        <div className="border border-slate-300 rounded-[1px] flex-shrink-0 bg-slate-50 shadow-[0_0_1px_rgba(0,0,0,0.1)]" style={{ width: '4.5px', height: '4.5px', flex: '0 0 auto' }}></div>
                                                                      )}
                                                                   </div>
                                                                )
                                                             })}
+                                                            </div>
                                                          </td>
                                                       )
                                                    })}
@@ -2205,12 +2271,47 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                 }
                                              });
                                              const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
+                                             
+                                             const subLines = (sub||'').split('\n').filter(l => l !== '');
+                                             const tbLines = (tbName||'').split('\n').filter(l => l !== '');
+                                             const firstLines = firstData.split('\n').filter(l => l !== '');
+                                             const lastLines = lastData.split('\n').filter(l => l !== '');
+
+                                             const subFS = getSmartMobileFontSizeMonthly(sub);
+                                             const tbFS = getSmartMobileFontSizeMonthly(tbName);
+                                             const firstFS = getSmartMobileFontSizeMonthly(firstData);
+                                             const lastFS = getSmartMobileFontSizeMonthly(lastData);
+
                                              return (
                                                 <tr key={`status-m-${sub}-${tbIdx}`} className="bg-white">
-                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 font-black bg-slate-50/50">{sub}</td>}
-                                                   <td className="border border-slate-200 p-1 font-bold text-slate-700 break-words whitespace-pre-wrap">{tbName || '-'}</td>
-                                                   <td className="border border-slate-200 p-1 font-black text-indigo-700 break-words whitespace-pre-wrap">{firstData}</td>
-                                                   <td className="border border-slate-200 p-1 font-black text-rose-700 break-words whitespace-pre-wrap">{lastData}</td>
+                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 align-middle overflow-hidden p-[1px]">
+                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {subLines.map((line, lIdx) => (
+                                                           <span key={lIdx} className="font-black text-slate-800 w-full text-center tracking-tighter" style={{ fontSize: subFS, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                       </div>
+                                                   </td>}
+                                                   <td className="border border-slate-200 align-middle overflow-hidden p-[1px]">
+                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {tbLines.map((line, idx) => (
+                                                           <span key={idx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ fontSize: tbFS, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                       </div>
+                                                   </td>
+                                                   <td className="border border-slate-200 bg-slate-50/5 align-middle overflow-hidden p-[1px]">
+                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {firstLines.map((line, idx) => (
+                                                           <span key={idx} className="font-black text-indigo-700 w-full text-center tracking-tighter" style={{ fontSize: firstFS, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                       </div>
+                                                   </td>
+                                                   <td className="border border-slate-200 bg-slate-50/5 align-middle overflow-hidden p-[1px]">
+                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {lastLines.map((line, idx) => (
+                                                           <span key={idx} className="font-black text-rose-700 w-full text-center tracking-tighter" style={{ fontSize: lastFS, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                       </div>
+                                                   </td>
                                                    <td className="border border-slate-200 p-1 align-middle">
                                                       <div className="relative w-full h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
                                                           <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200" style={{ width: `${percent}%` }} />
