@@ -1710,9 +1710,11 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                   <td key={day} rowSpan={span} className="border-b border-r border-slate-200 p-[1px] align-middle overflow-hidden" style={{ backgroundColor: bgColor }}>
                     <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden max-h-full gap-[1px]">
                       {lines.map((line, lIdx) => (
-                        <span key={lIdx} className="font-bold text-slate-800 w-full text-center tracking-tighter" style={{ ...smartStyle, lineHeight: '1.15', overflow: 'hidden', textOverflow: 'clip' }}>
-                           {line}
-                        </span>
+                        <div key={lIdx} className="w-full flex items-center justify-center">
+                          <span className="font-bold text-slate-800 w-max max-w-none text-center tracking-tighter" style={{ ...smartStyle, lineHeight: '1.15' }}>
+                             {line}
+                          </span>
+                        </div>
                       ))}
                     </div>
                   </td>
@@ -2181,9 +2183,11 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                    <td key={d.full} className="border border-slate-200 p-[1px] align-middle overflow-hidden bg-slate-50/30">
                                                      <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
                                                        {noteLines.map((line, lIdx) => (
-                                                         <span key={lIdx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ ...noteStyle, lineHeight: '1.15', overflow: 'hidden', textOverflow: 'clip' }}>
-                                                           {line}
-                                                         </span>
+                                                         <div key={lIdx} className="w-full flex items-center justify-center">
+                                                           <span className="font-bold text-slate-700 w-max max-w-none text-center tracking-tighter" style={{ ...noteStyle, lineHeight: '1.15' }}>
+                                                             {line}
+                                                           </span>
+                                                         </div>
                                                        ))}
                                                      </div>
                                                    </td>
@@ -2202,16 +2206,20 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                    {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 align-middle overflow-hidden p-[1px]">
                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
                                                          {subLines.map((line, lIdx) => (
-                                                            <span key={lIdx} className="font-black text-slate-800 w-full text-center tracking-tighter" style={{ ...subStyle, lineHeight: '1.15', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                            <div key={lIdx} className="w-full flex items-center justify-center">
+                                                              <span className="font-black text-slate-800 w-max max-w-none text-center tracking-tighter" style={{ ...subStyle, lineHeight: '1.15' }}>{line}</span>
+                                                            </div>
                                                          ))}
                                                       </div>
                                                    </td>}
                                                    <td className="border border-slate-200 align-middle overflow-hidden p-[1px]">
                                                      <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
                                                        {tbLines.map((line, idx) => (
-                                                         <span key={idx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ ...tbStyle, lineHeight: '1.15', overflow: 'hidden', textOverflow: 'clip' }}>
-                                                           {line}
-                                                         </span>
+                                                         <div key={idx} className="w-full flex items-center justify-center">
+                                                           <span className="font-bold text-slate-700 w-max max-w-none text-center tracking-tighter" style={{ ...tbStyle, lineHeight: '1.15' }}>
+                                                             {line}
+                                                           </span>
+                                                         </div>
                                                        ))}
                                                      </div>
                                                    </td>
@@ -2229,9 +2237,11 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                                
                                                                return (
                                                                   <div key={lIdx} className="flex justify-between items-center gap-[1px] text-left w-full overflow-hidden leading-[1.15] mb-[1.5px]">
-                                                                     <span className="font-bold text-slate-800 tracking-tighter text-left" style={{ flex: '1 1 auto', minWidth: 0, ...cellStyle, overflow: 'hidden', textOverflow: 'clip' }}>
-                                                                        {line}
-                                                                     </span>
+                                                                     <div className="flex-1 min-w-0 flex items-center justify-start">
+                                                                       <span className="font-bold text-slate-800 tracking-tighter text-left w-max max-w-none" style={{ ...cellStyle }}>
+                                                                          {line}
+                                                                       </span>
+                                                                     </div>
                                                                      {isChecked ? (
                                                                         <span className="flex-shrink-0 leading-none" style={{ fontSize: '4.5px', flex: '0 0 auto' }}>✅</span>
                                                                      ) : (
@@ -2302,35 +2312,43 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                    {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 align-middle overflow-hidden p-[1px]">
                                                        <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
                                                          {subLines.map((line, lIdx) => (
-                                                           <span key={lIdx} className="font-black text-slate-800 w-full text-center tracking-tighter" style={{ ...subStyleInfo, overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                           <div key={lIdx} className="w-full flex items-center justify-center">
+                                                             <span className="font-black text-slate-800 w-max max-w-none text-center tracking-tighter" style={{ ...subStyleInfo }}>{line}</span>
+                                                           </div>
                                                          ))}
                                                        </div>
                                                    </td>}
                                                    <td className="border border-slate-200 align-middle overflow-hidden p-[1px]">
                                                        <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
                                                          {tbLines.map((line, idx) => (
-                                                           <span key={idx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ ...tbStyleInfo, overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                           <div key={idx} className="w-full flex items-center justify-center">
+                                                             <span className="font-bold text-slate-700 w-max max-w-none text-center tracking-tighter" style={{ ...tbStyleInfo }}>{line}</span>
+                                                           </div>
                                                          ))}
                                                        </div>
                                                    </td>
                                                    <td className="border border-slate-200 bg-slate-50/5 align-middle overflow-hidden p-[1px]">
                                                        <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
                                                          {firstLines.map((line, idx) => (
-                                                           <span key={idx} className="font-black text-indigo-700 w-full text-center tracking-tighter" style={{ ...firstStyleInfo, overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                           <div key={idx} className="w-full flex items-center justify-center">
+                                                             <span className="font-black text-indigo-700 w-max max-w-none text-center tracking-tighter" style={{ ...firstStyleInfo }}>{line}</span>
+                                                           </div>
                                                          ))}
                                                        </div>
                                                    </td>
                                                    <td className="border border-slate-200 bg-slate-50/5 align-middle overflow-hidden p-[1px]">
                                                        <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
                                                          {lastLines.map((line, idx) => (
-                                                           <span key={idx} className="font-black text-rose-700 w-full text-center tracking-tighter" style={{ ...lastStyleInfo, overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                           <div key={idx} className="w-full flex items-center justify-center">
+                                                             <span className="font-black text-rose-700 w-max max-w-none text-center tracking-tighter" style={{ ...lastStyleInfo }}>{line}</span>
+                                                           </div>
                                                          ))}
                                                        </div>
                                                    </td>
                                                    <td className="border border-slate-200 p-1 align-middle">
                                                       <div className="relative w-full h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
-                                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200" style={{ width: `${percent}%` }} />
-                                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[7px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
+                                                         <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200" style={{ width: `${percent}%` }} />
+                                                         <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[7px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
                                                       </div>
                                                    </td>
                                                 </tr>
@@ -2672,7 +2690,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                                                             
                                                             return (
                                                               <div key={lIdx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
-                                                                <span style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
+                                                                <span style={{ flex: '1 1 auto', minWidth: 0, fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-left flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
                                                                 <input type="checkbox" checked={isChecked} 
                                                                   onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, tbIdx, d.full, lIdx); }} 
                                                                   onClick={(e) => { 
@@ -3064,7 +3082,7 @@ plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달�
                       newRow[day] = originText; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(overlap, pMaxId - 1 - r + 1);
                     } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
                   } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
-                } else if (!origRow[`${day}_hidden`]) {
+                } else (!origRow[`${day}_hidden`]) {
                   const span = origRow[`${day}_span`] || 1;
                   newRow[day] = origRow[day]; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(span, pMaxId - 1 - r + 1);
                 } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
