@@ -1,23 +1,23 @@
 /* eslint-disable */
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  Check, Trash2, Plus, Clock, BookOpen, Calendar, X, Users,
-  ChevronLeft, LogOut, Sparkles, Send, MousePointer2, Merge, Split,
-  Palette, AlertCircle, Key, Settings, ChevronRight, UserPlus, Link as LinkIcon,
-  Minus, Printer
+  Check, Trash2, Plus, Clock, BookOpen, Calendar, X, Users,
+  ChevronLeft, LogOut, Sparkles, Send, MousePointer2, Merge, Split,
+  Palette, AlertCircle, Key, Settings, ChevronRight, UserPlus, Link as LinkIcon,
+  Minus, Printer
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, onSnapshot, collection, deleteDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDyaqBB-JmsCK4kyzU_uA-4CFmQTi45fAo",
-  authDomain: "ai-term-scheduler.firebaseapp.com",
-  projectId: "ai-term-scheduler",
-  storageBucket: "ai-term-scheduler.firebasestorage.app",
-  messagingSenderId: "281370426656",
-  appId: "1:281370426656:web:94dfa3550edb3db756eb45",
-  measurementId: "G-67V0K5F5KL"
+  apiKey: "AIzaSyDyaqBB-JmsCK4kyzU_uA-4CFmQTi45fAo",
+  authDomain: "ai-term-scheduler.firebaseapp.com",
+  projectId: "ai-term-scheduler",
+  storageBucket: "ai-term-scheduler.firebasestorage.app",
+  messagingSenderId: "281370426656",
+  appId: "1:281370426656:web:94dfa3550edb3db756eb45",
+  measurementId: "G-67V0K5F5KL"
 };
 
 const app = initializeApp(firebaseConfig);
@@ -26,1386 +26,1386 @@ const db = getFirestore(app);
 const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 const parseTSV = (text) => {
-  let rows = [], cols = [], curr = '', inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (char === '"') {
-      if (inQuotes && text[i + 1] === '"') { curr += '"'; i++; } else { inQuotes = !inQuotes; }
-    } else if (char === '\t' && !inQuotes) { cols.push(curr); curr = '';
-    } else if ((char === '\n' || char === '\r') && !inQuotes) {
-      if (char === '\r' && text[i + 1] === '\n') i++;
-      cols.push(curr); rows.push(cols); cols = []; curr = '';
-    } else { curr += char; }
-  }
-  if (curr !== '' || cols.length > 0) { cols.push(curr); rows.push(cols); }
-  if (rows.length > 0 && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === "") rows.pop();
-  return rows;
+  let rows = [], cols = [], curr = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === '"') {
+      if (inQuotes && text[i + 1] === '"') { curr += '"'; i++; } else { inQuotes = !inQuotes; }
+    } else if (char === '\t' && !inQuotes) { cols.push(curr); curr = '';
+    } else if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && text[i + 1] === '\n') i++;
+      cols.push(curr); rows.push(cols); cols = []; curr = '';
+    } else { curr += char; }
+  }
+  if (curr !== '' || cols.length > 0) { cols.push(curr); rows.push(cols); }
+  if (rows.length > 0 && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === "") rows.pop();
+  return rows;
 };
 
 const processComboText = (text, day) => {
-  if (!text) return text;
-  const isSat = (day === 'sat' || day === 'sun' || day === '토요일' || day === '일요일' || day === '토' || day === '일');
-  let newText = text;
+  if (!text) return text;
+  const isSat = (day === 'sat' || day === 'sun' || day === '토요일' || day === '일요일' || day === '토' || day === '일');
+  let newText = text;
 
-  const times = {
-    a: isSat ? '(2:20 - 3:50)' : '(5:20 - 6:50)',
-    b: isSat ? '(3:55 - 5:25)' : '(6:55 - 8:25)',
-    c: isSat ? '(5:30 - 7:00)' : '(8:30 - 10:00)'
-  };
+  const times = {
+    a: isSat ? '(2:20 - 3:50)' : '(5:20 - 6:50)',
+    b: isSat ? '(3:55 - 5:25)' : '(6:55 - 8:25)',
+    c: isSat ? '(5:30 - 7:00)' : '(8:30 - 10:00)'
+  };
 
-  ['a', 'b', 'c'].forEach(type => {
-    const regex = new RegExp(`(?:개별지도\\s*)?${type}콤(?:\\s*\\n?\\s*\\([\\d\\s:~-]+\\))?`, 'ig');
-    newText = newText.replace(regex, `개별지도 ${type.toUpperCase()}콤\n${times[type]}`);
-  });
+  ['a', 'b', 'c'].forEach(type => {
+    const regex = new RegExp(`(?:개별지도\\s*)?${type}콤(?:\\s*\\n?\\s*\\([\\d\\s:~-]+\\))?`, 'ig');
+    newText = newText.replace(regex, `개별지도 ${type.toUpperCase()}콤\n${times[type]}`);
+  });
 
-  return newText;
+  return newText;
 };
 
 const defaultStudentInfo = {
-  topHeaders: ['', 'ID', 'PW', '2학년 선택과목', '3학년 선택과목'],
-  websites: [
-    ['학교 홈페이지', '', ''],
-    ['나이스 플러스', '', ''],
-    ['리로스쿨', '', ''],
-    ['클래스룸', '', '']
-  ],
-  electives: ['', ''],
-  midHeaders: ['내신 성적', '모의고사 성적'],
-  schoolGrades: [
-    ['1학년', '1학기 중간', '1학기 기말', '1학기 종합', '', '2학기 중간', '2학기 기말', '2학기 종합'],
-    ['국어', '', '', '', '국어', '', '', ''],
-    ['수학', '', '', '', '수학', '', '', ''],
-    ['영어', '', '', '', '영어', '', '', ''],
-    ['역사', '', '', '', '역사', '', '', ''],
-    ['사회', '', '', '', '사회', '', '', ''],
-    ['과학', '', '', '', '과학', '', '', ''],
-    ['2학년', '1학기 중간', '1학기 기말', '1학기 종합', '', '2학기 중간', '2학기 기말', '2학기 종합'],
-    ['국어', '', '', '', '국어', '', '', ''],
-    ['수학', '', '', '', '수학', '', '', ''],
-    ['영어', '', '', '', '영어', '', '', ''],
-    ['선택1', '', '', '', '선택1', '', '', ''],
-    ['선택2', '', '', '', '선택2', '', '', ''],
-    ['선택3', '', '', '', '선택3', '', '', ''],
-    ['3학년', '1학기 중간', '1학기 기말', '1학기 종합', '', '', '', ''],
-    ['국어', '', '', '', '', '', '', ''],
-    ['수학', '', '', '', '', '', '', ''],
-    ['영어', '', '', '', '', '', '', ''],
-    ['선택1', '', '', '', '', '', '', ''],
-    ['선택2', '', '', '', '', '', '', ''],
-    ['선택3', '', '', '', '', '', '', '']
-  ],
-  mockGrades: [
-    ['1학년', '3월', '6월', '9월', '10월', '', ''],
-    ['국어', '', '', '', '', '', ''],
-    ['수학', '', '', '', '', '', ''],
-    ['영어', '', '', '', '', '', ''],
-    ['역사', '', '', '', '', '', ''],
-    ['사회', '', '', '', '', '', ''],
-    ['과학', '', '', '', '', '', ''],
-    ['2학년', '3월', '6월', '9월', '10월', '', ''],
-    ['국어', '', '', '', '', '', ''],
-    ['수학', '', '', '', '', '', ''],
-    ['영어', '', '', '', '', '', ''],
-    ['역사', '', '', '', '', '', ''],
-    ['사회', '', '', '', '', '', ''],
-    ['과학', '', '', '', '', '', ''],
-    ['3학년', '3월', '5월', '6월', '7월', '9월', '10월'],
-    ['국어', '', '', '', '', '', ''],
-    ['수학', '', '', '', '', '', ''],
-    ['영어', '', '', '', '', '', ''],
-    ['역사', '', '', '', '', '', ''],
-    ['사회', '', '', '', '', '', ''],
-    ['과학', '', '', '', '', '', '']
-  ]
+  topHeaders: ['', 'ID', 'PW', '2학년 선택과목', '3학년 선택과목'],
+  websites: [
+    ['학교 홈페이지', '', ''],
+    ['나이스 플러스', '', ''],
+    ['리로스쿨', '', ''],
+    ['클래스룸', '', '']
+  ],
+  electives: ['', ''],
+  midHeaders: ['내신 성적', '모의고사 성적'],
+  schoolGrades: [
+    ['1학년', '1학기 중간', '1학기 기말', '1학기 종합', '', '2학기 중간', '2학기 기말', '2학기 종합'],
+    ['국어', '', '', '', '국어', '', '', ''],
+    ['수학', '', '', '', '수학', '', '', ''],
+    ['영어', '', '', '', '영어', '', '', ''],
+    ['역사', '', '', '', '역사', '', '', ''],
+    ['사회', '', '', '', '사회', '', '', ''],
+    ['과학', '', '', '', '과학', '', '', ''],
+    ['2학년', '1학기 중간', '1학기 기말', '1학기 종합', '', '2학기 중간', '2학기 기말', '2학기 종합'],
+    ['국어', '', '', '', '국어', '', '', ''],
+    ['수학', '', '', '', '수학', '', '', ''],
+    ['영어', '', '', '', '영어', '', '', ''],
+    ['선택1', '', '', '', '선택1', '', '', ''],
+    ['선택2', '', '', '', '선택2', '', '', ''],
+    ['선택3', '', '', '', '선택3', '', '', ''],
+    ['3학년', '1학기 중간', '1학기 기말', '1학기 종합', '', '', '', ''],
+    ['국어', '', '', '', '', '', '', ''],
+    ['수학', '', '', '', '', '', '', ''],
+    ['영어', '', '', '', '', '', '', ''],
+    ['선택1', '', '', '', '', '', '', ''],
+    ['선택2', '', '', '', '', '', '', ''],
+    ['선택3', '', '', '', '', '', '', '']
+  ],
+  mockGrades: [
+    ['1학년', '3월', '6월', '9월', '10월', '', ''],
+    ['국어', '', '', '', '', '', ''],
+    ['수학', '', '', '', '', '', ''],
+    ['영어', '', '', '', '', '', ''],
+    ['역사', '', '', '', '', '', ''],
+    ['사회', '', '', '', '', '', ''],
+    ['과학', '', '', '', '', '', ''],
+    ['2학년', '3월', '6월', '9월', '10월', '', ''],
+    ['국어', '', '', '', '', '', ''],
+    ['수학', '', '', '', '', '', ''],
+    ['영어', '', '', '', '', '', ''],
+    ['역사', '', '', '', '', '', ''],
+    ['사회', '', '', '', '', '', ''],
+    ['과학', '', '', '', '', '', ''],
+    ['3학년', '3월', '5월', '6월', '7월', '9월', '10월'],
+    ['국어', '', '', '', '', '', ''],
+    ['수학', '', '', '', '', '', ''],
+    ['영어', '', '', '', '', '', ''],
+    ['역사', '', '', '', '', '', ''],
+    ['사회', '', '', '', '', '', ''],
+    ['과학', '', '', '', '', '', '']
+  ]
 };
 
 const encodeStudentInfo = (info) => {
-  if (!info) return info;
-  return {
-    topHeaders: info.topHeaders || [],
-    electives: info.electives || [],
-    midHeaders: info.midHeaders || [],
-    websites: (info.websites || []).map(row => ({ cols: row })),
-    schoolGrades: (info.schoolGrades || []).map(row => ({ cols: row })),
-    mockGrades: (info.mockGrades || []).map(row => ({ cols: row }))
-  };
+  if (!info) return info;
+  return {
+    topHeaders: info.topHeaders || [],
+    electives: info.electives || [],
+    midHeaders: info.midHeaders || [],
+    websites: (info.websites || []).map(row => ({ cols: row })),
+    schoolGrades: (info.schoolGrades || []).map(row => ({ cols: row })),
+    mockGrades: (info.mockGrades || []).map(row => ({ cols: row }))
+  };
 };
 
 const repairStudentInfo = (info) => {
-  if (!info) return JSON.parse(JSON.stringify(defaultStudentInfo));
-  
-  let parsed = info;
-  if (typeof info === 'string') {
-    try { parsed = JSON.parse(info); } catch (e) { parsed = null; }
-  }
-  if (!parsed) return JSON.parse(JSON.stringify(defaultStudentInfo));
+  if (!info) return JSON.parse(JSON.stringify(defaultStudentInfo));
+  
+  let parsed = info;
+  if (typeof info === 'string') {
+    try { parsed = JSON.parse(info); } catch (e) { parsed = null; }
+  }
+  if (!parsed) return JSON.parse(JSON.stringify(defaultStudentInfo));
 
-  const newInfo = { ...parsed };
+  const newInfo = { ...parsed };
 
-  ['websites', 'schoolGrades', 'mockGrades'].forEach(key => {
-    if (newInfo[key] && Array.isArray(newInfo[key])) {
-      newInfo[key] = newInfo[key].map(r => r.cols !== undefined ? r.cols : r);
-    } else {
-      newInfo[key] = JSON.parse(JSON.stringify(defaultStudentInfo[key]));
-    }
-  });
+  ['websites', 'schoolGrades', 'mockGrades'].forEach(key => {
+    if (newInfo[key] && Array.isArray(newInfo[key])) {
+      newInfo[key] = newInfo[key].map(r => r.cols !== undefined ? r.cols : r);
+    } else {
+      newInfo[key] = JSON.parse(JSON.stringify(defaultStudentInfo[key]));
+    }
+  });
 
-  ['topHeaders', 'electives', 'midHeaders'].forEach(key => {
-    if (!newInfo[key]) newInfo[key] = JSON.parse(JSON.stringify(defaultStudentInfo[key]));
-  });
-  return newInfo;
+  ['topHeaders', 'electives', 'midHeaders'].forEach(key => {
+    if (!newInfo[key]) newInfo[key] = JSON.parse(JSON.stringify(defaultStudentInfo[key]));
+  });
+  return newInfo;
 };
 
 const repairTermScheduler = (termData) => {
-  if (!termData) return { subjects: [], cells: {}, textbooks: {}, topNotes: {}, checks: {} };
-  let newCells = { ...termData.cells };
-  let newChecks = { ...termData.checks };
-  const subjects = termData.subjects || [];
-  let migrated = false;
+  if (!termData) return { subjects: [], cells: {}, textbooks: {}, topNotes: {}, checks: {} };
+  let newCells = { ...termData.cells };
+  let newChecks = { ...termData.checks };
+  const subjects = termData.subjects || [];
+  let migrated = false;
 
-  Object.keys(newCells).forEach(key => {
-    for (const sub of subjects) {
-      if (key.startsWith(`${sub}-`)) {
-        const remainder = key.substring(sub.length + 1);
-        if (!remainder.startsWith('tb')) {
-            const dateMatch = remainder.match(/^(\d{4}-\d{2}-\d{2})$/);
-            if (dateMatch) {
-              const newKey = `${sub}-tb0-${dateMatch[1]}`;
-              if (newCells[newKey] === undefined) newCells[newKey] = newCells[key];
-              delete newCells[key];
-              migrated = true;
-              break;
-            }
-        }
-      }
-    }
-  });
+  Object.keys(newCells).forEach(key => {
+    for (const sub of subjects) {
+      if (key.startsWith(`${sub}-`)) {
+        const remainder = key.substring(sub.length + 1);
+        if (!remainder.startsWith('tb')) {
+            const dateMatch = remainder.match(/^(\d{4}-\d{2}-\d{2})$/);
+            if (dateMatch) {
+              const newKey = `${sub}-tb0-${dateMatch[1]}`;
+              if (newCells[newKey] === undefined) newCells[newKey] = newCells[key];
+              delete newCells[key];
+              migrated = true;
+              break;
+            }
+        }
+      }
+    }
+  });
 
-  Object.keys(newChecks).forEach(key => {
-    for (const sub of subjects) {
-      if (key.startsWith(`${sub}-`)) {
-        const remainder = key.substring(sub.length + 1);
-        if (!remainder.startsWith('tb')) {
-            const checkMatch = remainder.match(/^(\d{4}-\d{2}-\d{2})-(\d+)$/);
-            if (checkMatch) {
-              const newKey = `${sub}-tb0-${checkMatch[1]}-${checkMatch[2]}`;
-              if (newChecks[newKey] === undefined) newChecks[newKey] = newChecks[key];
-              delete newChecks[key];
-              migrated = true;
-              break;
-            }
-        }
-      }
-    }
-  });
+  Object.keys(newChecks).forEach(key => {
+    for (const sub of subjects) {
+      if (key.startsWith(`${sub}-`)) {
+        const remainder = key.substring(sub.length + 1);
+        if (!remainder.startsWith('tb')) {
+            const checkMatch = remainder.match(/^(\d{4}-\d{2}-\d{2})-(\d+)$/);
+            if (checkMatch) {
+              const newKey = `${sub}-tb0-${checkMatch[1]}-${checkMatch[2]}`;
+              if (newChecks[newKey] === undefined) newChecks[newKey] = newChecks[key];
+              delete newChecks[key];
+              migrated = true;
+              break;
+            }
+        }
+      }
+    }
+  });
 
-  return migrated ? { ...termData, cells: newCells, checks: newChecks } : termData;
+  return migrated ? { ...termData, cells: newCells, checks: newChecks } : termData;
 };
 
 const buildFlatRows = (scheduler) => {
-  const rows = [];
-  (scheduler.subjects || []).forEach(sub => {
-    const tbVal = scheduler.textbooks[sub] || '';
-    const tbLines = tbVal.split('\n');
-    if (tbLines.length === 0) tbLines.push(''); 
-    
-    tbLines.forEach((tbName, tbIdx) => {
-      rows.push({
-        sub,
-        tbName,
-        tbIdx,
-        isFirst: tbIdx === 0,
-        rowSpan: tbLines.length,
-        actualRowIdx: rows.length + 1
-      });
-    });
-  });
-  return rows;
+  const rows = [];
+  (scheduler.subjects || []).forEach(sub => {
+    const tbVal = scheduler.textbooks[sub] || '';
+    const tbLines = tbVal.split('\n');
+    if (tbLines.length === 0) tbLines.push(''); 
+    
+    tbLines.forEach((tbName, tbIdx) => {
+      rows.push({
+        sub,
+        tbName,
+        tbIdx,
+        isFirst: tbIdx === 0,
+        rowSpan: tbLines.length,
+        actualRowIdx: rows.length + 1
+      });
+    });
+  });
+  return rows;
 };
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [view, setView] = useState('LOADING');
-  const [role, setRole] = useState('');
-  const [studentName, setStudentName] = useState('');
-  const [teacherPassword, setTeacherPassword] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [dbError, setDbError] = useState(''); 
-  const [globalAiKey, setGlobalAiKey] = useState('');
-  const [showGlobalKeyInput, setShowGlobalKeyInput] = useState(false);
-  const [currentDocId, setCurrentDocId] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [loadedDocId, setLoadedDocId] = useState(null); 
-  const [isNotFound, setIsNotFound] = useState(false); 
-  const [activeTab, setActiveTab] = useState('WEEKLY');
-  const [showColorModal, setShowColorModal] = useState(false);
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); 
-  
-  const [studentToDelete, setStudentToDelete] = useState(null); 
-  const [copyFeedback, setCopyFeedback] = useState(null);
-  const [aiFeedback, setAiFeedback] = useState('');
-  const [aiPrompt, setAiPrompt] = useState('');
-  const [isAiProcessing, setIsAiProcessing] = useState(false);
-  const [showAiModal, setShowAiModal] = useState(false);
-  
-  const [fontSize, setFontSize] = useState(12);
-  const [isMobile, setIsMobile] = useState(false);
-
-  const [showPrintModal, setShowPrintModal] = useState(false);
-  const [printConfig, setPrintConfig] = useState({
-    orientation: 'portrait', 
-    scope: 'all',            
-    colorMode: 'color'       
-  });
-
-  const hasNavigated = useRef(false); 
-
-  // 💡 기기 화면 너비 감지 로직
-  useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  const displayFontSize = isMobile ? Math.max(8, fontSize - 3) : fontSize;
-
-  const navigateTo = (newView, params = {}) => {
-    hasNavigated.current = true;
-    window.history.pushState({ view: newView, ...params }, '', '');
-    setView(newView);
-    if (params.docId !== undefined) setCurrentDocId(params.docId);
-    if (params.role !== undefined) setRole(params.role);
-    if (params.studentName !== undefined) setStudentName(params.studentName);
-  };
-
-  const handleSafeBack = (fallbackView) => {
-    if (hasNavigated.current) {
-      window.history.back();
-    } else {
-      if (fallbackView === 'TEACHER_DASHBOARD') {
-        navigateTo('TEACHER_DASHBOARD', { role: 'teacher', docId: null });
-      } else {
-        navigateTo('LANDING', { role: '', docId: null, studentName: '' });
-      }
-    }
-  };
-
-  const openStudentPlannerRef = useRef(null);
-
-  useEffect(() => {
-    const handlePopState = (e) => {
-      setShowColorModal(false); setShowPrintModal(false); setShowResetConfirm(false); setShowLogoutConfirm(false); setShowAiModal(false); setStudentToDelete(null);
-      const state = e.state;
-      if (state && state.view) {
-        if (state.view === 'PLANNER' && state.docId) {
-          if (openStudentPlannerRef.current) openStudentPlannerRef.current(state.docId, state.role, state.studentName, true);
-        } else {
-          setView(state.view);
-          if (state.role !== undefined) setRole(state.role);
-          if (state.docId !== undefined) setCurrentDocId(state.docId);
-          if (state.studentName !== undefined) setStudentName(state.studentName);
-          if (state.view === 'TEACHER_DASHBOARD' || state.view === 'LANDING') setCurrentDocId(null);
-        }
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  const generateTimeSlots = () => {
-    const slots = []; let idCounter = 1;
-    for (let hour = 8; hour < 24; hour++) {
-      for (let min = 0; min < 60; min += 30) {
-        slots.push({
-          id: idCounter++, time: `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`,
-          mon: '', tue: '', wed: '', thu: '', fri: '', sat: '', sun: '',
-          mon_span: 1, mon_hidden: false, tue_span: 1, tue_hidden: false,
-          wed_span: 1, wed_hidden: false, thu_span: 1, thu_hidden: false,
-          fri_span: 1, fri_hidden: false, sat_span: 1, sat_hidden: false, sun_span: 1, sun_hidden: false,
-        });
-      }
-    }
-    return slots;
-  };
-
-  const repairTimetable = (tt) => {
-    const defaultSlots = generateTimeSlots();
-    if (!Array.isArray(tt) || tt.length === 0) return defaultSlots;
-    let repaired = defaultSlots.map((def, idx) => {
-      const loaded = tt.find(r => r.id === def.id) || tt[idx] || {};
-      const merged = { ...def, ...loaded, id: def.id, time: def.time };
-      DAYS.forEach(day => { merged[day] = merged[day] || ''; merged[`${day}_span`] = Number(merged[`${day}_span`]) || 1; merged[`${day}_hidden`] = Boolean(merged[`${day}_hidden`]); });
-      return merged;
-    });
-    DAYS.forEach(day => {
-      let skipUntil = 0;
-      for (let i = 0; i < 32; i++) {
-        if (i < skipUntil) { repaired[i][`${day}_hidden`] = true; repaired[i][`${day}_span`] = 1; } 
-        else {
-          repaired[i][`${day}_hidden`] = false; let span = repaired[i][`${day}_span`];
-          if (span < 1) span = 1; if (i + span > 32) span = 32 - i; 
-          repaired[i][`${day}_span`] = span; skipUntil = i + span;
-        }
-      }
-    });
-    return repaired;
-  };
-
-  const [timetable, setTimetable] = useState(generateTimeSlots());
-  const [todos, setTodos] = useState([]);
-  const [dDay, setDDay] = useState(null);
-  const [dDayInput, setDDayInput] = useState({ title: '', date: '' });
-  const [yearlyPlan, setYearlyPlan] = useState(Array(12).fill(''));
-  const [termScheduler, setTermScheduler] = useState({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
-  const [studentInfo, setStudentInfo] = useState(defaultStudentInfo);
-  const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 2)); 
-  const [colorRules, setColorRules] = useState([]);
-  const [studentList, setStudentList] = useState([]);
-  const [editingCell, setEditingCell] = useState(null); 
-
-  const isDragging = useRef(false);
-  const [selection, setSelection] = useState({ startDay: null, endDay: null, startId: null, endId: null });
-  const [monthlySelection, setMonthlySelection] = useState({ r1: null, c1: null, r2: null, c2: null });
-  const [infoSelection, setInfoSelection] = useState({ section: null, rIdx: null, cIdx: null }); 
-  const isMonthlyDragging = useRef(false);
-
-  const historyRef = useRef({ past: [], future: [] });
-  const currentStateRef = useRef({ timetable, termScheduler, yearlyPlan, studentInfo });
-  const focusSnapshotRef = useRef(null);
-  const historyLoaded = useRef(false);
-
-  const flatRows = useMemo(() => buildFlatRows(termScheduler), [termScheduler.subjects, termScheduler.textbooks]);
-
-  const openStudentPlanner = (studentId, newRole, sName = '', skipHistory = false) => {
-    let t = 'WEEKLY', d = new Date(2026, 1, 2), fs = 12;
-    try {
-      const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
-      if (saved[studentId]) {
-        if (saved[studentId].tab) t = saved[studentId].tab;
-        if (saved[studentId].fontSize) fs = saved[studentId].fontSize;
-        if (saved[studentId].currentDate) {
-          const parsedDate = new Date(saved[studentId].currentDate);
-          if (!isNaN(parsedDate)) d = parsedDate;
-        }
-      }
-    } catch (e) {}
-    
-    setActiveTab(t); setCurrentDate(d); setFontSize(fs);
-    setEditingCell(null); 
-    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); 
-    setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
-    setInfoSelection({ section: null, rIdx: null, cIdx: null });
-    historyRef.current = { past: [], future: [] }; historyLoaded.current = false;
-    
-    setLoadedDocId(null); setCurrentDocId(studentId);
-    if (newRole !== undefined) setRole(newRole);
-    if (sName !== undefined) setStudentName(sName);
-
-    if (!skipHistory) {
-      hasNavigated.current = true;
-      window.history.pushState({ view: 'PLANNER', docId: studentId, role: newRole !== undefined ? newRole : role, studentName: sName !== undefined ? sName : studentName }, '', '');
-    }
-    setView('PLANNER');
-  };
-
-  useEffect(() => { openStudentPlannerRef.current = openStudentPlanner; });
-
-  useEffect(() => {
-    if (view === 'PLANNER' && currentDocId) {
-      try {
-        const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
-        if (!saved[currentDocId]) saved[currentDocId] = {};
-        saved[currentDocId].tab = activeTab;
-        saved[currentDocId].fontSize = fontSize;
-        saved[currentDocId].currentDate = currentDate.toISOString();
-        localStorage.setItem('planner_student_prefs', JSON.stringify(saved));
-      } catch (e) {}
-    }
-  }, [activeTab, currentDate, fontSize, currentDocId, view]);
-
-  useEffect(() => { currentStateRef.current = { timetable, termScheduler, yearlyPlan, studentInfo }; }, [timetable, termScheduler, yearlyPlan, studentInfo]);
-
-  const saveToHistory = () => {
-    const snap = JSON.stringify(currentStateRef.current);
-    if (historyRef.current.past.length > 0 && historyRef.current.past[historyRef.current.past.length - 1] === snap) return;
-    historyRef.current.past.push(snap);
-    if (historyRef.current.past.length > 50) historyRef.current.past.shift();
-    historyRef.current.future = [];
-  };
-
-  const handleUndo = () => {
-    if (historyRef.current.past.length === 0) return;
-    historyRef.current.future.push(JSON.stringify(currentStateRef.current));
-    const prevSnap = JSON.parse(historyRef.current.past.pop());
-    setTimetable(prevSnap.timetable); setTermScheduler(prevSnap.termScheduler); setYearlyPlan(prevSnap.yearlyPlan); setStudentInfo(prevSnap.studentInfo || JSON.parse(JSON.stringify(defaultStudentInfo)));
-    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null });
-    setEditingCell(null); setAiFeedback('↩️ 실행 취소'); setTimeout(() => setAiFeedback(''), 1000);
-  };
-
-  const handleRedo = () => {
-    if (historyRef.current.future.length === 0) return;
-    historyRef.current.past.push(JSON.stringify(currentStateRef.current));
-    const nextSnap = JSON.parse(historyRef.current.future.pop());
-    setTimetable(nextSnap.timetable); setTermScheduler(nextSnap.termScheduler); setYearlyPlan(nextSnap.yearlyPlan); setStudentInfo(nextSnap.studentInfo || JSON.parse(JSON.stringify(defaultStudentInfo)));
-    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null });
-    setEditingCell(null); setAiFeedback('↪️ 다시 실행'); setTimeout(() => setAiFeedback(''), 1000);
-  };
-
-  const handleFocus = (e) => {
-    if(e && e.target) autoResize(e); 
-    focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
-  };
-
-  const handleBlur = (e, id, day, isMonthly, payload, dateKey) => {
-    if (e && e.target) {
-      let formattedText = e.target.value;
-      if (!isMonthly && id && day) {
-        formattedText = processComboText(e.target.value, day);
-        
-        const isWeekend = (day === 'sat' || day === 'sun' || day === '토요일' || day === '일요일' || day === '토' || day === '일');
-        const comboMatch = formattedText.match(/(?:개별지도\s*)?([abc])콤/i);
-        
-        let targetId = id;
-        let isCombo = false;
-        let targetSpan = 1;
-
-        if (comboMatch) {
-          const type = comboMatch[1].toLowerCase();
-          isCombo = true;
-          targetSpan = 3; 
-          if (isWeekend) {
-            if (type === 'a') targetId = 14;      
-            else if (type === 'b') targetId = 17; 
-            else if (type === 'c') targetId = 20; 
-          } else {
-            if (type === 'a') targetId = 20;      
-            else if (type === 'b') targetId = 23; 
-            else if (type === 'c') targetId = 26; 
-          }
-        }
-
-        if (isCombo) {
-          setTimetable((prev) => {
-            let newTt = [...prev];
-            if (id !== targetId) {
-               newTt[id - 1] = { ...newTt[id - 1], [day]: '', [`${day}_span`]: 1, [`${day}_hidden`]: false };
-            }
-            const startRowIdx = targetId - 1;
-            for (let i = 0; i < 32; i++) {
-              if (i === startRowIdx) {
-                newTt[i] = { ...newTt[i], [`${day}_span`]: targetSpan, [`${day}_hidden`]: false, [day]: formattedText };
-              } else if (i > startRowIdx && i < startRowIdx + targetSpan) {
-                newTt[i] = { ...newTt[i], [`${day}_span`]: 1, [`${day}_hidden`]: true, [day]: '' };
-              } else if (i < startRowIdx) {
-                const priorSpan = newTt[i][`${day}_span`];
-                if (priorSpan > 1 && i + priorSpan > startRowIdx) {
-                  newTt[i] = { ...newTt[i], [`${day}_span`]: startRowIdx - i };
-                }
-              }
-            }
-            return repairTimetable(newTt); 
-          });
-        } else if (formattedText !== e.target.value) {
-          setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: formattedText } : row));
-        }
-
-      } else if (isMonthly && payload && dateKey) {
-        if (payload.type === 'TOP_NOTE') {
-          const dObj = allDates.find(d => d.full === dateKey);
-          const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
-          formattedText = processComboText(e.target.value, dayType);
-          setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: formattedText } }));
-        } else if (payload.type === 'CELL') {
-          const dObj = allDates.find(d => d.full === dateKey);
-          const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
-          formattedText = processComboText(e.target.value, dayType);
-          setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${payload.sub}-tb${payload.tbIdx}-${dateKey}`]: formattedText } }));
-        }
-      }
-    }
-
-    if (focusSnapshotRef.current) {
-      const currentSnap = JSON.stringify(currentStateRef.current);
-      if (focusSnapshotRef.current !== currentSnap) {
-        historyRef.current.past.push(focusSnapshotRef.current);
-        if (historyRef.current.past.length > 50) historyRef.current.past.shift();
-        historyRef.current.future = [];
-      }
-    }
-    focusSnapshotRef.current = null; 
-    setEditingCell(null);
-  };
-
-  const getColInfo = (c) => {
-    if (c === 0 || c === 15) return { type: 'textbook', block: c === 0 ? 0 : 1 };
-    if (c >= 1 && c <= 14) return { type: 'date', dIdx: c - 1 };
-    if (c >= 16 && c <= 29) return { type: 'date', dIdx: c - 2 };
-    return null;
-  };
-
-  useEffect(() => {
-    if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null && monthlySelection.r1 === monthlySelection.r2 && monthlySelection.c1 === monthlySelection.c2 && !editingCell) {
-      const el = document.getElementById(`monthly-textarea-${monthlySelection.r1}-${monthlySelection.c1}`);
-      if (el) el.focus();
-    }
-  }, [monthlySelection, editingCell, activeTab]);
-
-  const moveFocusMonthly = (rIdx, cIdx, dir) => {
-    let nextRIdx = rIdx; let nextCIdx = cIdx;
-    const maxRIdx = flatRows.length;
-    
-    while (true) {
-      if (dir === 'DOWN') { nextRIdx++; } 
-      else if (dir === 'UP') { nextRIdx--; } 
-      else if (dir === 'RIGHT') { 
-        nextCIdx++; 
-        if (nextCIdx > 29) { nextCIdx = 0; nextRIdx++; } 
-      } 
-      else if (dir === 'LEFT') { 
-        nextCIdx--; 
-        if (nextCIdx < 0) { nextCIdx = 29; nextRIdx--; } 
-      }
-      
-      if (nextRIdx < 0 || nextRIdx > maxRIdx) return;
-      if (nextRIdx === 0 && (nextCIdx === 0 || nextCIdx === 15)) continue;
-      
-      break;
-    }
-
-    setMonthlySelection({ r1: nextRIdx, c1: nextCIdx, r2: nextRIdx, c2: nextCIdx });
-    setEditingCell(null);
-  };
-
-  const moveFocusInfo = (section, rIdx, cIdx, dir) => {
-    const grid = studentInfo[section];
-    if (!Array.isArray(grid)) return;
-    
-    const is2D = Array.isArray(grid[0]);
-    if (!is2D) {
-      let nextIdx = rIdx; 
-      const maxIdx = grid.length - 1;
-      if (dir === 'RIGHT' || dir === 'DOWN') { if (nextIdx < maxIdx) nextIdx++; }
-      else if (dir === 'LEFT' || dir === 'UP') { if (nextIdx > 0) nextIdx--; }
-      
-      setInfoSelection({ section, rIdx: nextIdx, cIdx: null });
-      setTimeout(() => { const el = document.getElementById(`info-${section}-${nextIdx}-null`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
-      return;
-    }
-
-    let nextR = rIdx, nextC = cIdx;
-    const maxR = grid.length - 1;
-    const maxC = grid[rIdx].length - 1;
-
-    if (dir === 'DOWN') { if (nextR < maxR) nextR++; }
-    else if (dir === 'UP') { if (nextR > 0) nextR--; }
-    else if (dir === 'RIGHT') { if (nextC < maxC) nextC++; else if (nextR < maxR) { nextC = 0; nextR++; } }
-    else if (dir === 'LEFT') { if (nextC > 0) nextC--; else if (nextR > 0) { nextR--; nextC = grid[nextR].length - 1; } }
-
-    setInfoSelection({ section, rIdx: nextR, cIdx: nextC });
-    setTimeout(() => { const el = document.getElementById(`info-${section}-${nextR}-${nextC}`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
-  };
-
-  const getSelectionBounds = () => {
-    if (!selection.startDay || !selection.endDay || !selection.startId || !selection.endId) return null;
-    const d1 = DAYS.indexOf(selection.startDay); const d2 = DAYS.indexOf(selection.endDay);
-    return { minDayIdx: Math.min(d1, d2), maxDayIdx: Math.max(d1, d2), minId: Math.min(selection.startId, selection.endId), maxId: Math.max(selection.startId, selection.endId) };
-  };
-
-  const getMonthlyBounds = () => {
-    if (monthlySelection.r1 === null || monthlySelection.c1 === null) return null;
-    return { minR: Math.min(monthlySelection.r1, monthlySelection.r2), maxR: Math.max(monthlySelection.r1, monthlySelection.r2), minC: Math.min(monthlySelection.c1, monthlySelection.c2), maxC: Math.max(monthlySelection.c1, monthlySelection.c2) };
-  };
-
-  const getSchedulerDates = () => {
-    const days = []; const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
-    for (let i = 0; i < 28; i++) {
-      const dateObj = new Date(currentDate); dateObj.setDate(currentDate.getDate() + i);
-      days.push({ full: `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`, label: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`, day: dayLabels[dateObj.getDay()], isWeekend: dateObj.getDay() === 0 || dateObj.getDay() === 6, isSat: dateObj.getDay() === 6 });
-    }
-    return days;
-  };
-  const allDates = getSchedulerDates();
-
-  const autoResize = (e) => { 
-    if (e && e.target) { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(() => { 
-      document.querySelectorAll('textarea.auto-resize').forEach(el => { 
-        el.style.height = 'auto'; if (el.scrollHeight > 0) el.style.height = el.scrollHeight + 'px'; 
-      }); 
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [activeTab, view, currentDocId, loading, timetable, fontSize, termScheduler, editingCell, flatRows, studentInfo, isMobile]);
-
-  const calculateDDay = (targetDate) => {
-    if (!targetDate) return '';
-    const today = new Date(); today.setHours(0, 0, 0, 0); const target = new Date(targetDate); target.setHours(0, 0, 0, 0);
-    const diff = target.getTime() - today.getTime(); const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-    if (days === 0) return 'D-Day'; return days > 0 ? `D-${days}` : `D+${Math.abs(days)}`;
-  };
-
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-        const params = new URLSearchParams(window.location.search); const sid = params.get('sid');
-        
-        if (sid) { 
-          window.history.replaceState({ view: 'PLANNER', docId: sid, role: 'student', studentName: '' }, '', '');
-          openStudentPlanner(sid, 'student', '', true); 
-        } 
-        else {
-          if (localStorage.getItem('planner_role') === 'teacher') localStorage.removeItem('planner_role');
-          const savedRole = sessionStorage.getItem('planner_role') || localStorage.getItem('planner_role');
-          const savedName = localStorage.getItem('planner_name');
-
-          if (savedRole === 'student' && savedName) { 
-            window.history.replaceState({ view: 'PLANNER', docId: savedName, role: 'student', studentName: savedName }, '', '');
-            setStudentName(savedName); openStudentPlanner(savedName, 'student', savedName, true); 
-          } 
-          else if (savedRole === 'teacher') { 
-            setRole('teacher'); window.history.replaceState({ view: 'TEACHER_DASHBOARD', role: 'teacher' }, '', ''); setView('TEACHER_DASHBOARD'); 
-          } 
-          else { 
-            window.history.replaceState({ view: 'LANDING' }, '', ''); setView('LANDING'); 
-          }
-        }
-        onSnapshot(doc(db, 'settings', 'global'), (snap) => { if (snap.exists()) setGlobalAiKey(snap.data().aiKey || ''); });
-      } catch (error) {
-        if (error.code === 'auth/unauthorized-domain') setDbError("Vercel 도메인이 Firebase 인증 허용 목록에 없습니다. 콘솔 [Authentication] -> [Settings] -> [승인된 도메인]에 추가해주세요.");
-        else setDbError(`인증 오류: ${error.message}`);
-      }
-    };
-    initAuth(); onAuthStateChanged(auth, setUser);
-  }, []);
-
-  useEffect(() => {
-    if (!user || !currentDocId || (view !== 'PLANNER' && view !== 'TEACHER_DASHBOARD')) return;
-    setLoading(true);
-    const unsubscribe = onSnapshot(doc(db, 'planners', currentDocId), (docSnap) => {
-      try {
-        if (docSnap.metadata?.hasPendingWrites) return;
-        if (docSnap.exists()) {
-          setIsNotFound(false); const data = docSnap.data();
-          setTimetable(Array.isArray(data.timetable) ? repairTimetable(data.timetable) : generateTimeSlots());
-          const repairedTermScheduler = repairTermScheduler(data.termScheduler); 
-          setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {}, ...repairedTermScheduler });
-          setTodos(data.todos || []); setDDay(data.dDay || null); setYearlyPlan(data.yearlyPlan || Array(12).fill('')); setColorRules(data.colorRules || []); setStudentName(data.studentName || '');
-          
-          setStudentInfo(repairStudentInfo(data.studentInfo));
-
-          if (!historyLoaded.current) { historyRef.current = { past: [], future: [] }; historyLoaded.current = true; }
-          setLoadedDocId(currentDocId); 
-        } else { 
-          setIsNotFound(true); setLoadedDocId(null); 
-        }
-        setDbError('');
-      } catch (e) {} finally { setLoading(false); }
-    }, (error) => {
-      setDbError(`[읽기 차단됨] Firebase 보안 규칙(Rules)이 만료되었거나 권한이 없습니다. 콘솔에서 권한을 풀어주세요. (${error.message})`);
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [user, currentDocId, view]);
-
-  const isFirstRun = useRef(true);
-  useEffect(() => {
-    if (isFirstRun.current) { isFirstRun.current = false; return; }
-    if (!user || !currentDocId || view !== 'PLANNER' || loading || isNotFound || loadedDocId !== currentDocId || dbError) return;
-    
-    const saveData = async () => {
-      if (loadedDocId !== currentDocId) return; 
-      const isActuallyName = studentName && studentName !== currentDocId;
-      try {
-        await setDoc(doc(db, 'planners', currentDocId), { 
-          timetable, todos, dDay, yearlyPlan, termScheduler, 
-          studentInfo: encodeStudentInfo(studentInfo), 
-          colorRules, lastUpdated: new Date().toISOString(), ...(isActuallyName && { studentName }) 
-        }, { merge: true });
-      } catch(e) {
-        setDbError(`[쓰기 차단됨] Firebase 보안 규칙에 의해 데이터 저장이 차단되었습니다.`);
-      }
-    };
-    const timeoutId = setTimeout(saveData, 1000);
-    return () => clearTimeout(timeoutId);
-  }, [timetable, todos, dDay, yearlyPlan, termScheduler, studentInfo, colorRules, user, currentDocId, view, loading, studentName, isNotFound, loadedDocId, dbError]);
-
-  useEffect(() => {
-    if (!user || view !== 'TEACHER_DASHBOARD') return;
-    const unsubscribe = onSnapshot(collection(db, 'planners'), (snapshot) => {
-      const students = []; snapshot.forEach((doc) => students.push({ id: doc.id, ...doc.data() }));
-      students.sort((a, b) => (a.studentName || "").localeCompare(b.studentName || "", 'ko')); setStudentList(students);
-      setDbError('');
-    }, (error) => {
-      setDbError(`[대시보드 차단됨] Firebase 보안 규칙(Rules) 권한이 없습니다. 콘솔에서 허용으로 변경해주세요. (${error.message})`);
-    });
-    return () => unsubscribe();
-  }, [user, view]);
-
-  useEffect(() => {
-    const handleCopy = (e) => {
-      if (view !== 'PLANNER') return;
-      const activeTag = document.activeElement?.tagName;
-      if (activeTag === 'INPUT') return;
-      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
-      if (activeTab === 'YEARLY' || activeTab === 'INFO') return; 
-
-      let tsv = "";
-      if (activeTab === 'WEEKLY' && selection.startDay) {
-        const bounds = getSelectionBounds(); if (!bounds) return;
-        let copiedData = [];
-        for (let id = bounds.minId; id <= bounds.maxId; id++) {
-          const row = timetable[id - 1]; if (!row) continue;
-          let rowData = []; let rowCopy = [];
-          for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
-            const day = DAYS[d]; const val = row[`${day}_hidden`] ? "" : (row[day] || "");
-            rowData.push(val.includes('\n') || val.includes('\t') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val);
-            rowCopy.push({ text: row[day] || '', span: row[`${day}_span`] || 1, hidden: row[`${day}_hidden`] || false });
-          }
-          tsv += rowData.join("\t") + (id < bounds.maxId ? "\n" : ""); copiedData.push(rowCopy);
-        }
-        e.clipboardData.setData('application/json', JSON.stringify({ tab: 'WEEKLY', data: copiedData }));
-      } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
-        const mb = getMonthlyBounds(); if (!mb) return;
-        let copiedData = [];
-        const fRows = buildFlatRows(termScheduler);
-
-        for (let r = mb.minR; r <= mb.maxR; r++) {
-          const rowInfo = r === 0 ? null : fRows[r - 1];
-          let rowData = []; let rowCopy = [];
-          
-          for (let c = mb.minC; c <= mb.maxC; c++) {
-             const colInfo = getColInfo(c);
-             if (!colInfo) continue;
-             
-             let val = '';
-             if (r === 0) {
-                 if (colInfo.type === 'textbook') val = ''; 
-                 else val = termScheduler.topNotes[allDates[colInfo.dIdx].full] || '';
-             } else {
-                 if (colInfo.type === 'textbook') {
-                    val = rowInfo.tbName || '';
-                 } else {
-                    val = termScheduler.cells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] || '';
-                 }
-             }
-             
-             rowData.push(val.includes('\n') || val.includes('\t') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val);
-             rowCopy.push({ text: val });
-          }
-          tsv += rowData.join("\t") + (r < mb.maxR ? "\n" : ""); copiedData.push(rowCopy);
-        }
-        e.clipboardData.setData('application/json', JSON.stringify({ tab: 'MONTHLY', data: copiedData }));
-      }
-      if (tsv) { e.clipboardData.setData('text/plain', tsv); e.preventDefault(); setAiFeedback('✅ 복사 완료'); setTimeout(() => setAiFeedback(''), 1500); }
-    };
-
-    const handlePaste = (e) => {
-      if (view !== 'PLANNER') return;
-      const activeTag = document.activeElement?.tagName;
-      if (activeTag === 'INPUT') return;
-      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
-      if (activeTab === 'YEARLY' || activeTab === 'INFO') return; 
-
-      const pastedText = e.clipboardData?.getData('text/plain') || window.clipboardData?.getData('text/plain');
-      const pastedJsonStr = e.clipboardData?.getData('application/json') || window.clipboardData?.getData('application/json');
-      if (!pastedText && !pastedJsonStr) return;
-
-      let parsedData = null; let pastedType = null;
-      if (pastedJsonStr) { try { const obj = JSON.parse(pastedJsonStr); if (obj.data) { parsedData = obj.data; pastedType = obj.tab; } } catch(err) {} }
-
-      if (activeTab === 'WEEKLY' && selection.startDay) {
-        const bounds = getSelectionBounds(); if (!bounds) return;
-        const isSingleCell = bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx;
-        
-        e.preventDefault(); saveToHistory();
-        setTimetable(prev => {
-          let newTt = [...prev]; const startRowIdx = bounds.minId - 1;
-          if (parsedData && pastedType === 'WEEKLY') {
-            for (let c = 0; c < parsedData[0].length; c++) {
-              const day = DAYS[bounds.minDayIdx + c]; if (!day) continue;
-              for (let i = 0; i < startRowIdx; i++) { const priorSpan = newTt[i][`${day}_span`]; if (priorSpan > 1 && i + priorSpan > startRowIdx) newTt[i] = { ...newTt[i], [`${day}_span`]: startRowIdx - i }; }
-            }
-            parsedData.forEach((rowCopy, rIdx) => {
-              const ttRowIdx = startRowIdx + rIdx; if (ttRowIdx > 31) return;
-              rowCopy.forEach((cellCopy, cIdx) => { 
-                const day = DAYS[bounds.minDayIdx + cIdx]; 
-                if (day) {
-                  const formattedText = processComboText(cellCopy.text, day);
-                  newTt[ttRowIdx] = { ...newTt[ttRowIdx], [day]: formattedText, [`${day}_span`]: cellCopy.span, [`${day}_hidden`]: cellCopy.hidden }; 
-                }
-              });
-            });
-          } else {
-            const rows = parseTSV(pastedText);
-            if (rows.length === 1 && rows[0].length === 1 && !isSingleCell) {
-              for (let id = bounds.minId; id <= bounds.maxId; id++) { 
-                for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { 
-                  const day = DAYS[d];
-                  if (!newTt[id - 1][`${day}_hidden`]) {
-                    const formattedText = processComboText(rows[0][0], day);
-                    newTt[id - 1] = { ...newTt[id - 1], [day]: formattedText }; 
-                  }
-                } 
-              }
-            } else {
-              rows.forEach((rowStrArr, i) => {
-                const rIdx = startRowIdx + i; if (rIdx > 31) return;
-                rowStrArr.forEach((colStr, j) => { 
-                  const cIdx = bounds.minDayIdx + j; 
-                  if (cIdx < 7 && !newTt[rIdx][`${DAYS[cIdx]}_hidden`]) {
-                    const formattedText = processComboText(colStr, DAYS[cIdx]);
-                    newTt[rIdx] = { ...newTt[rIdx], [DAYS[cIdx]]: formattedText }; 
-                  }
-                });
-              });
-            }
-          }
-          return repairTimetable(newTt);
-        });
-        setAiFeedback('✅ 붙여넣기 완료'); setTimeout(() => setAiFeedback(''), 1500);
-
-      } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
-        const mb = getMonthlyBounds(); if (!mb) return;
-        const isSingleCell = mb.minR === mb.maxR && mb.minC === mb.maxC;
-        
-        e.preventDefault(); saveToHistory();
-        setTermScheduler(prev => {
-          let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes }; let newTextbooks = { ...prev.textbooks };
-          const fRows = buildFlatRows(prev);
-          let newTbArrays = {}; 
-
-          if (parsedData && pastedType === 'MONTHLY') {
-            parsedData.forEach((rowCopy, rOffset) => {
-              const targetRow = mb.minR + rOffset; if (targetRow > fRows.length) return;
-              const rowInfo = targetRow === 0 ? null : fRows[targetRow - 1];
-              
-              for (let cOffset = 0; cOffset < rowCopy.length; cOffset++) {
-                 let targetCol = mb.minC + cOffset;
-                 if (targetCol > 29) break;
-                 const colInfo = getColInfo(targetCol);
-                 if (!colInfo) continue;
-                 
-                 const cellVal = rowCopy[cOffset].text;
-                 
-                 if (targetRow === 0) {
-                   if (colInfo.type === 'date') {
-                      const formatted = processComboText(cellVal, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                      newTopNotes[allDates[colInfo.dIdx].full] = formatted;
-                   }
-                 } else {
-                   if (colInfo.type === 'textbook') {
-                      if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
-                      while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
-                      newTbArrays[rowInfo.sub][rowInfo.tbIdx] = cellVal.replace(/\n/g, ' '); 
-                   } else {
-                      const formatted = processComboText(cellVal, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                      newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
-                   }
-                 }
-              }
-            });
-          } else {
-            const rows = parseTSV(pastedText);
-            if (rows.length === 1 && rows[0].length === 1 && !isSingleCell) {
-              for (let r = mb.minR; r <= mb.maxR; r++) {
-                const rowInfo = r === 0 ? null : fRows[r - 1];
-                for (let c = mb.minC; c <= mb.maxC; c++) { 
-                  const colInfo = getColInfo(c);
-                  if (!colInfo) continue;
-                  const colStr = rows[0][0];
-                  
-                  if (r === 0) {
-                     if (colInfo.type === 'date') {
-                       const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                       newTopNotes[allDates[colInfo.dIdx].full] = formatted;
-                     }
-                  } else {
-                     if (colInfo.type === 'textbook') {
-                        if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
-                        while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
-                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = colStr.replace(/\n/g, ' ');
-                     } else {
-                       const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                       newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
-                     }
-                  }
-                }
-              }
-            } else {
-              rows.forEach((rowStrArr, i) => {
-                const rIdx = mb.minR + i; if (rIdx > fRows.length) return;
-                const rowInfo = rIdx === 0 ? null : fRows[rIdx - 1];
-                
-                for (let j = 0; j < rowStrArr.length; j++) {
-                   let targetCol = mb.minC + j;
-                   if (targetCol > 29) break;
-                   const colInfo = getColInfo(targetCol);
-                   if (!colInfo) continue;
-                   
-                   const colStr = rowStrArr[j];
-                   if (rIdx === 0) {
-                      if (colInfo.type === 'date') {
-                        const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                        newTopNotes[allDates[colInfo.dIdx].full] = formatted;
-                      }
-                   } else {
-                      if (colInfo.type === 'textbook') {
-                        if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
-                        while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
-                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = colStr.replace(/\n/g, ' ');
-                      } else {
-                        const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
-                        newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
-                      }
-                   }
-                }
-              });
-            }
-          }
-          
-          Object.keys(newTbArrays).forEach(sub => {
-            newTextbooks[sub] = newTbArrays[sub].join('\n');
-          });
-
-          return { ...prev, cells: newCells, topNotes: newTopNotes, textbooks: newTextbooks };
-        });
-        setAiFeedback('✅ 붙여넣기 완료'); setTimeout(() => setAiFeedback(''), 1500);
-      }
-    };
-
-    const handleKeyDown = (e) => {
-      if (view !== 'PLANNER') return;
-      const activeTag = document.activeElement?.tagName;
-      if (activeTag === 'INPUT') return;
-      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
-      if ((activeTab === 'YEARLY' || activeTab === 'INFO') && activeTag === 'TEXTAREA') return;
-
-      const isCtrl = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? e.metaKey : e.ctrlKey;
-
-      if (isCtrl && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; }
-      if (isCtrl && e.key.toLowerCase() === 'y') { e.preventDefault(); handleRedo(); return; }
-
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (activeTab === 'WEEKLY' && selection.startDay) {
-          const bounds = getSelectionBounds(); if (!bounds) return;
-          e.preventDefault(); saveToHistory();
-          setTimetable(prev => {
-            let newTt = [...prev];
-            for (let id = bounds.minId; id <= bounds.maxId; id++) { for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { if (!newTt[id - 1][`${DAYS[d]}_hidden`]) newTt[id - 1] = { ...newTt[id - 1], [DAYS[d]]: '' }; } }
-            return newTt;
-          });
-          if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') document.activeElement.value = '';
-        } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
-          const mb = getMonthlyBounds(); if (!mb) return;
-          e.preventDefault(); saveToHistory();
-          setTermScheduler(prev => {
-            let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes }; let newTextbooks = { ...prev.textbooks };
-            let newTbArrays = {};
-            const fRows = buildFlatRows(prev);
-            
-            for (let r = mb.minR; r <= mb.maxR; r++) {
-              const rowInfo = r === 0 ? null : fRows[r - 1];
-              for (let c = mb.minC; c <= mb.maxC; c++) { 
-                const colInfo = getColInfo(c);
-                if (!colInfo) continue;
-                if (r === 0) {
-                  if (colInfo.type === 'date') newTopNotes[allDates[colInfo.dIdx].full] = '';
-                } else {
-                  if (colInfo.type === 'textbook') {
-                     if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (prev.textbooks[rowInfo.sub] || '').split('\n');
-                     if(newTbArrays[rowInfo.sub].length > rowInfo.tbIdx) {
-                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = '';
-                     }
-                  } else {
-                     newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = '';
-                  }
-                }
-              }
-            }
-            
-            Object.keys(newTbArrays).forEach(sub => {
-              newTextbooks[sub] = newTbArrays[sub].join('\n');
-            });
-            
-            return { ...prev, cells: newCells, topNotes: newTopNotes, textbooks: newTextbooks };
-          });
-        }
-      }
-    };
-
-    document.addEventListener('copy', handleCopy); document.addEventListener('paste', handlePaste); document.addEventListener('keydown', handleKeyDown);
-    return () => { document.removeEventListener('copy', handleCopy); document.removeEventListener('paste', handlePaste); document.removeEventListener('keydown', handleKeyDown); };
-  }, [activeTab, view, selection, monthlySelection, timetable, termScheduler, editingCell]); 
-
-  const saveGlobalAiKey = async () => { try { await setDoc(doc(db, 'settings', 'global'), { aiKey: globalAiKey }, { merge: true }); setShowGlobalKeyInput(false); setAiFeedback('✅ 공용 API 키 저장'); setTimeout(() => setAiFeedback(''), 3000); } catch (e) {} };
-  
-  const createNewStudentSheet = async () => { 
-    const name = prompt("이름을 입력하세요."); 
-    if (!name || !name.trim()) return; 
-    const newSid = crypto.randomUUID(); 
-    setLoading(true); 
-    try { 
-      await setDoc(doc(db, 'planners', newSid), { 
-        studentName: name.trim(), 
-        timetable: generateTimeSlots(), 
-        todos: [], 
-        yearlyPlan: Array(12).fill(''), 
-        studentInfo: encodeStudentInfo(defaultStudentInfo), 
-        createdAt: new Date().toISOString() 
-      }); 
-      setAiFeedback(`✅ 학생 생성됨.`); 
-      setTimeout(() => setAiFeedback(''), 3000); 
-    } catch (e) {
-      alert(`생성 실패: ${e.message}`);
-    } finally { 
-      setLoading(false); 
-    } 
-  };
-  
-  const copyStudentLink = (sid) => { const el = document.createElement('textarea'); el.value = `${window.location.origin}${window.location.pathname}?sid=${sid}`; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000); };
-
-  const handleMouseDown = (e, day, id) => {
-    isDragging.current = true; setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null });
-    if (e.shiftKey && selection.startDay) { e.preventDefault(); setSelection(prev => ({ ...prev, endDay: day, endId: id })); } 
-    else { setSelection(prev => { if (prev.startDay === day && prev.endDay === day && prev.startId === id && prev.endId === id) return prev; return { startDay: day, endDay: day, startId: id, endId: id }; }); }
-  };
-
-  const handleMouseEnter = (day, id) => { if (isDragging.current && activeTab === 'WEEKLY') setSelection(prev => ({ ...prev, endDay: day, endId: id })); };
-
-  const handleMonthlyMouseDown = (e, rIdx, cIdx) => {
-    if (e.target.type === 'checkbox') return;
-    isMonthlyDragging.current = true; setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null });
-    if (e.shiftKey && monthlySelection.r1 !== null) { e.preventDefault(); setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); } 
-    else { setMonthlySelection(prev => { if (prev.r1 === rIdx && prev.c1 === cIdx && prev.r2 === rIdx && prev.c2 === cIdx) return prev; return { r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }; }); }
-  };
-
-  const handleMonthlyMouseEnter = (rIdx, cIdx) => { if (isMonthlyDragging.current && activeTab === 'MONTHLY') setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); };
-
-  const handleMouseUp = () => { isDragging.current = false; isMonthlyDragging.current = false; };
-  useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
-
-  const mergeCells = () => {
-    const bounds = getSelectionBounds(); if (!bounds) return; const spanCount = bounds.maxId - bounds.minId + 1; if (spanCount <= 1) return;
-    saveToHistory(); let newTt = [...timetable];
-    for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
-      const day = DAYS[d];
-      for (let i = 1; i <= 32; i++) {
-        if (i === bounds.minId) newTt[i-1] = { ...newTt[i-1], [`${day}_span`]: spanCount, [`${day}_hidden`]: false };
-        else if (i > bounds.minId && i <= bounds.maxId) newTt[i-1] = { ...newTt[i-1], [`${day}_span`]: 1, [`${day}_hidden`]: true };
-        else if (i < bounds.minId) { const pSpan = newTt[i-1][`${day}_span`]; if (pSpan > 1 && i + pSpan - 1 >= bounds.minId) newTt[i-1] = { ...newTt[i-1], [`${day}_span`]: bounds.minId - i }; }
-      }
-    }
-    setTimetable(repairTimetable(newTt)); setSelection({ startDay: null, endDay: null, startId: null, endId: null });
-  };
-
-  const unmergeCells = () => {
-    const bounds = getSelectionBounds(); if (!bounds) return; saveToHistory(); let newTt = [...timetable];
-    for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
-      const day = DAYS[d];
-      for (let i = 0; i < 32; i++) {
-        const row = newTt[i];
-        if (!row[`${day}_hidden`]) {
-          const span = row[`${day}_span`] || 1; if (row.id <= bounds.maxId && row.id + span - 1 >= bounds.minId) { for (let j = 0; j < span; j++) { if (i + j < 32) newTt[i + j] = { ...newTt[i + j], [`${day}_span`]: 1, [`${day}_hidden`]: false }; } }
-        }
-      }
-    }
-    setTimetable(repairTimetable(newTt)); setSelection({ startDay: null, endDay: null, startId: null, endId: null });
-  };
-
-  const executeResetTimetable = () => {
-    saveToHistory();
-    if (activeTab === 'WEEKLY') setTimetable(generateTimeSlots()); 
-    else if (activeTab === 'MONTHLY') setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
-    else if (activeTab === 'INFO') setStudentInfo(JSON.parse(JSON.stringify(defaultStudentInfo)));
-    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null }); setShowResetConfirm(false); 
-  };
-
-  const addColorRule = () => { if (!newColorRule.keyword.trim()) return; setColorRules([...colorRules, { ...newColorRule, id: Date.now() }]); setNewColorRule({ ...newColorRule, keyword: '' }); setShowColorModal(false); };
-  const removeColorRule = (id) => setColorRules(colorRules.filter((rule) => rule.id !== id));
-  const getCellColor = (text) => { if (!text || typeof text !== 'string') return null; const rule = colorRules.find((r) => text.includes(r.keyword)); return rule ? rule.color : null; };
-
-  const handlePrev4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 28); return d; });
-  const handleNext4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 28); return d; });
-
-  const handleTimetableChange = (id, day, value) => { setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row)); };
-  
-  const handleTermCellChange = (sub, tbIdx, dateKey, value) => { 
-    setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${sub}-tb${tbIdx}-${dateKey}`]: value } })); 
-  };
-  
-  const handleTermCheckToggle = (sub, tbIdx, dateKey, index) => { 
-    saveToHistory(); 
-    setTermScheduler(prev => {
-      const newKey = `${sub}-tb${tbIdx}-${dateKey}-${index}`;
-      const currentState = prev.checks[newKey] || false;
-      return { ...prev, checks: { ...prev.checks, [newKey]: !currentState } };
-    }); 
-  };
-  
-  const handleTopNoteChange = (dateKey, value) => setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: value } }));
-  
-  const handleTermTextbookChange = (sub, tbIdx, value) => {
-    setTermScheduler(prev => {
-      const prevTbs = (prev.textbooks[sub] || '').split('\n');
-      if (prevTbs.length === 0) prevTbs.push('');
-      
-      const newLinesForThisTb = value.split('\n');
-      const linesAdded = newLinesForThisTb.length - 1;
-      
-      let nextTbs = [...prevTbs];
-      let newCells = { ...prev.cells };
-      let newChecks = { ...prev.checks };
-
-      if (linesAdded > 0) {
-        for (let i = prevTbs.length - 1; i > tbIdx; i--) {
-          const newI = i + linesAdded;
-          Object.keys(newCells).forEach(k => {
-            if (k.startsWith(`${sub}-tb${i}-`)) {
-              newCells[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newCells[k];
-              delete newCells[k];
-            }
-          });
-          Object.keys(newChecks).forEach(k => {
-            if (k.startsWith(`${sub}-tb${i}-`)) {
-              newChecks[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newChecks[k];
-              delete newChecks[k];
-            }
-          });
-        }
-        nextTbs.splice(tbIdx, 1, ...newLinesForThisTb);
-      } else {
-        nextTbs[tbIdx] = value;
-      }
-
-      return { ...prev, textbooks: { ...prev.textbooks, [sub]: nextTbs.join('\n') }, cells: newCells, checks: newChecks };
-    });
-  };
-
-  const deleteTextbookRow = (sub, tbIdx) => {
-    saveToHistory();
-    setTermScheduler(prev => {
-      const prevTbs = (prev.textbooks[sub] || '').split('\n');
-      if (prevTbs.length <= 1) return prev;
-
-      let newCells = { ...prev.cells };
-      let newChecks = { ...prev.checks };
-
-      Object.keys(newCells).forEach(k => { if (k.startsWith(`${sub}-tb${tbIdx}-`)) delete newCells[k]; });
-      Object.keys(newChecks).forEach(k => { if (k.startsWith(`${sub}-tb${tbIdx}-`)) delete newChecks[k]; });
-
-      for (let i = tbIdx + 1; i < prevTbs.length; i++) {
-        const newI = i - 1;
-        Object.keys(newCells).forEach(k => {
-          if (k.startsWith(`${sub}-tb${i}-`)) {
-            newCells[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newCells[k];
-            delete newCells[k];
-          }
-        });
-        Object.keys(newChecks).forEach(k => {
-          if (k.startsWith(`${sub}-tb${i}-`)) {
-            newChecks[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newChecks[k];
-            delete newChecks[k];
-          }
-        });
-      }
-
-      const nextTbs = [...prevTbs];
-      nextTbs.splice(tbIdx, 1);
-
-      return { ...prev, textbooks: { ...prev.textbooks, [sub]: nextTbs.join('\n') }, cells: newCells, checks: newChecks };
-    });
-  };
-
-  const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
-  const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
-
-  const handleInfoChange = (section, rIdx, cIdx, val) => {
-    setStudentInfo(prev => {
-      const next = { ...prev };
-      if (section === 'topHeaders' || section === 'midHeaders' || section === 'electives') {
-        const newArr = [...next[section]];
-        newArr[rIdx] = val; 
-        next[section] = newArr;
-      } else {
-        const newGrid = [...next[section]];
-        const newRow = [...newGrid[rIdx]];
-        newRow[cIdx] = val;
-        newGrid[rIdx] = newRow;
-        next[section] = newGrid;
-      }
-      return next;
-    });
-  };
-
-  // 💡 [학생 정보] 탭의 셀 렌더링 (모바일인 경우 읽기 전용 <div>로 대체)
-  const renderInfoCell = (section, rIdx, cIdx, val, options = {}) => {
-    const { tag = 'td', extraClass = "", extraStyle = {}, rowSpan = 1, showDeleteBtn = false, onDelete = null } = options;
-    const Tag = tag;
-    const cellId = `info-${section}-${rIdx}-${cIdx}`;
-    const isActiveThis = !isMobile && infoSelection.section === section && infoSelection.rIdx === rIdx && infoSelection.cIdx === cIdx;
-    const isEditingThis = !isMobile && editingCell === cellId;
-    const isDynamicGrid = section === 'schoolGrades' || section === 'mockGrades';
-
-    if (isMobile) {
-      return (
-        <Tag key={cellId} rowSpan={rowSpan} className={`border border-slate-300 p-0.5 align-middle text-center bg-white ${extraClass}`}>
-          <div className="w-full h-full flex flex-col justify-center items-center px-0.5 py-1 min-h-[24px]">
-             {val.trim() === '' ? (
-                <span className="text-transparent select-none w-full h-full flex items-center justify-center" style={{...extraStyle}}>.</span>
-             ) : (
-                <div style={{ ...extraStyle, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap break-words text-center">{val}</div>
-             )}
-          </div>
-        </Tag>
-      );
-    }
-
-    return (
-      <Tag
-        key={cellId}
-        rowSpan={rowSpan}
-        onMouseDown={(e) => {
-          if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
-          if (editingCell !== cellId) setEditingCell(null);
-          setInfoSelection({ section, rIdx, cIdx });
-        }}
-        onClick={(e) => {
-          if (!e.shiftKey && !isEditingThis && e.target.tagName !== 'BUTTON' && e.target.closest('button') === null) {
-            setTimeout(() => { const el = document.getElementById(cellId); if (el) el.focus(); }, 0);
-          }
-        }}
-        onDoubleClick={(e) => {
-          if (e.target.tagName !== 'BUTTON' && e.target.closest('button') === null) {
-            setEditingCell(cellId);
-          }
-        }}
-        className={`border border-slate-300 p-0 align-middle transition-colors relative text-center group/cell ${isActiveThis ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'} ${extraClass}`}
-      >
-        <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[24px] md:min-h-[30px] relative">
-          {showDeleteBtn && (
-            <button 
-              onClick={(e) => { 
-                e.stopPropagation(); 
-                if (onDelete) onDelete();
-              }} 
-              className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/cell:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30 cursor-pointer">
-              <X size={10}/>
-            </button>
-          )}
-          
-          <textarea
-            id={cellId}
-            value={val}
-            onChange={(e) => handleInfoChange(section, rIdx, cIdx, e.target.value)}
-            onInput={autoResize}
-            onFocus={handleFocus}
-            onBlur={(e) => handleBlur(e, null, null, true, null, null)}
-            rows={1}
-            onCompositionStart={(e) => {
-              if (!isEditingThis && isActiveThis) {
-                e.currentTarget.value = ''; handleInfoChange(section, rIdx, cIdx, '');
-                setEditingCell(cellId); setInfoSelection({ section, rIdx, cIdx });
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-              if (!isEditingThis && isActiveThis) {
-                if (e.key === 'Enter' || e.key === 'F2') {
-                  e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, 'DOWN'); }
-                  else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, 'UP'); }
-                  else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, 'RIGHT'); }
-                  else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, 'LEFT'); }
-                  else if (e.key === 'Tab') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                  else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleInfoChange(section, rIdx, cIdx, ''); }
-                  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                    e.currentTarget.value = ''; handleInfoChange(section, rIdx, cIdx, ''); setEditingCell(cellId); setInfoSelection({ section, rIdx, cIdx });
-                  }
-              } else if (isEditingThis) {
-                if (e.key === 'Enter') {
-                  if (e.shiftKey && isDynamicGrid) { 
-                    e.preventDefault();
-                    saveToHistory();
-                    const newInfo = { ...studentInfo, [section]: [...studentInfo[section]] };
-                    const newRow = Array(newInfo[section][rIdx].length).fill('');
-                    newInfo[section].splice(rIdx + 1, 0, newRow);
-                    setStudentInfo(newInfo);
-                    setEditingCell(null);
-                    moveFocusInfo(section, rIdx, cIdx, 'DOWN');
-                  } else if (e.shiftKey || e.altKey) { 
-                    e.preventDefault();
-                    const target = e.currentTarget;
-                    const start = target.selectionStart;
-                    const valStr = target.value;
-                    const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
-                    handleInfoChange(section, rIdx, cIdx, newVal);
-                    setTimeout(() => { target.setSelectionRange(start + 1, start + 1); autoResize({ target }); }, 0);
-                  } else { 
-                    e.preventDefault(); setEditingCell(null); moveFocusInfo(section, rIdx, cIdx, 'DOWN');
-                  }
-                } else if (e.key === 'Tab') {
-                  e.preventDefault(); setEditingCell(null); moveFocusInfo(section, rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                } else if (e.key === 'Escape') {
-                  e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                }
-              }
-            }}
-            style={{
-              ...extraStyle,
-              opacity: isEditingThis ? 1 : 0,
-              caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-              cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-              zIndex: isEditingThis ? 20 : 0
-            }}
-            className={`absolute inset-0 w-full h-full bg-transparent resize-none outline-none p-0 md:p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap ${isActiveThis && !isEditingThis ? 'select-none' : ''}`}
-          />
-          {!isEditingThis && (
-            <div className="w-full h-full flex flex-col gap-1 justify-center items-center px-0.5 md:px-1 py-1 min-h-[24px] md:min-h-[30px] relative z-10 pointer-events-none">
-              {val.trim() === '' ? (
-                <span className="text-transparent select-none w-full h-full block pointer-events-none flex items-center justify-center" style={{...extraStyle}}>.</span>
-              ) : (
-                <div style={{ ...extraStyle, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap break-words text-center">{val}</div>
-              )}
-            </div>
-          )}
-        </div>
-      </Tag>
-    );
-  };
-
-  const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
-    if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
-    for (let i = 0; i < retries; i++) {
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${globalAiKey}`, { 
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify({ 
-            contents: [{ parts: [{ text: systemPrompt + '\n\n[사용자 요청]\n' + userText }] }],
-            generationConfig: { responseMimeType: "application/json" } 
-          }) 
-        });
-        const result = await response.json();
-        if (result.error) { if (result.error.code === 429 && i < retries - 1) { await new Promise(r => setTimeout(r, Math.pow(2, i) * 2000)); continue; } throw new Error(result.error.message); }
-        return result.candidates?.[0]?.content?.parts?.[0]?.text;
-      } catch (error) { if (i === retries - 1) { setAiFeedback(`❌ 오류 발생: ${error.message}`); return null; } }
-    } return null;
-  };
-
-  const handleAiSubmit = async (e) => {
-    e.preventDefault(); 
-    if (!aiPrompt.trim()) return; 
-    setIsAiProcessing(true); 
-    setAiFeedback('AI 조교가 입력하신 내용을 분석 중입니다... 🤖');
-    
-    const sysPrompts = { 
-      WEEKLY: `당신은 스마트 학습 플래너의 주간 시간표(타임테이블) 관리 AI 조교입니다. 사용자의 입력(자연어)을 분석하여 아래 JSON 포맷으로만 응답하세요. 다른 설명은 금지.
+  const [user, setUser] = useState(null);
+  const [view, setView] = useState('LOADING');
+  const [role, setRole] = useState('');
+  const [studentName, setStudentName] = useState('');
+  const [teacherPassword, setTeacherPassword] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [dbError, setDbError] = useState(''); 
+  const [globalAiKey, setGlobalAiKey] = useState('');
+  const [showGlobalKeyInput, setShowGlobalKeyInput] = useState(false);
+  const [currentDocId, setCurrentDocId] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [loadedDocId, setLoadedDocId] = useState(null); 
+  const [isNotFound, setIsNotFound] = useState(false); 
+  const [activeTab, setActiveTab] = useState('WEEKLY');
+  const [showColorModal, setShowColorModal] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false); 
+  
+  const [studentToDelete, setStudentToDelete] = useState(null); 
+  const [copyFeedback, setCopyFeedback] = useState(null);
+  const [aiFeedback, setAiFeedback] = useState('');
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
+  
+  const [fontSize, setFontSize] = useState(12);
+  const [isMobile, setIsMobile] = useState(false);
+
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printConfig, setPrintConfig] = useState({
+    orientation: 'portrait', 
+    scope: 'all',            
+    colorMode: 'color'       
+  });
+
+  const hasNavigated = useRef(false); 
+
+  // 💡 기기 화면 너비 감지 로직
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const displayFontSize = isMobile ? Math.max(8, fontSize - 3) : fontSize;
+
+  const navigateTo = (newView, params = {}) => {
+    hasNavigated.current = true;
+    window.history.pushState({ view: newView, ...params }, '', '');
+    setView(newView);
+    if (params.docId !== undefined) setCurrentDocId(params.docId);
+    if (params.role !== undefined) setRole(params.role);
+    if (params.studentName !== undefined) setStudentName(params.studentName);
+  };
+
+  const handleSafeBack = (fallbackView) => {
+    if (hasNavigated.current) {
+      window.history.back();
+    } else {
+      if (fallbackView === 'TEACHER_DASHBOARD') {
+        navigateTo('TEACHER_DASHBOARD', { role: 'teacher', docId: null });
+      } else {
+        navigateTo('LANDING', { role: '', docId: null, studentName: '' });
+      }
+    }
+  };
+
+  const openStudentPlannerRef = useRef(null);
+
+  useEffect(() => {
+    const handlePopState = (e) => {
+      setShowColorModal(false); setShowPrintModal(false); setShowResetConfirm(false); setShowLogoutConfirm(false); setShowAiModal(false); setStudentToDelete(null);
+      const state = e.state;
+      if (state && state.view) {
+        if (state.view === 'PLANNER' && state.docId) {
+          if (openStudentPlannerRef.current) openStudentPlannerRef.current(state.docId, state.role, state.studentName, true);
+        } else {
+          setView(state.view);
+          if (state.role !== undefined) setRole(state.role);
+          if (state.docId !== undefined) setCurrentDocId(state.docId);
+          if (state.studentName !== undefined) setStudentName(state.studentName);
+          if (state.view === 'TEACHER_DASHBOARD' || state.view === 'LANDING') setCurrentDocId(null);
+        }
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const generateTimeSlots = () => {
+    const slots = []; let idCounter = 1;
+    for (let hour = 8; hour < 24; hour++) {
+      for (let min = 0; min < 60; min += 30) {
+        slots.push({
+          id: idCounter++, time: `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`,
+          mon: '', tue: '', wed: '', thu: '', fri: '', sat: '', sun: '',
+          mon_span: 1, mon_hidden: false, tue_span: 1, tue_hidden: false,
+          wed_span: 1, wed_hidden: false, thu_span: 1, thu_hidden: false,
+          fri_span: 1, fri_hidden: false, sat_span: 1, sat_hidden: false, sun_span: 1, sun_hidden: false,
+        });
+      }
+    }
+    return slots;
+  };
+
+  const repairTimetable = (tt) => {
+    const defaultSlots = generateTimeSlots();
+    if (!Array.isArray(tt) || tt.length === 0) return defaultSlots;
+    let repaired = defaultSlots.map((def, idx) => {
+      const loaded = tt.find(r => r.id === def.id) || tt[idx] || {};
+      const merged = { ...def, ...loaded, id: def.id, time: def.time };
+      DAYS.forEach(day => { merged[day] = merged[day] || ''; merged[`${day}_span`] = Number(merged[`${day}_span`]) || 1; merged[`${day}_hidden`] = Boolean(merged[`${day}_hidden`]); });
+      return merged;
+    });
+    DAYS.forEach(day => {
+      let skipUntil = 0;
+      for (let i = 0; i < 32; i++) {
+        if (i < skipUntil) { repaired[i][`${day}_hidden`] = true; repaired[i][`${day}_span`] = 1; } 
+        else {
+          repaired[i][`${day}_hidden`] = false; let span = repaired[i][`${day}_span`];
+          if (span < 1) span = 1; if (i + span > 32) span = 32 - i; 
+          repaired[i][`${day}_span`] = span; skipUntil = i + span;
+        }
+      }
+    });
+    return repaired;
+  };
+
+  const [timetable, setTimetable] = useState(generateTimeSlots());
+  const [todos, setTodos] = useState([]);
+  const [dDay, setDDay] = useState(null);
+  const [dDayInput, setDDayInput] = useState({ title: '', date: '' });
+  const [yearlyPlan, setYearlyPlan] = useState(Array(12).fill(''));
+  const [termScheduler, setTermScheduler] = useState({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
+  const [studentInfo, setStudentInfo] = useState(defaultStudentInfo);
+  const [currentDate, setCurrentDate] = useState(new Date(2026, 1, 2)); 
+  const [colorRules, setColorRules] = useState([]);
+  const [studentList, setStudentList] = useState([]);
+  const [editingCell, setEditingCell] = useState(null); 
+
+  const isDragging = useRef(false);
+  const [selection, setSelection] = useState({ startDay: null, endDay: null, startId: null, endId: null });
+  const [monthlySelection, setMonthlySelection] = useState({ r1: null, c1: null, r2: null, c2: null });
+  const [infoSelection, setInfoSelection] = useState({ section: null, rIdx: null, cIdx: null }); 
+  const isMonthlyDragging = useRef(false);
+
+  const historyRef = useRef({ past: [], future: [] });
+  const currentStateRef = useRef({ timetable, termScheduler, yearlyPlan, studentInfo });
+  const focusSnapshotRef = useRef(null);
+  const historyLoaded = useRef(false);
+
+  const flatRows = useMemo(() => buildFlatRows(termScheduler), [termScheduler.subjects, termScheduler.textbooks]);
+
+  const openStudentPlanner = (studentId, newRole, sName = '', skipHistory = false) => {
+    let t = 'WEEKLY', d = new Date(2026, 1, 2), fs = 12;
+    try {
+      const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
+      if (saved[studentId]) {
+        if (saved[studentId].tab) t = saved[studentId].tab;
+        if (saved[studentId].fontSize) fs = saved[studentId].fontSize;
+        if (saved[studentId].currentDate) {
+          const parsedDate = new Date(saved[studentId].currentDate);
+          if (!isNaN(parsedDate)) d = parsedDate;
+        }
+      }
+    } catch (e) {}
+    
+    setActiveTab(t); setCurrentDate(d); setFontSize(fs);
+    setEditingCell(null); 
+    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); 
+    setMonthlySelection({ r1: null, c1: null, r2: null, c2: null });
+    setInfoSelection({ section: null, rIdx: null, cIdx: null });
+    historyRef.current = { past: [], future: [] }; historyLoaded.current = false;
+    
+    setLoadedDocId(null); setCurrentDocId(studentId);
+    if (newRole !== undefined) setRole(newRole);
+    if (sName !== undefined) setStudentName(sName);
+
+    if (!skipHistory) {
+      hasNavigated.current = true;
+      window.history.pushState({ view: 'PLANNER', docId: studentId, role: newRole !== undefined ? newRole : role, studentName: sName !== undefined ? sName : studentName }, '', '');
+    }
+    setView('PLANNER');
+  };
+
+  useEffect(() => { openStudentPlannerRef.current = openStudentPlanner; });
+
+  useEffect(() => {
+    if (view === 'PLANNER' && currentDocId) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
+        if (!saved[currentDocId]) saved[currentDocId] = {};
+        saved[currentDocId].tab = activeTab;
+        saved[currentDocId].fontSize = fontSize;
+        saved[currentDocId].currentDate = currentDate.toISOString();
+        localStorage.setItem('planner_student_prefs', JSON.stringify(saved));
+      } catch (e) {}
+    }
+  }, [activeTab, currentDate, fontSize, currentDocId, view]);
+
+  useEffect(() => { currentStateRef.current = { timetable, termScheduler, yearlyPlan, studentInfo }; }, [timetable, termScheduler, yearlyPlan, studentInfo]);
+
+  const saveToHistory = () => {
+    const snap = JSON.stringify(currentStateRef.current);
+    if (historyRef.current.past.length > 0 && historyRef.current.past[historyRef.current.past.length - 1] === snap) return;
+    historyRef.current.past.push(snap);
+    if (historyRef.current.past.length > 50) historyRef.current.past.shift();
+    historyRef.current.future = [];
+  };
+
+  const handleUndo = () => {
+    if (historyRef.current.past.length === 0) return;
+    historyRef.current.future.push(JSON.stringify(currentStateRef.current));
+    const prevSnap = JSON.parse(historyRef.current.past.pop());
+    setTimetable(prevSnap.timetable); setTermScheduler(prevSnap.termScheduler); setYearlyPlan(prevSnap.yearlyPlan); setStudentInfo(prevSnap.studentInfo || JSON.parse(JSON.stringify(defaultStudentInfo)));
+    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null });
+    setEditingCell(null); setAiFeedback('↩️ 실행 취소'); setTimeout(() => setAiFeedback(''), 1000);
+  };
+
+  const handleRedo = () => {
+    if (historyRef.current.future.length === 0) return;
+    historyRef.current.past.push(JSON.stringify(currentStateRef.current));
+    const nextSnap = JSON.parse(historyRef.current.future.pop());
+    setTimetable(nextSnap.timetable); setTermScheduler(nextSnap.termScheduler); setYearlyPlan(nextSnap.yearlyPlan); setStudentInfo(nextSnap.studentInfo || JSON.parse(JSON.stringify(defaultStudentInfo)));
+    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null });
+    setEditingCell(null); setAiFeedback('↪️ 다시 실행'); setTimeout(() => setAiFeedback(''), 1000);
+  };
+
+  const handleFocus = (e) => {
+    if(e && e.target) autoResize(e); 
+    focusSnapshotRef.current = JSON.stringify(currentStateRef.current);
+  };
+
+  const handleBlur = (e, id, day, isMonthly, payload, dateKey) => {
+    if (e && e.target) {
+      let formattedText = e.target.value;
+      if (!isMonthly && id && day) {
+        formattedText = processComboText(e.target.value, day);
+        
+        const isWeekend = (day === 'sat' || day === 'sun' || day === '토요일' || day === '일요일' || day === '토' || day === '일');
+        const comboMatch = formattedText.match(/(?:개별지도\s*)?([abc])콤/i);
+        
+        let targetId = id;
+        let isCombo = false;
+        let targetSpan = 1;
+
+        if (comboMatch) {
+          const type = comboMatch[1].toLowerCase();
+          isCombo = true;
+          targetSpan = 3; 
+          if (isWeekend) {
+            if (type === 'a') targetId = 14;      
+            else if (type === 'b') targetId = 17; 
+            else if (type === 'c') targetId = 20; 
+          } else {
+            if (type === 'a') targetId = 20;      
+            else if (type === 'b') targetId = 23; 
+            else if (type === 'c') targetId = 26; 
+          }
+        }
+
+        if (isCombo) {
+          setTimetable((prev) => {
+            let newTt = [...prev];
+            if (id !== targetId) {
+               newTt[id - 1] = { ...newTt[id - 1], [day]: '', [`${day}_span`]: 1, [`${day}_hidden`]: false };
+            }
+            const startRowIdx = targetId - 1;
+            for (let i = 0; i < 32; i++) {
+              if (i === startRowIdx) {
+                newTt[i] = { ...newTt[i], [`${day}_span`]: targetSpan, [`${day}_hidden`]: false, [day]: formattedText };
+              } else if (i > startRowIdx && i < startRowIdx + targetSpan) {
+                newTt[i] = { ...newTt[i], [`${day}_span`]: 1, [`${day}_hidden`]: true, [day]: '' };
+              } else if (i < startRowIdx) {
+                const priorSpan = newTt[i][`${day}_span`];
+                if (priorSpan > 1 && i + priorSpan > startRowIdx) {
+                  newTt[i] = { ...newTt[i], [`${day}_span`]: startRowIdx - i };
+                }
+              }
+            }
+            return repairTimetable(newTt); 
+          });
+        } else if (formattedText !== e.target.value) {
+          setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: formattedText } : row));
+        }
+
+      } else if (isMonthly && payload && dateKey) {
+        if (payload.type === 'TOP_NOTE') {
+          const dObj = allDates.find(d => d.full === dateKey);
+          const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
+          formattedText = processComboText(e.target.value, dayType);
+          setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: formattedText } }));
+        } else if (payload.type === 'CELL') {
+          const dObj = allDates.find(d => d.full === dateKey);
+          const dayType = dObj && (dObj.isSat || dObj.day === '토' || dObj.day === '일') ? 'sat' : 'mon';
+          formattedText = processComboText(e.target.value, dayType);
+          setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${payload.sub}-tb${payload.tbIdx}-${dateKey}`]: formattedText } }));
+        }
+      }
+    }
+
+    if (focusSnapshotRef.current) {
+      const currentSnap = JSON.stringify(currentStateRef.current);
+      if (focusSnapshotRef.current !== currentSnap) {
+        historyRef.current.past.push(focusSnapshotRef.current);
+        if (historyRef.current.past.length > 50) historyRef.current.past.shift();
+        historyRef.current.future = [];
+      }
+    }
+    focusSnapshotRef.current = null; 
+    setEditingCell(null);
+  };
+
+  const getColInfo = (c) => {
+    if (c === 0 || c === 15) return { type: 'textbook', block: c === 0 ? 0 : 1 };
+    if (c >= 1 && c <= 14) return { type: 'date', dIdx: c - 1 };
+    if (c >= 16 && c <= 29) return { type: 'date', dIdx: c - 2 };
+    return null;
+  };
+
+  useEffect(() => {
+    if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null && monthlySelection.r1 === monthlySelection.r2 && monthlySelection.c1 === monthlySelection.c2 && !editingCell) {
+      const el = document.getElementById(`monthly-textarea-${monthlySelection.r1}-${monthlySelection.c1}`);
+      if (el) el.focus();
+    }
+  }, [monthlySelection, editingCell, activeTab]);
+
+  const moveFocusMonthly = (rIdx, cIdx, dir) => {
+    let nextRIdx = rIdx; let nextCIdx = cIdx;
+    const maxRIdx = flatRows.length;
+    
+    while (true) {
+      if (dir === 'DOWN') { nextRIdx++; } 
+      else if (dir === 'UP') { nextRIdx--; } 
+      else if (dir === 'RIGHT') { 
+        nextCIdx++; 
+        if (nextCIdx > 29) { nextCIdx = 0; nextRIdx++; } 
+      } 
+      else if (dir === 'LEFT') { 
+        nextCIdx--; 
+        if (nextCIdx < 0) { nextCIdx = 29; nextRIdx--; } 
+      }
+      
+      if (nextRIdx < 0 || nextRIdx > maxRIdx) return;
+      if (nextRIdx === 0 && (nextCIdx === 0 || nextCIdx === 15)) continue;
+      
+      break;
+    }
+
+    setMonthlySelection({ r1: nextRIdx, c1: nextCIdx, r2: nextRIdx, c2: nextCIdx });
+    setEditingCell(null);
+  };
+
+  const moveFocusInfo = (section, rIdx, cIdx, dir) => {
+    const grid = studentInfo[section];
+    if (!Array.isArray(grid)) return;
+    
+    const is2D = Array.isArray(grid[0]);
+    if (!is2D) {
+      let nextIdx = rIdx; 
+      const maxIdx = grid.length - 1;
+      if (dir === 'RIGHT' || dir === 'DOWN') { if (nextIdx < maxIdx) nextIdx++; }
+      else if (dir === 'LEFT' || dir === 'UP') { if (nextIdx > 0) nextIdx--; }
+      
+      setInfoSelection({ section, rIdx: nextIdx, cIdx: null });
+      setTimeout(() => { const el = document.getElementById(`info-${section}-${nextIdx}-null`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+      return;
+    }
+
+    let nextR = rIdx, nextC = cIdx;
+    const maxR = grid.length - 1;
+    const maxC = grid[rIdx].length - 1;
+
+    if (dir === 'DOWN') { if (nextR < maxR) nextR++; }
+    else if (dir === 'UP') { if (nextR > 0) nextR--; }
+    else if (dir === 'RIGHT') { if (nextC < maxC) nextC++; else if (nextR < maxR) { nextC = 0; nextR++; } }
+    else if (dir === 'LEFT') { if (nextC > 0) nextC--; else if (nextR > 0) { nextR--; nextC = grid[nextR].length - 1; } }
+
+    setInfoSelection({ section, rIdx: nextR, cIdx: nextC });
+    setTimeout(() => { const el = document.getElementById(`info-${section}-${nextR}-${nextC}`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+  };
+
+  const getSelectionBounds = () => {
+    if (!selection.startDay || !selection.endDay || !selection.startId || !selection.endId) return null;
+    const d1 = DAYS.indexOf(selection.startDay); const d2 = DAYS.indexOf(selection.endDay);
+    return { minDayIdx: Math.min(d1, d2), maxDayIdx: Math.max(d1, d2), minId: Math.min(selection.startId, selection.endId), maxId: Math.max(selection.startId, selection.endId) };
+  };
+
+  const getMonthlyBounds = () => {
+    if (monthlySelection.r1 === null || monthlySelection.c1 === null) return null;
+    return { minR: Math.min(monthlySelection.r1, monthlySelection.r2), maxR: Math.max(monthlySelection.r1, monthlySelection.r2), minC: Math.min(monthlySelection.c1, monthlySelection.c2), maxC: Math.max(monthlySelection.c1, monthlySelection.c2) };
+  };
+
+  const getSchedulerDates = () => {
+    const days = []; const dayLabels = ['일', '월', '화', '수', '목', '금', '토'];
+    for (let i = 0; i < 28; i++) {
+      const dateObj = new Date(currentDate); dateObj.setDate(currentDate.getDate() + i);
+      days.push({ full: `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`, label: `${dateObj.getMonth() + 1}/${dateObj.getDate()}`, day: dayLabels[dateObj.getDay()], isWeekend: dateObj.getDay() === 0 || dateObj.getDay() === 6, isSat: dateObj.getDay() === 6 });
+    }
+    return days;
+  };
+  const allDates = getSchedulerDates();
+
+  const autoResize = (e) => { 
+    if (e && e.target) { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => { 
+      document.querySelectorAll('textarea.auto-resize').forEach(el => { 
+        el.style.height = 'auto'; if (el.scrollHeight > 0) el.style.height = el.scrollHeight + 'px'; 
+      }); 
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [activeTab, view, currentDocId, loading, timetable, fontSize, termScheduler, editingCell, flatRows, studentInfo, isMobile]);
+
+  const calculateDDay = (targetDate) => {
+    if (!targetDate) return '';
+    const today = new Date(); today.setHours(0, 0, 0, 0); const target = new Date(targetDate); target.setHours(0, 0, 0, 0);
+    const diff = target.getTime() - today.getTime(); const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (days === 0) return 'D-Day'; return days > 0 ? `D-${days}` : `D+${Math.abs(days)}`;
+  };
+
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        await signInAnonymously(auth);
+        const params = new URLSearchParams(window.location.search); const sid = params.get('sid');
+        
+        if (sid) { 
+          window.history.replaceState({ view: 'PLANNER', docId: sid, role: 'student', studentName: '' }, '', '');
+          openStudentPlanner(sid, 'student', '', true); 
+        } 
+        else {
+          if (localStorage.getItem('planner_role') === 'teacher') localStorage.removeItem('planner_role');
+          const savedRole = sessionStorage.getItem('planner_role') || localStorage.getItem('planner_role');
+          const savedName = localStorage.getItem('planner_name');
+
+          if (savedRole === 'student' && savedName) { 
+            window.history.replaceState({ view: 'PLANNER', docId: savedName, role: 'student', studentName: savedName }, '', '');
+            setStudentName(savedName); openStudentPlanner(savedName, 'student', savedName, true); 
+          } 
+          else if (savedRole === 'teacher') { 
+            setRole('teacher'); window.history.replaceState({ view: 'TEACHER_DASHBOARD', role: 'teacher' }, '', ''); setView('TEACHER_DASHBOARD'); 
+          } 
+          else { 
+            window.history.replaceState({ view: 'LANDING' }, '', ''); setView('LANDING'); 
+          }
+        }
+        onSnapshot(doc(db, 'settings', 'global'), (snap) => { if (snap.exists()) setGlobalAiKey(snap.data().aiKey || ''); });
+      } catch (error) {
+        if (error.code === 'auth/unauthorized-domain') setDbError("Vercel 도메인이 Firebase 인증 허용 목록에 없습니다. 콘솔 [Authentication] -> [Settings] -> [승인된 도메인]에 추가해주세요.");
+        else setDbError(`인증 오류: ${error.message}`);
+      }
+    };
+    initAuth(); onAuthStateChanged(auth, setUser);
+  }, []);
+
+  useEffect(() => {
+    if (!user || !currentDocId || (view !== 'PLANNER' && view !== 'TEACHER_DASHBOARD')) return;
+    setLoading(true);
+    const unsubscribe = onSnapshot(doc(db, 'planners', currentDocId), (docSnap) => {
+      try {
+        if (docSnap.metadata?.hasPendingWrites) return;
+        if (docSnap.exists()) {
+          setIsNotFound(false); const data = docSnap.data();
+          setTimetable(Array.isArray(data.timetable) ? repairTimetable(data.timetable) : generateTimeSlots());
+          const repairedTermScheduler = repairTermScheduler(data.termScheduler); 
+          setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {}, ...repairedTermScheduler });
+          setTodos(data.todos || []); setDDay(data.dDay || null); setYearlyPlan(data.yearlyPlan || Array(12).fill('')); setColorRules(data.colorRules || []); setStudentName(data.studentName || '');
+          
+          setStudentInfo(repairStudentInfo(data.studentInfo));
+
+          if (!historyLoaded.current) { historyRef.current = { past: [], future: [] }; historyLoaded.current = true; }
+          setLoadedDocId(currentDocId); 
+        } else { 
+          setIsNotFound(true); setLoadedDocId(null); 
+        }
+        setDbError('');
+      } catch (e) {} finally { setLoading(false); }
+    }, (error) => {
+      setDbError(`[읽기 차단됨] Firebase 보안 규칙(Rules)이 만료되었거나 권한이 없습니다. 콘솔에서 권한을 풀어주세요. (${error.message})`);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [user, currentDocId, view]);
+
+  const isFirstRun = useRef(true);
+  useEffect(() => {
+    if (isFirstRun.current) { isFirstRun.current = false; return; }
+    if (!user || !currentDocId || view !== 'PLANNER' || loading || isNotFound || loadedDocId !== currentDocId || dbError) return;
+    
+    const saveData = async () => {
+      if (loadedDocId !== currentDocId) return; 
+      const isActuallyName = studentName && studentName !== currentDocId;
+      try {
+        await setDoc(doc(db, 'planners', currentDocId), { 
+          timetable, todos, dDay, yearlyPlan, termScheduler, 
+          studentInfo: encodeStudentInfo(studentInfo), 
+          colorRules, lastUpdated: new Date().toISOString(), ...(isActuallyName && { studentName }) 
+        }, { merge: true });
+      } catch(e) {
+        setDbError(`[쓰기 차단됨] Firebase 보안 규칙에 의해 데이터 저장이 차단되었습니다.`);
+      }
+    };
+    const timeoutId = setTimeout(saveData, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [timetable, todos, dDay, yearlyPlan, termScheduler, studentInfo, colorRules, user, currentDocId, view, loading, studentName, isNotFound, loadedDocId, dbError]);
+
+  useEffect(() => {
+    if (!user || view !== 'TEACHER_DASHBOARD') return;
+    const unsubscribe = onSnapshot(collection(db, 'planners'), (snapshot) => {
+      const students = []; snapshot.forEach((doc) => students.push({ id: doc.id, ...doc.data() }));
+      students.sort((a, b) => (a.studentName || "").localeCompare(b.studentName || "", 'ko')); setStudentList(students);
+      setDbError('');
+    }, (error) => {
+      setDbError(`[대시보드 차단됨] Firebase 보안 규칙(Rules) 권한이 없습니다. 콘솔에서 허용으로 변경해주세요. (${error.message})`);
+    });
+    return () => unsubscribe();
+  }, [user, view]);
+
+  useEffect(() => {
+    const handleCopy = (e) => {
+      if (view !== 'PLANNER') return;
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === 'INPUT') return;
+      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
+      if (activeTab === 'YEARLY' || activeTab === 'INFO') return; 
+
+      let tsv = "";
+      if (activeTab === 'WEEKLY' && selection.startDay) {
+        const bounds = getSelectionBounds(); if (!bounds) return;
+        let copiedData = [];
+        for (let id = bounds.minId; id <= bounds.maxId; id++) {
+          const row = timetable[id - 1]; if (!row) continue;
+          let rowData = []; let rowCopy = [];
+          for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
+            const day = DAYS[d]; const val = row[`${day}_hidden`] ? "" : (row[day] || "");
+            rowData.push(val.includes('\n') || val.includes('\t') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val);
+            rowCopy.push({ text: row[day] || '', span: row[`${day}_span`] || 1, hidden: row[`${day}_hidden`] || false });
+          }
+          tsv += rowData.join("\t") + (id < bounds.maxId ? "\n" : ""); copiedData.push(rowCopy);
+        }
+        e.clipboardData.setData('application/json', JSON.stringify({ tab: 'WEEKLY', data: copiedData }));
+      } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
+        const mb = getMonthlyBounds(); if (!mb) return;
+        let copiedData = [];
+        const fRows = buildFlatRows(termScheduler);
+
+        for (let r = mb.minR; r <= mb.maxR; r++) {
+          const rowInfo = r === 0 ? null : fRows[r - 1];
+          let rowData = []; let rowCopy = [];
+          
+          for (let c = mb.minC; c <= mb.maxC; c++) {
+             const colInfo = getColInfo(c);
+             if (!colInfo) continue;
+             
+             let val = '';
+             if (r === 0) {
+                 if (colInfo.type === 'textbook') val = ''; 
+                 else val = termScheduler.topNotes[allDates[colInfo.dIdx].full] || '';
+             } else {
+                 if (colInfo.type === 'textbook') {
+                    val = rowInfo.tbName || '';
+                 } else {
+                    val = termScheduler.cells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] || '';
+                 }
+             }
+             
+             rowData.push(val.includes('\n') || val.includes('\t') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val);
+             rowCopy.push({ text: val });
+          }
+          tsv += rowData.join("\t") + (r < mb.maxR ? "\n" : ""); copiedData.push(rowCopy);
+        }
+        e.clipboardData.setData('application/json', JSON.stringify({ tab: 'MONTHLY', data: copiedData }));
+      }
+      if (tsv) { e.clipboardData.setData('text/plain', tsv); e.preventDefault(); setAiFeedback('✅ 복사 완료'); setTimeout(() => setAiFeedback(''), 1500); }
+    };
+
+    const handlePaste = (e) => {
+      if (view !== 'PLANNER') return;
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === 'INPUT') return;
+      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
+      if (activeTab === 'YEARLY' || activeTab === 'INFO') return; 
+
+      const pastedText = e.clipboardData?.getData('text/plain') || window.clipboardData?.getData('text/plain');
+      const pastedJsonStr = e.clipboardData?.getData('application/json') || window.clipboardData?.getData('application/json');
+      if (!pastedText && !pastedJsonStr) return;
+
+      let parsedData = null; let pastedType = null;
+      if (pastedJsonStr) { try { const obj = JSON.parse(pastedJsonStr); if (obj.data) { parsedData = obj.data; pastedType = obj.tab; } } catch(err) {} }
+
+      if (activeTab === 'WEEKLY' && selection.startDay) {
+        const bounds = getSelectionBounds(); if (!bounds) return;
+        const isSingleCell = bounds.minId === bounds.maxId && bounds.minDayIdx === bounds.maxDayIdx;
+        
+        e.preventDefault(); saveToHistory();
+        setTimetable(prev => {
+          let newTt = [...prev]; const startRowIdx = bounds.minId - 1;
+          if (parsedData && pastedType === 'WEEKLY') {
+            for (let c = 0; c < parsedData[0].length; c++) {
+              const day = DAYS[bounds.minDayIdx + c]; if (!day) continue;
+              for (let i = 0; i < startRowIdx; i++) { const priorSpan = newTt[i][`${day}_span`]; if (priorSpan > 1 && i + priorSpan > startRowIdx) newTt[i] = { ...newTt[i], [`${day}_span`]: startRowIdx - i }; }
+            }
+            parsedData.forEach((rowCopy, rIdx) => {
+              const ttRowIdx = startRowIdx + rIdx; if (ttRowIdx > 31) return;
+              rowCopy.forEach((cellCopy, cIdx) => { 
+                const day = DAYS[bounds.minDayIdx + cIdx]; 
+                if (day) {
+                  const formattedText = processComboText(cellCopy.text, day);
+                  newTt[ttRowIdx] = { ...newTt[ttRowIdx], [day]: formattedText, [`${day}_span`]: cellCopy.span, [`${day}_hidden`]: cellCopy.hidden }; 
+                }
+              });
+            });
+          } else {
+            const rows = parseTSV(pastedText);
+            if (rows.length === 1 && rows[0].length === 1 && !isSingleCell) {
+              for (let id = bounds.minId; id <= bounds.maxId; id++) { 
+                for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { 
+                  const day = DAYS[d];
+                  if (!newTt[id - 1][`${day}_hidden`]) {
+                    const formattedText = processComboText(rows[0][0], day);
+                    newTt[id - 1] = { ...newTt[id - 1], [day]: formattedText }; 
+                  }
+                } 
+              }
+            } else {
+              rows.forEach((rowStrArr, i) => {
+                const rIdx = startRowIdx + i; if (rIdx > 31) return;
+                rowStrArr.forEach((colStr, j) => { 
+                  const cIdx = bounds.minDayIdx + j; 
+                  if (cIdx < 7 && !newTt[rIdx][`${DAYS[cIdx]}_hidden`]) {
+                    const formattedText = processComboText(colStr, DAYS[cIdx]);
+                    newTt[rIdx] = { ...newTt[rIdx], [DAYS[cIdx]]: formattedText }; 
+                  }
+                });
+              });
+            }
+          }
+          return repairTimetable(newTt);
+        });
+        setAiFeedback('✅ 붙여넣기 완료'); setTimeout(() => setAiFeedback(''), 1500);
+
+      } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
+        const mb = getMonthlyBounds(); if (!mb) return;
+        const isSingleCell = mb.minR === mb.maxR && mb.minC === mb.maxC;
+        
+        e.preventDefault(); saveToHistory();
+        setTermScheduler(prev => {
+          let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes }; let newTextbooks = { ...prev.textbooks };
+          const fRows = buildFlatRows(prev);
+          let newTbArrays = {}; 
+
+          if (parsedData && pastedType === 'MONTHLY') {
+            parsedData.forEach((rowCopy, rOffset) => {
+              const targetRow = mb.minR + rOffset; if (targetRow > fRows.length) return;
+              const rowInfo = targetRow === 0 ? null : fRows[targetRow - 1];
+              
+              for (let cOffset = 0; cOffset < rowCopy.length; cOffset++) {
+                 let targetCol = mb.minC + cOffset;
+                 if (targetCol > 29) break;
+                 const colInfo = getColInfo(targetCol);
+                 if (!colInfo) continue;
+                 
+                 const cellVal = rowCopy[cOffset].text;
+                 
+                 if (targetRow === 0) {
+                   if (colInfo.type === 'date') {
+                      const formatted = processComboText(cellVal, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                      newTopNotes[allDates[colInfo.dIdx].full] = formatted;
+                   }
+                 } else {
+                   if (colInfo.type === 'textbook') {
+                      if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
+                      while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
+                      newTbArrays[rowInfo.sub][rowInfo.tbIdx] = cellVal.replace(/\n/g, ' '); 
+                   } else {
+                      const formatted = processComboText(cellVal, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                      newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
+                   }
+                 }
+              }
+            });
+          } else {
+            const rows = parseTSV(pastedText);
+            if (rows.length === 1 && rows[0].length === 1 && !isSingleCell) {
+              for (let r = mb.minR; r <= mb.maxR; r++) {
+                const rowInfo = r === 0 ? null : fRows[r - 1];
+                for (let c = mb.minC; c <= mb.maxC; c++) { 
+                  const colInfo = getColInfo(c);
+                  if (!colInfo) continue;
+                  const colStr = rows[0][0];
+                  
+                  if (r === 0) {
+                     if (colInfo.type === 'date') {
+                       const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                       newTopNotes[allDates[colInfo.dIdx].full] = formatted;
+                     }
+                  } else {
+                     if (colInfo.type === 'textbook') {
+                        if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
+                        while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
+                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = colStr.replace(/\n/g, ' ');
+                     } else {
+                       const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                       newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
+                     }
+                  }
+                }
+              }
+            } else {
+              rows.forEach((rowStrArr, i) => {
+                const rIdx = mb.minR + i; if (rIdx > fRows.length) return;
+                const rowInfo = rIdx === 0 ? null : fRows[rIdx - 1];
+                
+                for (let j = 0; j < rowStrArr.length; j++) {
+                   let targetCol = mb.minC + j;
+                   if (targetCol > 29) break;
+                   const colInfo = getColInfo(targetCol);
+                   if (!colInfo) continue;
+                   
+                   const colStr = rowStrArr[j];
+                   if (rIdx === 0) {
+                      if (colInfo.type === 'date') {
+                        const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                        newTopNotes[allDates[colInfo.dIdx].full] = formatted;
+                      }
+                   } else {
+                      if (colInfo.type === 'textbook') {
+                        if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (newTextbooks[rowInfo.sub] || '').split('\n');
+                        while(newTbArrays[rowInfo.sub].length <= rowInfo.tbIdx) newTbArrays[rowInfo.sub].push('');
+                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = colStr.replace(/\n/g, ' ');
+                      } else {
+                        const formatted = processComboText(colStr, allDates[colInfo.dIdx].isSat ? 'sat' : 'mon');
+                        newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = formatted;
+                      }
+                   }
+                }
+              });
+            }
+          }
+          
+          Object.keys(newTbArrays).forEach(sub => {
+            newTextbooks[sub] = newTbArrays[sub].join('\n');
+          });
+
+          return { ...prev, cells: newCells, topNotes: newTopNotes, textbooks: newTextbooks };
+        });
+        setAiFeedback('✅ 붙여넣기 완료'); setTimeout(() => setAiFeedback(''), 1500);
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (view !== 'PLANNER') return;
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === 'INPUT') return;
+      if (activeTag === 'TEXTAREA' && editingCell !== null) return;
+      if ((activeTab === 'YEARLY' || activeTab === 'INFO') && activeTag === 'TEXTAREA') return;
+
+      const isCtrl = navigator.platform.toUpperCase().indexOf('MAC') >= 0 ? e.metaKey : e.ctrlKey;
+
+      if (isCtrl && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? handleRedo() : handleUndo(); return; }
+      if (isCtrl && e.key.toLowerCase() === 'y') { e.preventDefault(); handleRedo(); return; }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (activeTab === 'WEEKLY' && selection.startDay) {
+          const bounds = getSelectionBounds(); if (!bounds) return;
+          e.preventDefault(); saveToHistory();
+          setTimetable(prev => {
+            let newTt = [...prev];
+            for (let id = bounds.minId; id <= bounds.maxId; id++) { for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) { if (!newTt[id - 1][`${DAYS[d]}_hidden`]) newTt[id - 1] = { ...newTt[id - 1], [DAYS[d]]: '' }; } }
+            return newTt;
+          });
+          if (document.activeElement && document.activeElement.tagName === 'TEXTAREA') document.activeElement.value = '';
+        } else if (activeTab === 'MONTHLY' && monthlySelection.r1 !== null) {
+          const mb = getMonthlyBounds(); if (!mb) return;
+          e.preventDefault(); saveToHistory();
+          setTermScheduler(prev => {
+            let newCells = { ...prev.cells }; let newTopNotes = { ...prev.topNotes }; let newTextbooks = { ...prev.textbooks };
+            let newTbArrays = {};
+            const fRows = buildFlatRows(prev);
+            
+            for (let r = mb.minR; r <= mb.maxR; r++) {
+              const rowInfo = r === 0 ? null : fRows[r - 1];
+              for (let c = mb.minC; c <= mb.maxC; c++) { 
+                const colInfo = getColInfo(c);
+                if (!colInfo) continue;
+                if (r === 0) {
+                  if (colInfo.type === 'date') newTopNotes[allDates[colInfo.dIdx].full] = '';
+                } else {
+                  if (colInfo.type === 'textbook') {
+                     if (!newTbArrays[rowInfo.sub]) newTbArrays[rowInfo.sub] = (prev.textbooks[rowInfo.sub] || '').split('\n');
+                     if(newTbArrays[rowInfo.sub].length > rowInfo.tbIdx) {
+                        newTbArrays[rowInfo.sub][rowInfo.tbIdx] = '';
+                     }
+                  } else {
+                     newCells[`${rowInfo.sub}-tb${rowInfo.tbIdx}-${allDates[colInfo.dIdx].full}`] = '';
+                  }
+                }
+              }
+            }
+            
+            Object.keys(newTbArrays).forEach(sub => {
+              newTextbooks[sub] = newTbArrays[sub].join('\n');
+            });
+            
+            return { ...prev, cells: newCells, topNotes: newTopNotes, textbooks: newTextbooks };
+          });
+        }
+      }
+    };
+
+    document.addEventListener('copy', handleCopy); document.addEventListener('paste', handlePaste); document.addEventListener('keydown', handleKeyDown);
+    return () => { document.removeEventListener('copy', handleCopy); document.removeEventListener('paste', handlePaste); document.removeEventListener('keydown', handleKeyDown); };
+  }, [activeTab, view, selection, monthlySelection, timetable, termScheduler, editingCell]); 
+
+  const saveGlobalAiKey = async () => { try { await setDoc(doc(db, 'settings', 'global'), { aiKey: globalAiKey }, { merge: true }); setShowGlobalKeyInput(false); setAiFeedback('✅ 공용 API 키 저장'); setTimeout(() => setAiFeedback(''), 3000); } catch (e) {} };
+  
+  const createNewStudentSheet = async () => { 
+    const name = prompt("이름을 입력하세요."); 
+    if (!name || !name.trim()) return; 
+    const newSid = crypto.randomUUID(); 
+    setLoading(true); 
+    try { 
+      await setDoc(doc(db, 'planners', newSid), { 
+        studentName: name.trim(), 
+        timetable: generateTimeSlots(), 
+        todos: [], 
+        yearlyPlan: Array(12).fill(''), 
+        studentInfo: encodeStudentInfo(defaultStudentInfo), 
+        createdAt: new Date().toISOString() 
+      }); 
+      setAiFeedback(`✅ 학생 생성됨.`); 
+      setTimeout(() => setAiFeedback(''), 3000); 
+    } catch (e) {
+      alert(`생성 실패: ${e.message}`);
+    } finally { 
+      setLoading(false); 
+    } 
+  };
+  
+  const copyStudentLink = (sid) => { const el = document.createElement('textarea'); el.value = `${window.location.origin}${window.location.pathname}?sid=${sid}`; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); setCopyFeedback(sid); setTimeout(() => setCopyFeedback(null), 2000); };
+
+  const handleMouseDown = (e, day, id) => {
+    isDragging.current = true; setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null });
+    if (e.shiftKey && selection.startDay) { e.preventDefault(); setSelection(prev => ({ ...prev, endDay: day, endId: id })); } 
+    else { setSelection(prev => { if (prev.startDay === day && prev.endDay === day && prev.startId === id && prev.endId === id) return prev; return { startDay: day, endDay: day, startId: id, endId: id }; }); }
+  };
+
+  const handleMouseEnter = (day, id) => { if (isDragging.current && activeTab === 'WEEKLY') setSelection(prev => ({ ...prev, endDay: day, endId: id })); };
+
+  const handleMonthlyMouseDown = (e, rIdx, cIdx) => {
+    if (e.target.type === 'checkbox') return;
+    isMonthlyDragging.current = true; setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null });
+    if (e.shiftKey && monthlySelection.r1 !== null) { e.preventDefault(); setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); } 
+    else { setMonthlySelection(prev => { if (prev.r1 === rIdx && prev.c1 === cIdx && prev.r2 === rIdx && prev.c2 === cIdx) return prev; return { r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }; }); }
+  };
+
+  const handleMonthlyMouseEnter = (rIdx, cIdx) => { if (isMonthlyDragging.current && activeTab === 'MONTHLY') setMonthlySelection(prev => ({ ...prev, r2: rIdx, c2: cIdx })); };
+
+  const handleMouseUp = () => { isDragging.current = false; isMonthlyDragging.current = false; };
+  useEffect(() => { window.addEventListener('mouseup', handleMouseUp); return () => window.removeEventListener('mouseup', handleMouseUp); }, []);
+
+  const mergeCells = () => {
+    const bounds = getSelectionBounds(); if (!bounds) return; const spanCount = bounds.maxId - bounds.minId + 1; if (spanCount <= 1) return;
+    saveToHistory(); let newTt = [...timetable];
+    for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
+      const day = DAYS[d];
+      for (let i = 1; i <= 32; i++) {
+        if (i === bounds.minId) newTt[i-1] = { ...newTt[i-1], [`${day}_span`]: spanCount, [`${day}_hidden`]: false };
+        else if (i > bounds.minId && i <= bounds.maxId) newTt[i-1] = { ...newTt[i-1], [`${day}_span`]: 1, [`${day}_hidden`]: true };
+        else if (i < bounds.minId) { const pSpan = newTt[i-1][`${day}_span`]; if (pSpan > 1 && i + pSpan - 1 >= bounds.minId) newTt[i-1] = { ...newTt[i-1], [`${day}_span`]: bounds.minId - i }; }
+      }
+    }
+    setTimetable(repairTimetable(newTt)); setSelection({ startDay: null, endDay: null, startId: null, endId: null });
+  };
+
+  const unmergeCells = () => {
+    const bounds = getSelectionBounds(); if (!bounds) return; saveToHistory(); let newTt = [...timetable];
+    for (let d = bounds.minDayIdx; d <= bounds.maxDayIdx; d++) {
+      const day = DAYS[d];
+      for (let i = 0; i < 32; i++) {
+        const row = newTt[i];
+        if (!row[`${day}_hidden`]) {
+          const span = row[`${day}_span`] || 1; if (row.id <= bounds.maxId && row.id + span - 1 >= bounds.minId) { for (let j = 0; j < span; j++) { if (i + j < 32) newTt[i + j] = { ...newTt[i + j], [`${day}_span`]: 1, [`${day}_hidden`]: false }; } }
+        }
+      }
+    }
+    setTimetable(repairTimetable(newTt)); setSelection({ startDay: null, endDay: null, startId: null, endId: null });
+  };
+
+  const executeResetTimetable = () => {
+    saveToHistory();
+    if (activeTab === 'WEEKLY') setTimetable(generateTimeSlots()); 
+    else if (activeTab === 'MONTHLY') setTermScheduler({ subjects: [], cells: {}, status: {}, textbooks: {}, topNotes: {}, checks: {} });
+    else if (activeTab === 'INFO') setStudentInfo(JSON.parse(JSON.stringify(defaultStudentInfo)));
+    setSelection({ startDay: null, endDay: null, startId: null, endId: null }); setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); setInfoSelection({ section: null, rIdx: null, cIdx: null }); setShowResetConfirm(false); 
+  };
+
+  const addColorRule = () => { if (!newColorRule.keyword.trim()) return; setColorRules([...colorRules, { ...newColorRule, id: Date.now() }]); setNewColorRule({ ...newColorRule, keyword: '' }); setShowColorModal(false); };
+  const removeColorRule = (id) => setColorRules(colorRules.filter((rule) => rule.id !== id));
+  const getCellColor = (text) => { if (!text || typeof text !== 'string') return null; const rule = colorRules.find((r) => text.includes(r.keyword)); return rule ? rule.color : null; };
+
+  const handlePrev4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() - 28); return d; });
+  const handleNext4Weeks = () => setCurrentDate(prev => { const d = new Date(prev); d.setDate(d.getDate() + 28); return d; });
+
+  const handleTimetableChange = (id, day, value) => { setTimetable((prev) => prev.map((row) => row.id === id ? { ...row, [day]: value } : row)); };
+  
+  const handleTermCellChange = (sub, tbIdx, dateKey, value) => { 
+    setTermScheduler(prev => ({ ...prev, cells: { ...prev.cells, [`${sub}-tb${tbIdx}-${dateKey}`]: value } })); 
+  };
+  
+  const handleTermCheckToggle = (sub, tbIdx, dateKey, index) => { 
+    saveToHistory(); 
+    setTermScheduler(prev => {
+      const newKey = `${sub}-tb${tbIdx}-${dateKey}-${index}`;
+      const currentState = prev.checks[newKey] || false;
+      return { ...prev, checks: { ...prev.checks, [newKey]: !currentState } };
+    }); 
+  };
+  
+  const handleTopNoteChange = (dateKey, value) => setTermScheduler(prev => ({ ...prev, topNotes: { ...prev.topNotes, [dateKey]: value } }));
+  
+  const handleTermTextbookChange = (sub, tbIdx, value) => {
+    setTermScheduler(prev => {
+      const prevTbs = (prev.textbooks[sub] || '').split('\n');
+      if (prevTbs.length === 0) prevTbs.push('');
+      
+      const newLinesForThisTb = value.split('\n');
+      const linesAdded = newLinesForThisTb.length - 1;
+      
+      let nextTbs = [...prevTbs];
+      let newCells = { ...prev.cells };
+      let newChecks = { ...prev.checks };
+
+      if (linesAdded > 0) {
+        for (let i = prevTbs.length - 1; i > tbIdx; i--) {
+          const newI = i + linesAdded;
+          Object.keys(newCells).forEach(k => {
+            if (k.startsWith(`${sub}-tb${i}-`)) {
+              newCells[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newCells[k];
+              delete newCells[k];
+            }
+          });
+          Object.keys(newChecks).forEach(k => {
+            if (k.startsWith(`${sub}-tb${i}-`)) {
+              newChecks[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newChecks[k];
+              delete newChecks[k];
+            }
+          });
+        }
+        nextTbs.splice(tbIdx, 1, ...newLinesForThisTb);
+      } else {
+        nextTbs[tbIdx] = value;
+      }
+
+      return { ...prev, textbooks: { ...prev.textbooks, [sub]: nextTbs.join('\n') }, cells: newCells, checks: newChecks };
+    });
+  };
+
+  const deleteTextbookRow = (sub, tbIdx) => {
+    saveToHistory();
+    setTermScheduler(prev => {
+      const prevTbs = (prev.textbooks[sub] || '').split('\n');
+      if (prevTbs.length <= 1) return prev;
+
+      let newCells = { ...prev.cells };
+      let newChecks = { ...prev.checks };
+
+      Object.keys(newCells).forEach(k => { if (k.startsWith(`${sub}-tb${tbIdx}-`)) delete newCells[k]; });
+      Object.keys(newChecks).forEach(k => { if (k.startsWith(`${sub}-tb${tbIdx}-`)) delete newChecks[k]; });
+
+      for (let i = tbIdx + 1; i < prevTbs.length; i++) {
+        const newI = i - 1;
+        Object.keys(newCells).forEach(k => {
+          if (k.startsWith(`${sub}-tb${i}-`)) {
+            newCells[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newCells[k];
+            delete newCells[k];
+          }
+        });
+        Object.keys(newChecks).forEach(k => {
+          if (k.startsWith(`${sub}-tb${i}-`)) {
+            newChecks[k.replace(`${sub}-tb${i}-`, `${sub}-tb${newI}-`)] = newChecks[k];
+            delete newChecks[k];
+          }
+        });
+      }
+
+      const nextTbs = [...prevTbs];
+      nextTbs.splice(tbIdx, 1);
+
+      return { ...prev, textbooks: { ...prev.textbooks, [sub]: nextTbs.join('\n') }, cells: newCells, checks: newChecks };
+    });
+  };
+
+  const addSubjectRow = (name) => { if (!name || termScheduler.subjects.includes(name)) return; saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: [...prev.subjects, name] })); };
+  const removeSubjectRow = (name) => { saveToHistory(); setTermScheduler(prev => ({ ...prev, subjects: prev.subjects.filter(s => s !== name) })); };
+
+  const handleInfoChange = (section, rIdx, cIdx, val) => {
+    setStudentInfo(prev => {
+      const next = { ...prev };
+      if (section === 'topHeaders' || section === 'midHeaders' || section === 'electives') {
+        const newArr = [...next[section]];
+        newArr[rIdx] = val; 
+        next[section] = newArr;
+      } else {
+        const newGrid = [...next[section]];
+        const newRow = [...newGrid[rIdx]];
+        newRow[cIdx] = val;
+        newGrid[rIdx] = newRow;
+        next[section] = newGrid;
+      }
+      return next;
+    });
+  };
+
+  // 💡 [학생 정보] 탭의 셀 렌더링 (모바일인 경우 읽기 전용 <div>로 대체)
+  const renderInfoCell = (section, rIdx, cIdx, val, options = {}) => {
+    const { tag = 'td', extraClass = "", extraStyle = {}, rowSpan = 1, showDeleteBtn = false, onDelete = null } = options;
+    const Tag = tag;
+    const cellId = `info-${section}-${rIdx}-${cIdx}`;
+    const isActiveThis = !isMobile && infoSelection.section === section && infoSelection.rIdx === rIdx && infoSelection.cIdx === cIdx;
+    const isEditingThis = !isMobile && editingCell === cellId;
+    const isDynamicGrid = section === 'schoolGrades' || section === 'mockGrades';
+
+    if (isMobile) {
+      return (
+        <Tag key={cellId} rowSpan={rowSpan} className={`border border-slate-300 p-0.5 align-middle text-center bg-white ${extraClass}`}>
+          <div className="w-full h-full flex flex-col justify-center items-center px-0.5 py-1 min-h-[24px]">
+             {val.trim() === '' ? (
+                <span className="text-transparent select-none w-full h-full flex items-center justify-center" style={{...extraStyle}}>.</span>
+             ) : (
+                <div style={{ ...extraStyle, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap break-words text-center">{val}</div>
+             )}
+          </div>
+        </Tag>
+      );
+    }
+
+    return (
+      <Tag
+        key={cellId}
+        rowSpan={rowSpan}
+        onMouseDown={(e) => {
+          if (e.target.tagName === 'BUTTON' || e.target.closest('button')) return;
+          if (editingCell !== cellId) setEditingCell(null);
+          setInfoSelection({ section, rIdx, cIdx });
+        }}
+        onClick={(e) => {
+          if (!e.shiftKey && !isEditingThis && e.target.tagName !== 'BUTTON' && e.target.closest('button') === null) {
+            setTimeout(() => { const el = document.getElementById(cellId); if (el) el.focus(); }, 0);
+          }
+        }}
+        onDoubleClick={(e) => {
+          if (e.target.tagName !== 'BUTTON' && e.target.closest('button') === null) {
+            setEditingCell(cellId);
+          }
+        }}
+        className={`border border-slate-300 p-0 align-middle transition-colors relative text-center group/cell ${isActiveThis ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'} ${extraClass}`}
+      >
+        <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[24px] md:min-h-[30px] relative">
+          {showDeleteBtn && (
+            <button 
+              onClick={(e) => { 
+                e.stopPropagation(); 
+                if (onDelete) onDelete();
+              }} 
+              className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/cell:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30 cursor-pointer">
+              <X size={10}/>
+            </button>
+          )}
+          
+          <textarea
+            id={cellId}
+            value={val}
+            onChange={(e) => handleInfoChange(section, rIdx, cIdx, e.target.value)}
+            onInput={autoResize}
+            onFocus={handleFocus}
+            onBlur={(e) => handleBlur(e, null, null, true, null, null)}
+            rows={1}
+            onCompositionStart={(e) => {
+              if (!isEditingThis && isActiveThis) {
+                e.currentTarget.value = ''; handleInfoChange(section, rIdx, cIdx, '');
+                setEditingCell(cellId); setInfoSelection({ section, rIdx, cIdx });
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+              if (!isEditingThis && isActiveThis) {
+                if (e.key === 'Enter' || e.key === 'F2') {
+                  e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, 'DOWN'); }
+                  else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, 'UP'); }
+                  else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, 'RIGHT'); }
+                  else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, 'LEFT'); }
+                  else if (e.key === 'Tab') { e.preventDefault(); moveFocusInfo(section, rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                  else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleInfoChange(section, rIdx, cIdx, ''); }
+                  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.currentTarget.value = ''; handleInfoChange(section, rIdx, cIdx, ''); setEditingCell(cellId); setInfoSelection({ section, rIdx, cIdx });
+                  }
+              } else if (isEditingThis) {
+                if (e.key === 'Enter') {
+                  if (e.shiftKey && isDynamicGrid) { 
+                    e.preventDefault();
+                    saveToHistory();
+                    const newInfo = { ...studentInfo, [section]: [...studentInfo[section]] };
+                    const newRow = Array(newInfo[section][rIdx].length).fill('');
+                    newInfo[section].splice(rIdx + 1, 0, newRow);
+                    setStudentInfo(newInfo);
+                    setEditingCell(null);
+                    moveFocusInfo(section, rIdx, cIdx, 'DOWN');
+                  } else if (e.shiftKey || e.altKey) { 
+                    e.preventDefault();
+                    const target = e.currentTarget;
+                    const start = target.selectionStart;
+                    const valStr = target.value;
+                    const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
+                    handleInfoChange(section, rIdx, cIdx, newVal);
+                    setTimeout(() => { target.setSelectionRange(start + 1, start + 1); autoResize({ target }); }, 0);
+                  } else { 
+                    e.preventDefault(); setEditingCell(null); moveFocusInfo(section, rIdx, cIdx, 'DOWN');
+                  }
+                } else if (e.key === 'Tab') {
+                  e.preventDefault(); setEditingCell(null); moveFocusInfo(section, rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                } else if (e.key === 'Escape') {
+                  e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                }
+              }
+            }}
+            style={{
+              ...extraStyle,
+              opacity: isEditingThis ? 1 : 0,
+              caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+              cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+              zIndex: isEditingThis ? 20 : 0
+            }}
+            className={`absolute inset-0 w-full h-full bg-transparent resize-none outline-none p-0 md:p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap ${isActiveThis && !isEditingThis ? 'select-none' : ''}`}
+          />
+          {!isEditingThis && (
+            <div className="w-full h-full flex flex-col gap-1 justify-center items-center px-0.5 md:px-1 py-1 min-h-[24px] md:min-h-[30px] relative z-10 pointer-events-none">
+              {val.trim() === '' ? (
+                <span className="text-transparent select-none w-full h-full block pointer-events-none flex items-center justify-center" style={{...extraStyle}}>.</span>
+              ) : (
+                <div style={{ ...extraStyle, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap break-words text-center">{val}</div>
+              )}
+            </div>
+          )}
+        </div>
+      </Tag>
+    );
+  };
+
+  const callGeminiAPI = async (systemPrompt, userText = "", retries = 5) => {
+    if (!globalAiKey) { setAiFeedback('⚠️ API 키 없음'); return null; }
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${globalAiKey}`, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify({ 
+            contents: [{ parts: [{ text: systemPrompt + '\n\n[사용자 요청]\n' + userText }] }],
+            generationConfig: { responseMimeType: "application/json" } 
+          }) 
+        });
+        const result = await response.json();
+        if (result.error) { if (result.error.code === 429 && i < retries - 1) { await new Promise(r => setTimeout(r, Math.pow(2, i) * 2000)); continue; } throw new Error(result.error.message); }
+        return result.candidates?.[0]?.content?.parts?.[0]?.text;
+      } catch (error) { if (i === retries - 1) { setAiFeedback(`❌ 오류 발생: ${error.message}`); return null; } }
+    } return null;
+  };
+
+  const handleAiSubmit = async (e) => {
+    e.preventDefault(); 
+    if (!aiPrompt.trim()) return; 
+    setIsAiProcessing(true); 
+    setAiFeedback('AI 조교가 입력하신 내용을 분석 중입니다... 🤖');
+    
+    const sysPrompts = { 
+      WEEKLY: `당신은 스마트 학습 플래너의 주간 시간표(타임테이블) 관리 AI 조교입니다. 사용자의 입력(자연어)을 분석하여 아래 JSON 포맷으로만 응답하세요. 다른 설명은 금지.
 { "type": "UPDATE_TIMETABLE", "updates": [{ "day": "mon", "startTime": "08:00", "endTime": "10:00", "content": "수학" }] }
 [필수 규칙]
 1. day: 월요일부터 일요일까지 각각 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun' 으로 작성.
@@ -1413,1765 +1413,1744 @@ export default function App() {
 3. 사용자가 "오전8-10" 혹은 "8시~10시" 라고 하면 startTime은 "08:00", endTime은 "10:00"으로 정확히 분리.
 4. "오후 2-4" 라면 startTime "14:00", endTime "16:00" 으로 변환.
 5. 종료 시간이 명시되지 않았다면 무조건 시작 시간으로부터 1시간 뒤로 자동 설정.
-6. 일정이 여러 개면 updates 배열에 객체를 여러 개 만드세요.`, 
+6. 일정이 여러 개면 updates 배열에 객체를 여러 개 만드세요.`, 
 
-      MONTHLY: `당신은 스마트 월간 스케줄 및 교재 관리 AI 조교입니다. 사용자의 요청을 분석하여 아래 JSON 포맷으로만 응답하세요. 설명 금지.
+      MONTHLY: `당신은 스마트 월간 스케줄 및 교재 관리 AI 조교입니다. 사용자의 요청을 분석하여 아래 JSON 포맷으로만 응답하세요. 설명 금지.
 {
-  "type": "UPDATE_TERM_SCHEDULER",
-  "new_subjects": ["과목명1", "과목명2"],
-  "updates": [
-    { "target": "textbook", "subject": "과목명", "content": "교재 이름들 (여러 권이면 줄바꿈\\n으로 구분)" },
-    { "target": "cell", "subject": "과목명", "textbook": "교재명", "date": "YYYY-MM-DD", "content": "학습 내용" }
-  ]
+  "type": "UPDATE_TERM_SCHEDULER",
+  "new_subjects": ["과목명1", "과목명2"],
+  "updates": [
+    { "target": "textbook", "subject": "과목명", "content": "교재 이름들 (여러 권이면 줄바꿈\\n으로 구분)" },
+    { "target": "cell", "subject": "과목명", "textbook": "교재명", "date": "YYYY-MM-DD", "content": "학습 내용" }
+  ]
 }
 [필수 규칙]
 1. 사용자가 단순히 과목만 생성하라는 요청을 하면 new_subjects 배열에 과목명들을 담아 응답하세요.
 2. 단순히 교재명만 나열하면 target을 "textbook"으로 설정하세요.
-3. 특정 기간/요일에 분량을 나누어 달라고 요청하면 target을 "cell"로 설정하세요. 
+3. 특정 기간/요일에 분량을 나누어 달라고 요청하면 target을 "cell"로 설정하세요. 
 4. target이 "cell"인 경우, 사용자가 명시한 교재명이 있다면 "textbook" 필드에 입력하세요. 없으면 빈 문자열("")로 두세요.
 5. 과목명: 기존 등록된 과목 [${termScheduler.subjects.join(', ')}] 중 알맞은 과목을 매칭. 없으면 new_subjects에 포함.
-6. 복합 요청(과목 추가 + 교재 등록 + 일정 배분)을 받으면 각각 빠짐없이 반영하세요.`, 
+6. 복합 요청(과목 추가 + 교재 등록 + 일정 배분)을 받으면 각각 빠짐없이 반영하세요.`, 
 
-      YEARLY: `당신은 연간 플래너 AI 조교입니다. 아래 JSON 포맷으로만 응답하세요. 설명 금지.
+      YEARLY: `당신은 연간 플래너 AI 조교입니다. 아래 JSON 포맷으로만 응답하세요. 설명 금지.
 { "type": "UPDATE_YEARLY", "plans": ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"] }
 [필수 규칙]
 plans 배열은 무조건 12개의 문자열로 구성. 요청되지 않은 달은 빈 문자열("")로 두세요.`,
 
-      INFO: `당신은 학생 정보 플래너 AI 조교입니다. 현재 AI 기능은 INFO 탭을 아직 지원하지 않습니다.`
-    };
+      INFO: `당신은 학생 정보 플래너 AI 조교입니다. 현재 AI 기능은 INFO 탭을 아직 지원하지 않습니다.`
+    };
 
-    const text = await callGeminiAPI(sysPrompts[activeTab], `명령: "${aiPrompt}"\n(참고용 화면상 캘린더 날짜: ${JSON.stringify(allDates.map(d=>d.full))})`);
-    
-    if (text) {
-      try {
-        let cleanedText = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
-        const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) cleanedText = jsonMatch[0];
+    const text = await callGeminiAPI(sysPrompts[activeTab], `명령: "${aiPrompt}"\n(참고용 화면상 캘린더 날짜: ${JSON.stringify(allDates.map(d=>d.full))})`);
+    
+    if (text) {
+      try {
+        let cleanedText = text.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+        const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) cleanedText = jsonMatch[0];
 
-        const aiResponse = JSON.parse(cleanedText); 
-        saveToHistory();
-        
-        if (aiResponse.type === 'UPDATE_TIMETABLE' && activeTab === 'WEEKLY') {
-          let newTt = [...timetable];
-          
-          if(aiResponse.updates && Array.isArray(aiResponse.updates)){
-            aiResponse.updates.forEach((update) => {
-              if(!update.startTime || !update.endTime || !update.day) return;
-              const sParts = update.startTime.split(':').map(Number);
-              const eParts = update.endTime.split(':').map(Number);
-              if(isNaN(sParts[0]) || isNaN(eParts[0])) return;
-              
-              const sIdx = (sParts[0] - 8) * 2 + (sParts[1] >= 30 ? 1 : 0); 
-              let eIdx = (eParts[0] - 8) * 2 + (eParts[1] >= 30 ? 1 : 0) - 1;
-              if (eIdx < sIdx) eIdx = sIdx; 
-              
-              if (sIdx >= 0 && eIdx <= 31 && sIdx <= eIdx) {
-                const sId = sIdx + 1, eId = eIdx + 1, sCount = eId - sId + 1;
-                const formattedContent = processComboText(update.content, update.day);
-                for (let i = 1; i <= 32; i++) {
-                  if (i === sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sCount, [`${update.day}_hidden`]: false, [update.day]: formattedContent };
-                  else if (i > sId && i <= eId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true };
-                  else if (i < sId && newTt[i-1][`${update.day}_span`] > 1 && i + newTt[i-1][`${update.day}_span`] - 1 >= sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sId - i };
-                }
-              }
-            });
-          }
-          setTimetable(repairTimetable(newTt)); 
-          setAiFeedback('✨ 주간 시간표가 성공적으로 업데이트되었습니다!');
-        } 
-        else if (aiResponse.type === 'UPDATE_TERM_SCHEDULER' && activeTab === 'MONTHLY') {
-          setTermScheduler(prev => {
-            let newCells = { ...prev.cells };
-            let newTextbooks = { ...prev.textbooks };
-            let newSubjects = [...prev.subjects];
-            
-            if (aiResponse.new_subjects && Array.isArray(aiResponse.new_subjects)) {
-              aiResponse.new_subjects.forEach(s => {
-                if (s && !newSubjects.includes(s)) newSubjects.push(s);
-              });
-            }
-            
-            if (aiResponse.updates && Array.isArray(aiResponse.updates)) {
-              aiResponse.updates.forEach(u => {
-                if (u.subject && !newSubjects.includes(u.subject)) newSubjects.push(u.subject);
-                
-                if (u.target === 'textbook' && u.subject && u.content) {
-                  const current = newTextbooks[u.subject] || '';
-                  newTextbooks[u.subject] = current ? `${current}\n${u.content}` : u.content;
-                } 
-                else if (u.target === 'cell' && u.subject && u.date) {
-                  const dObj = allDates.find(d => d.full === u.date);
-                  if (dObj) {
-                    const dayType = dObj.isSat || dObj.day === '토' || dObj.day === '일' ? 'sat' : 'mon';
-                    const formattedContent = processComboText(u.content, dayType);
-                    
-                    let targetTbIdx = 0;
-                    if (u.textbook) {
-                      const tbArr = (newTextbooks[u.subject] || '').split('\n');
-                      const foundIdx = tbArr.findIndex(t => t.trim() === u.textbook.trim());
-                      if (foundIdx !== -1) targetTbIdx = foundIdx;
-                      else {
-                        tbArr.push(u.textbook);
-                        targetTbIdx = tbArr.length - 1;
-                        newTextbooks[u.subject] = tbArr.join('\n');
-                      }
-                    }
+        const aiResponse = JSON.parse(cleanedText); 
+        saveToHistory();
+        
+        if (aiResponse.type === 'UPDATE_TIMETABLE' && activeTab === 'WEEKLY') {
+          let newTt = [...timetable];
+          
+          if(aiResponse.updates && Array.isArray(aiResponse.updates)){
+            aiResponse.updates.forEach((update) => {
+              if(!update.startTime || !update.endTime || !update.day) return;
+              const sParts = update.startTime.split(':').map(Number);
+              const eParts = update.endTime.split(':').map(Number);
+              if(isNaN(sParts[0]) || isNaN(eParts[0])) return;
+              
+              const sIdx = (sParts[0] - 8) * 2 + (sParts[1] >= 30 ? 1 : 0); 
+              let eIdx = (eParts[0] - 8) * 2 + (eParts[1] >= 30 ? 1 : 0) - 1;
+              if (eIdx < sIdx) eIdx = sIdx; 
+              
+              if (sIdx >= 0 && eIdx <= 31 && sIdx <= eIdx) {
+                const sId = sIdx + 1, eId = eIdx + 1, sCount = eId - sId + 1;
+                const formattedContent = processComboText(update.content, update.day);
+                for (let i = 1; i <= 32; i++) {
+                  if (i === sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sCount, [`${update.day}_hidden`]: false, [update.day]: formattedContent };
+                  else if (i > sId && i <= eId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: 1, [`${update.day}_hidden`]: true };
+                  else if (i < sId && newTt[i-1][`${update.day}_span`] > 1 && i + newTt[i-1][`${update.day}_span`] - 1 >= sId) newTt[i-1] = { ...newTt[i-1], [`${update.day}_span`]: sId - i };
+                }
+              }
+            });
+          }
+          setTimetable(repairTimetable(newTt)); 
+          setAiFeedback('✨ 주간 시간표가 성공적으로 업데이트되었습니다!');
+        } 
+        else if (aiResponse.type === 'UPDATE_TERM_SCHEDULER' && activeTab === 'MONTHLY') {
+          setTermScheduler(prev => {
+            let newCells = { ...prev.cells };
+            let newTextbooks = { ...prev.textbooks };
+            let newSubjects = [...prev.subjects];
+            
+            if (aiResponse.new_subjects && Array.isArray(aiResponse.new_subjects)) {
+              aiResponse.new_subjects.forEach(s => {
+                if (s && !newSubjects.includes(s)) newSubjects.push(s);
+              });
+            }
+            
+            if (aiResponse.updates && Array.isArray(aiResponse.updates)) {
+              aiResponse.updates.forEach(u => {
+                if (u.subject && !newSubjects.includes(u.subject)) newSubjects.push(u.subject);
+                
+                if (u.target === 'textbook' && u.subject && u.content) {
+                  const current = newTextbooks[u.subject] || '';
+                  newTextbooks[u.subject] = current ? `${current}\n${u.content}` : u.content;
+                } 
+                else if (u.target === 'cell' && u.subject && u.date) {
+                  const dObj = allDates.find(d => d.full === u.date);
+                  if (dObj) {
+                    const dayType = dObj.isSat || dObj.day === '토' || dObj.day === '일' ? 'sat' : 'mon';
+                    const formattedContent = processComboText(u.content, dayType);
+                    
+                    let targetTbIdx = 0;
+                    if (u.textbook) {
+                      const tbArr = (newTextbooks[u.subject] || '').split('\n');
+                      const foundIdx = tbArr.findIndex(t => t.trim() === u.textbook.trim());
+                      if (foundIdx !== -1) targetTbIdx = foundIdx;
+                      else {
+                        tbArr.push(u.textbook);
+                        targetTbIdx = tbArr.length - 1;
+                        newTextbooks[u.subject] = tbArr.join('\n');
+                      }
+                    }
 
-                    const cellKey = `${u.subject}-tb${targetTbIdx}-${u.date}`;
-                    newCells[cellKey] = newCells[cellKey] ? `${newCells[cellKey]}\n${formattedContent}` : formattedContent; 
-                  }
-                }
-              });
-            }
-            return { ...prev, cells: newCells, textbooks: newTextbooks, subjects: newSubjects };
-          });
-          setAiFeedback('✨ 월간 스케줄에 내용이 성공적으로 반영되었습니다!');
-        } 
-        else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') { 
-          const newPlans = [...yearlyPlan];
-          if(Array.isArray(aiResponse.plans)){
-            aiResponse.plans.forEach((p, i) => { if(p) newPlans[i] = p; });
-          }
-          setYearlyPlan(newPlans); 
-          setAiFeedback('✨ 연간 계획이 성공적으로 반영되었습니다!'); 
-        }
-      } catch (e) { 
-        setAiFeedback('❌ 명령이 너무 복잡하거나 모호합니다. 다시 한 번 적어주세요.'); 
-      }
-    }
-    setAiPrompt(''); setIsAiProcessing(false); setTimeout(() => { if (!text) setShowAiModal(false); setAiFeedback(''); }, 3000);
-  };
+                    const cellKey = `${u.subject}-tb${targetTbIdx}-${u.date}`;
+                    newCells[cellKey] = newCells[cellKey] ? `${newCells[cellKey]}\n${formattedContent}` : formattedContent; 
+                  }
+                }
+              });
+            }
+            return { ...prev, cells: newCells, textbooks: newTextbooks, subjects: newSubjects };
+          });
+          setAiFeedback('✨ 월간 스케줄에 내용이 성공적으로 반영되었습니다!');
+        } 
+        else if (aiResponse.type === 'UPDATE_YEARLY' && activeTab === 'YEARLY') { 
+          const newPlans = [...yearlyPlan];
+          if(Array.isArray(aiResponse.plans)){
+            aiResponse.plans.forEach((p, i) => { if(p) newPlans[i] = p; });
+          }
+          setYearlyPlan(newPlans); 
+          setAiFeedback('✨ 연간 계획이 성공적으로 반영되었습니다!'); 
+        }
+      } catch (e) { 
+        setAiFeedback('❌ 명령이 너무 복잡하거나 모호합니다. 다시 한 번 적어주세요.'); 
+      }
+    }
+    setAiPrompt(''); setIsAiProcessing(false); setTimeout(() => { if (!text) setShowAiModal(false); setAiFeedback(''); }, 3000);
+  };
 
-  const handleTeacherLogin = (e) => { 
-    e.preventDefault(); 
-    if (teacherPassword === '551000') { 
-      sessionStorage.setItem('planner_role', 'teacher'); 
-      setTeacherPassword(''); 
-      navigateTo('TEACHER_DASHBOARD', { role: 'teacher', docId: null, studentName: '' }); 
-    } else {
-      setErrorMsg('비밀번호 불일치'); 
-    }
-  };
+  const handleTeacherLogin = (e) => { 
+    e.preventDefault(); 
+    if (teacherPassword === '551000') { 
+      sessionStorage.setItem('planner_role', 'teacher'); 
+      setTeacherPassword(''); 
+      navigateTo('TEACHER_DASHBOARD', { role: 'teacher', docId: null, studentName: '' }); 
+    } else {
+      setErrorMsg('비밀번호 불일치'); 
+    }
+  };
 
-  const handleLogout = () => setShowLogoutConfirm(true);
+  const handleLogout = () => setShowLogoutConfirm(true);
 
-  const executeLogout = () => { 
-    localStorage.removeItem('planner_role'); 
-    localStorage.removeItem('planner_name'); 
-    sessionStorage.removeItem('planner_role'); 
-    setShowLogoutConfirm(false); 
-    hasNavigated.current = false;
-    window.history.replaceState({ view: 'LANDING', role: '', docId: null, studentName: '' }, '', window.location.pathname);
-    setView('LANDING'); 
-    setRole(''); setStudentName(''); setCurrentDocId(null); 
-  };
+  const executeLogout = () => { 
+    localStorage.removeItem('planner_role'); 
+    localStorage.removeItem('planner_name'); 
+    sessionStorage.removeItem('planner_role'); 
+    setShowLogoutConfirm(false); 
+    hasNavigated.current = false;
+    window.history.replaceState({ view: 'LANDING', role: '', docId: null, studentName: '' }, '', window.location.pathname);
+    setView('LANDING'); 
+    setRole(''); setStudentName(''); setCurrentDocId(null); 
+  };
 
-  const handleYearlyChange = (index, value) => { const newPlan = [...yearlyPlan]; newPlan[index] = value; setYearlyPlan(newPlan); };
-  
-  const handleDeleteStudent = (e, student) => { 
-    e.stopPropagation(); 
-    setStudentToDelete(student); 
-  };
-  
-  const executeDeleteStudent = async () => { 
-    if (!studentToDelete) return; 
-    try { 
-      await deleteDoc(doc(db, 'planners', studentToDelete.id)); 
-      try {
-        const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
-        delete saved[studentToDelete.id];
-        localStorage.setItem('planner_student_prefs', JSON.stringify(saved));
-      } catch (e) {}
-      setStudentToDelete(null); 
-    } catch (e) {} 
-  };
+  const handleYearlyChange = (index, value) => { const newPlan = [...yearlyPlan]; newPlan[index] = value; setYearlyPlan(newPlan); };
+  
+  const handleDeleteStudent = (e, student) => { 
+    e.stopPropagation(); 
+    setStudentToDelete(student); 
+  };
+  
+  const executeDeleteStudent = async () => { 
+    if (!studentToDelete) return; 
+    try { 
+      await deleteDoc(doc(db, 'planners', studentToDelete.id)); 
+      try {
+        const saved = JSON.parse(localStorage.getItem('planner_student_prefs') || '{}');
+        delete saved[studentToDelete.id];
+        localStorage.setItem('planner_student_prefs', JSON.stringify(saved));
+      } catch (e) {}
+      setStudentToDelete(null); 
+    } catch (e) {} 
+  };
 
-  if (view === 'LOADING') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div></div>;
-  if (view === 'PLANNER_DELETED_BLANK') return <div className="min-h-screen bg-slate-50" />;
-  
-  if (isNotFound && view === 'PLANNER') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6"><h1 className="text-2xl font-black text-slate-400">삭제된 시트입니다.</h1></div>;
+  if (view === 'LOADING') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50"><div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div></div>;
+  if (view === 'PLANNER_DELETED_BLANK') return <div className="min-h-screen bg-slate-50" />;
+  
+  if (isNotFound && view === 'PLANNER') return <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6"><h1 className="text-2xl font-black text-slate-400">삭제된 시트입니다.</h1></div>;
 
-  const wBounds = getSelectionBounds(); const isWMulti = wBounds && (wBounds.minId !== wBounds.maxId || wBounds.minDayIdx !== wBounds.maxDayIdx);
-  const mb = getMonthlyBounds();
+  const wBounds = getSelectionBounds(); const isWMulti = wBounds && (wBounds.minId !== wBounds.maxId || wBounds.minDayIdx !== wBounds.maxDayIdx);
+  const mb = getMonthlyBounds();
 
-  // 💡 PC는 14일(2주) 단위로 2줄, 모바일은 기존처럼 7일(1주) 단위로 렌더링되도록 분기 처리
-  const monthlyBlocks = isMobile ? [0, 1, 2, 3] : [0, 1];
-  const chunkSize = isMobile ? 7 : 14;
+  // 💡 PC는 14일(2주) 단위로 2줄, 모바일은 기존처럼 7일(1주) 단위로 렌더링되도록 분기 처리
+  const monthlyBlocks = isMobile ? [0, 1, 2, 3] : [0, 1];
+  const chunkSize = isMobile ? 7 : 14;
 
-  // 💡 모바일 주간/월간 탭 글자 잘림 방지 (transform: scale 적용)
-  const getSmartMobileStyle = (text, align = 'center') => {
-    const baseSize = 10;
-    if (!text) return { fontSize: `${baseSize}px`, transform: `scale(${8 / baseSize})`, transformOrigin: align === 'left' ? 'left center' : 'center center', display: 'inline-block', whiteSpace: 'nowrap' };
-    
-    const lines = text.split('\n');
-    let maxLength = 0;
-    lines.forEach(line => {
-      const len = line.trim().length;
-      let calcLen = 0;
-      for (let i = 0; i < len; i++) {
-        if (line.charCodeAt(i) > 128) calcLen += 1;
-        else calcLen += 0.6;
-      }
-      if (calcLen > maxLength) maxLength = calcLen;
-    });
+  // 💡 모바일 주간 탭 글자 잘림 방지 (글자 수에 비례해 무한 축소되도록 하한선 제거)
+  const getSmartMobileFontSize = (text) => {
+    if (!text) return '8px';
+    const lines = text.split('\n');
+    let maxLength = 0;
+    lines.forEach(line => {
+      const len = line.trim().length;
+      let calcLen = 0;
+      for (let i = 0; i < len; i++) {
+        if (line.charCodeAt(i) > 128) calcLen += 1;
+        else calcLen += 0.6; // 영문/숫자는 폭이 좁으므로 가중치 조절
+      }
+      if (calcLen > maxLength) maxLength = calcLen;
+    });
 
-    if (maxLength === 0) return { fontSize: `${baseSize}px`, transform: `scale(${8 / baseSize})`, transformOrigin: align === 'left' ? 'left center' : 'center center', display: 'inline-block', whiteSpace: 'nowrap' };
-    
-    const idealSize = Math.min(8, 32 / maxLength);
-    const ratio = idealSize / baseSize;
-    
-    return { 
-      fontSize: `${baseSize}px`, 
-      transform: `scale(${ratio})`, 
-      transformOrigin: align === 'left' ? 'left center' : 'center center',
-      display: 'inline-block',
-      whiteSpace: 'nowrap'
-    };
-  };
+    if (maxLength === 0) return '8px';
+    // 제한(Limit) 없이 셀 너비에 맞춰 무한히 작아지도록 공식 변경
+    return `${Math.min(8, 32 / maxLength)}px`;
+  };
 
-  const getSmartMobileStyleMonthly = (text, align = 'center') => {
-    const baseSize = 10; 
-    if (!text) return { fontSize: `${baseSize}px`, transform: `scale(${7.5 / baseSize})`, transformOrigin: align === 'left' ? 'left center' : 'center center', display: 'inline-block', whiteSpace: 'nowrap' };
-    
-    const lines = text.split('\n');
-    let maxLength = 0;
-    lines.forEach(line => {
-      const len = line.trim().length;
-      let calcLen = 0;
-      for (let i = 0; i < len; i++) {
-        if (line.charCodeAt(i) > 128) calcLen += 1;
-        else calcLen += 0.6;
-      }
-      if (calcLen > maxLength) maxLength = calcLen;
-    });
+  // 💡 모바일 월간 탭 글자 잘림 방지 (글자 수에 비례해 무한 축소되도록 하한선 제거)
+  const getSmartMobileFontSizeMonthly = (text) => {
+    if (!text) return '7.5px';
+    const lines = text.split('\n');
+    let maxLength = 0;
+    lines.forEach(line => {
+      const len = line.trim().length;
+      let calcLen = 0;
+      for (let i = 0; i < len; i++) {
+        if (line.charCodeAt(i) > 128) calcLen += 1;
+        else calcLen += 0.6;
+      }
+      if (calcLen > maxLength) maxLength = calcLen;
+    });
 
-    if (maxLength === 0) return { fontSize: `${baseSize}px`, transform: `scale(${7.5 / baseSize})`, transformOrigin: align === 'left' ? 'left center' : 'center center', display: 'inline-block', whiteSpace: 'nowrap' };
-    
-    const idealSize = Math.min(7.5, 26.25 / maxLength);
-    const ratio = idealSize / baseSize;
-    
-    return { 
-      fontSize: `${baseSize}px`, 
-      transform: `scale(${ratio})`, 
-      transformOrigin: align === 'left' ? 'left center' : 'center center',
-      display: 'inline-block',
-      whiteSpace: 'nowrap'
-    };
-  };
+    if (maxLength === 0) return '7.5px';
+    // 폭이 더 좁은 월간 탭 특성에 맞춰 더 공격적으로 축소 (하한선 제거)
+    return `${Math.min(7.5, 26.25 / maxLength)}px`;
+  };
 
-  // 💡 [모바일] 주간 시간표 데이터 렌더링
-  const renderMobileWeeklyTable = () => {
-    const printDays = DAYS;
-    const printRows = [];
+  // 💡 [모바일] 주간 시간표 데이터 렌더링
+  const renderMobileWeeklyTable = () => {
+    const printDays = DAYS;
+    const printRows = [];
 
-    for (let r = 0; r < 32; r++) {
-      const origRow = timetable[r];
-      if (!origRow) continue;
-      
-      const newRow = { id: origRow.id, time: origRow.time };
-      
-      printDays.forEach((day) => {
-        if (origRow[`${day}_hidden`]) {
-          newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1;
-        } else {
-          const span = origRow[`${day}_span`] || 1;
-          newRow[day] = origRow[day]; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(span, 32 - r);
-        }
-      });
-      printRows.push(newRow);
-    }
-    const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
+    for (let r = 0; r < 32; r++) {
+      const origRow = timetable[r];
+      if (!origRow) continue;
+      
+      const newRow = { id: origRow.id, time: origRow.time };
+      
+      printDays.forEach((day) => {
+        if (origRow[`${day}_hidden`]) {
+          newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1;
+        } else {
+          const span = origRow[`${day}_span`] || 1;
+          newRow[day] = origRow[day]; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(span, 32 - r);
+        }
+      });
+      printRows.push(newRow);
+    }
+    const labelsShort = ['월', '화', '수', '목', '금', '토', '일'];
 
-    return (
-      <table className="w-full h-full border-collapse text-center table-fixed">
-        <thead>
-          <tr>
-            <th className="border-b border-r border-slate-200 bg-slate-100 text-[8px] text-slate-500 font-black w-[30px] py-1">시간</th>
-            {printDays.map((d, i) => (
-              <th key={d} className={`border-b border-r border-slate-200 bg-slate-100 text-[9px] font-black py-1 ${d === 'sat' ? 'text-blue-500' : d === 'sun' ? 'text-red-500' : 'text-slate-600'}`}>{labelsShort[i]}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {printRows.map(row => (
-            <tr key={row.id} className="h-[1%]">
-              <td className="border-b border-r border-slate-200 bg-slate-50/50 text-[8px] font-bold text-slate-400 p-0 leading-none align-middle">{row.time}</td>
-              {printDays.map(day => {
-                if (row[`${day}_hidden`]) return null;
-                const text = row[day] || '';
-                const span = row[`${day}_span`] || 1;
-                const bgColor = getCellColor(text) || 'transparent';
-                
-                // 💡 [모바일] 줄바꿈 방지 및 폰트 크기 강제 축소 (scale) 적용
-                const lines = text.split('\n').filter(l => l !== '');
-                const smartStyle = getSmartMobileStyle(text);
-                
-                return (
-                  <td key={day} rowSpan={span} className="border-b border-r border-slate-200 p-[1px] align-middle overflow-hidden" style={{ backgroundColor: bgColor }}>
-                    <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden max-h-full gap-[1px]">
-                      {lines.map((line, lIdx) => (
-                        <span key={lIdx} className="font-bold text-slate-800 w-full text-center tracking-tighter" style={{ ...smartStyle, lineHeight: '1.15', overflow: 'hidden', textOverflow: 'clip' }}>
-                           {line}
-                        </span>
-                      ))}
-                    </div>
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    );
-  };
+    return (
+      <table className="w-full h-full border-collapse text-center table-fixed">
+        <thead>
+          <tr>
+            <th className="border-b border-r border-slate-200 bg-slate-100 text-[8px] text-slate-500 font-black w-[30px] py-1">시간</th>
+            {printDays.map((d, i) => (
+              <th key={d} className={`border-b border-r border-slate-200 bg-slate-100 text-[9px] font-black py-1 ${d === 'sat' ? 'text-blue-500' : d === 'sun' ? 'text-red-500' : 'text-slate-600'}`}>{labelsShort[i]}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {printRows.map(row => (
+            <tr key={row.id} className="h-[1%]">
+              <td className="border-b border-r border-slate-200 bg-slate-50/50 text-[8px] font-bold text-slate-400 p-0 leading-none align-middle">{row.time}</td>
+              {printDays.map(day => {
+                if (row[`${day}_hidden`]) return null;
+                const text = row[day] || '';
+                const span = row[`${day}_span`] || 1;
+                const bgColor = getCellColor(text) || 'transparent';
+                
+                // 💡 [모바일] 줄바꿈 방지 및 폰트 크기 자동 계산
+                const lines = text.split('\n').filter(l => l !== '');
+                const smartFontSize = getSmartMobileFontSize(text);
+                
+                return (
+                  <td key={day} rowSpan={span} className="border-b border-r border-slate-200 p-[1px] align-middle overflow-hidden" style={{ backgroundColor: bgColor }}>
+                    <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden max-h-full gap-[1px]">
+                      {lines.map((line, lIdx) => (
+                        <span key={lIdx} className="font-bold text-slate-800 w-full text-center tracking-tighter" style={{ fontSize: smartFontSize, lineHeight: '1.15', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+                           {line}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  };
 
-  const isNoScrollTab = activeTab === 'WEEKLY' || activeTab === 'YEARLY' || activeTab === 'INFO';
-  const forceHFull = view === 'PLANNER' && (isMobile ? isNoScrollTab : activeTab === 'WEEKLY');
+  const isNoScrollTab = activeTab === 'WEEKLY' || activeTab === 'YEARLY' || activeTab === 'INFO';
+  const forceHFull = view === 'PLANNER' && (isMobile ? isNoScrollTab : activeTab === 'WEEKLY');
 
-  return (
-    <>
-      <div className={`print:hidden bg-slate-50 text-slate-800 transition-colors duration-300 ${forceHFull ? 'h-screen h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen flex flex-col'}`}>
-        <div className={`w-full mx-auto ${forceHFull ? 'flex-1 flex flex-col min-h-0' : 'flex-1 flex flex-col'}`}>
-          
-          {dbError && (
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[200] w-full max-w-2xl px-4 animate-fade-in">
-              <div className="p-4 bg-red-50 text-red-700 font-bold rounded-2xl border-2 border-red-200 shadow-2xl flex flex-col gap-2">
-                <div className="flex items-center gap-3 mb-1">
-                  <AlertCircle className="w-6 h-6 flex-shrink-0" />
-                  <span className="text-base break-keep">데이터베이스 접근이 차단되었습니다! (데이터는 안전합니다)</span>
-                  <button onClick={() => setDbError('')} className="ml-auto p-1 hover:bg-red-100 rounded-lg"><X size={16}/></button>
-                </div>
-                <div className="text-sm font-medium ml-9 space-y-1">
-                  <p>• 원인: {dbError}</p>
-                </div>
-              </div>
-            </div>
-          )}
+  return (
+    <>
+      <div className={`print:hidden bg-slate-50 text-slate-800 transition-colors duration-300 ${forceHFull ? 'h-screen h-[100dvh] flex flex-col overflow-hidden' : 'min-h-screen flex flex-col'}`}>
+        <div className={`w-full mx-auto ${forceHFull ? 'flex-1 flex flex-col min-h-0' : 'flex-1 flex flex-col'}`}>
+          
+          {dbError && (
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[200] w-full max-w-2xl px-4 animate-fade-in">
+              <div className="p-4 bg-red-50 text-red-700 font-bold rounded-2xl border-2 border-red-200 shadow-2xl flex flex-col gap-2">
+                <div className="flex items-center gap-3 mb-1">
+                  <AlertCircle className="w-6 h-6 flex-shrink-0" />
+                  <span className="text-base break-keep">데이터베이스 접근이 차단되었습니다! (데이터는 안전합니다)</span>
+                  <button onClick={() => setDbError('')} className="ml-auto p-1 hover:bg-red-100 rounded-lg"><X size={16}/></button>
+                </div>
+                <div className="text-sm font-medium ml-9 space-y-1">
+                  <p>• 원인: {dbError}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {view === 'LANDING' && (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
-              <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 transform transition-all hover:scale-[1.01]">
-                <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-10 text-center relative overflow-hidden">
-                  <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner"><BookOpen className="w-10 h-10 text-white" /></div>
-                  <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">스마트 학습 플래너</h1>
-                  <p className="text-indigo-100 font-medium">개별 맞춤형 스케줄 시스템</p>
-                </div>
-                <div className="p-8 space-y-4 bg-white text-center">
-                  <p className="text-slate-500 text-sm mb-4">전달받은 고유 링크로 다시 접속해주세요.</p>
-                  <button onClick={() => navigateTo('TEACHER_LOGIN')} className="w-full p-5 rounded-2xl border-2 border-slate-100 hover:border-slate-500 hover:bg-slate-50 flex items-center gap-5 group transition-all shadow-sm">
-                    <div className="p-4 bg-slate-100 text-slate-600 rounded-xl group-hover:bg-slate-700 group-hover:text-white transition-colors"><Users size={24} /></div>
-                    <div className="text-left"><div className="font-extrabold text-lg text-slate-800">관리자 로그인</div><div className="text-sm text-slate-500 mt-1">통합 대시보드 관리</div></div>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {view === 'LANDING' && (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
+              <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100 transform transition-all hover:scale-[1.01]">
+                <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-10 text-center relative overflow-hidden">
+                  <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-inner"><BookOpen className="w-10 h-10 text-white" /></div>
+                  <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight">스마트 학습 플래너</h1>
+                  <p className="text-indigo-100 font-medium">개별 맞춤형 스케줄 시스템</p>
+                </div>
+                <div className="p-8 space-y-4 bg-white text-center">
+                  <p className="text-slate-500 text-sm mb-4">전달받은 고유 링크로 다시 접속해주세요.</p>
+                  <button onClick={() => navigateTo('TEACHER_LOGIN')} className="w-full p-5 rounded-2xl border-2 border-slate-100 hover:border-slate-500 hover:bg-slate-50 flex items-center gap-5 group transition-all shadow-sm">
+                    <div className="p-4 bg-slate-100 text-slate-600 rounded-xl group-hover:bg-slate-700 group-hover:text-white transition-colors"><Users size={24} /></div>
+                    <div className="text-left"><div className="font-extrabold text-lg text-slate-800">관리자 로그인</div><div className="text-sm text-slate-500 mt-1">통합 대시보드 관리</div></div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {view === 'TEACHER_LOGIN' && (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
-              <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
-                <button onClick={() => handleSafeBack('LANDING')} className="text-slate-400 mb-8 flex items-center gap-2 text-sm font-medium hover:text-slate-700 transition-colors bg-slate-50 px-4 py-2 rounded-lg w-fit"><ChevronLeft className="w-4 h-4" /> 뒤로가기</button>
-                <div className="mb-8"><h2 className="text-3xl font-extrabold text-slate-800 mb-2">관리자 로그인</h2></div>
-                <form onSubmit={handleTeacherLogin} className="space-y-6">
-                  <div className="space-y-2 text-center">
-                    <label className="text-sm font-bold text-slate-700 ml-1">비밀번호</label>
-                    <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="비밀번호 입력" className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-lg font-medium text-center" autoFocus />
-                  </div>
-                  {errorMsg && <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 justify-center"><AlertCircle size={16}/> {errorMsg}</div>}
-                  <button type="submit" className="w-full text-white p-5 rounded-2xl font-extrabold text-lg transition-all transform hover:-translate-y-1 shadow-lg bg-slate-800 hover:bg-slate-900">대시보드 접속</button>
-                </form>
-              </div>
-            </div>
-          )}
+          {view === 'TEACHER_LOGIN' && (
+            <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 text-center">
+              <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
+                <button onClick={() => handleSafeBack('LANDING')} className="text-slate-400 mb-8 flex items-center gap-2 text-sm font-medium hover:text-slate-700 transition-colors bg-slate-50 px-4 py-2 rounded-lg w-fit"><ChevronLeft className="w-4 h-4" /> 뒤로가기</button>
+                <div className="mb-8"><h2 className="text-3xl font-extrabold text-slate-800 mb-2">관리자 로그인</h2></div>
+                <form onSubmit={handleTeacherLogin} className="space-y-6">
+                  <div className="space-y-2 text-center">
+                    <label className="text-sm font-bold text-slate-700 ml-1">비밀번호</label>
+                    <input type="password" value={teacherPassword} onChange={(e) => setTeacherPassword(e.target.value)} placeholder="비밀번호 입력" className="w-full p-4 border-2 border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-lg font-medium text-center" autoFocus />
+                  </div>
+                  {errorMsg && <div className="p-3 bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 justify-center"><AlertCircle size={16}/> {errorMsg}</div>}
+                  <button type="submit" className="w-full text-white p-5 rounded-2xl font-extrabold text-lg transition-all transform hover:-translate-y-1 shadow-lg bg-slate-800 hover:bg-slate-900">대시보드 접속</button>
+                </form>
+              </div>
+            </div>
+          )}
 
-          {view === 'TEACHER_DASHBOARD' && (
-            <div className="min-h-screen bg-slate-50 p-4 md:p-8 text-center">
-              <div className="max-w-6xl mx-auto">
-                <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100 text-center">
-                  <div>
-                    <h1 className="text-3xl font-extrabold flex items-center gap-3 text-slate-800 mb-2"><Users className="text-indigo-600 w-8 h-8" /> 관리자 대시보드</h1>
-                    <p className="text-slate-500 font-medium text-center">총 {studentList.length}명</p>
-                  </div>
-                  <div className="flex flex-wrap gap-3 mt-4 md:mt-0 justify-center">
-                    <button onClick={createNewStudentSheet} className="text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><UserPlus className="w-5 h-5" /> 새 학생 추가</button>
-                    <button onClick={() => setShowGlobalKeyInput(!showGlobalKeyInput)} className="text-white bg-slate-800 hover:bg-slate-900 px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><Settings className="w-5 h-5" /> AI 공용 키 설정</button>
-                    <button onClick={() => setShowLogoutConfirm(true)} className="text-slate-500 hover:text-red-600 hover:bg-red-50 px-5 py-3 rounded-xl font-bold flex items-center gap-2 bg-slate-100"><LogOut className="w-5 h-5" /> 로그아웃</button>
-                  </div>
-                </header>
+          {view === 'TEACHER_DASHBOARD' && (
+            <div className="min-h-screen bg-slate-50 p-4 md:p-8 text-center">
+              <div className="max-w-6xl mx-auto">
+                <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100 text-center">
+                  <div>
+                    <h1 className="text-3xl font-extrabold flex items-center gap-3 text-slate-800 mb-2"><Users className="text-indigo-600 w-8 h-8" /> 관리자 대시보드</h1>
+                    <p className="text-slate-500 font-medium text-center">총 {studentList.length}명</p>
+                  </div>
+                  <div className="flex flex-wrap gap-3 mt-4 md:mt-0 justify-center">
+                    <button onClick={createNewStudentSheet} className="text-white bg-indigo-600 hover:bg-indigo-700 px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><UserPlus className="w-5 h-5" /> 새 학생 추가</button>
+                    <button onClick={() => setShowGlobalKeyInput(!showGlobalKeyInput)} className="text-white bg-slate-800 hover:bg-slate-900 px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"><Settings className="w-5 h-5" /> AI 공용 키 설정</button>
+                    <button onClick={() => setShowLogoutConfirm(true)} className="text-slate-500 hover:text-red-600 hover:bg-red-50 px-5 py-3 rounded-xl font-bold flex items-center gap-2 bg-slate-100"><LogOut className="w-5 h-5" /> 로그아웃</button>
+                  </div>
+                </header>
 
-                {showGlobalKeyInput && (
-                  <div className="mb-10 p-8 bg-indigo-50 rounded-3xl border-2 border-indigo-100 animate-fade-in shadow-inner text-center">
-                    <h3 className="text-lg font-black text-indigo-900 mb-4 flex items-center justify-center gap-2"><Key className="w-5 h-5"/> AI 공용 API 키 설정</h3>
-                    <div className="flex flex-col md:flex-row gap-4 justify-center">
-                      <input type="password" value={globalAiKey} onChange={(e) => setGlobalAiKey(e.target.value)} placeholder="Gemini API Key" className="flex-1 max-w-lg p-4 rounded-2xl border-2 border-indigo-200 outline-none focus:border-indigo-500 text-lg font-mono text-center" />
-                      <button onClick={saveGlobalAiKey} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-extrabold text-lg shadow-lg">저장</button>
-                    </div>
-                  </div>
-                )}
-                
-                {studentList.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-center">
-                    {studentList.map((student) => (
-                      <div key={student.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-500 transition-all flex flex-col justify-between h-48 group text-center">
-                        <div className="flex justify-between items-start">
-                          <div onClick={() => openStudentPlanner(student.id, 'teacher', student.studentName, false)} className="cursor-pointer text-center w-full">
-                            <span className="text-xl font-extrabold text-slate-800 block mb-1">{student.studentName || '이름 없음'}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">{student.id.substring(0, 13)}...</span>
-                          </div>
-                          <button onClick={(e) => handleDeleteStudent(e, student)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18} /></button>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => copyStudentLink(student.id)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${copyFeedback === student.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{copyFeedback === student.id ? <><Check size={14}/> 복사됨</> : <><LinkIcon size={14}/> 링크 복사</>}</button>
-                          <button onClick={() => openStudentPlanner(student.id, 'teacher', student.studentName, false)} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><ChevronRight size={18}/></button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  !dbError && <div className="text-slate-400 font-bold p-10">등록된 학생이 없습니다.</div>
-                )}
-              </div>
-            </div>
-          )}
+                {showGlobalKeyInput && (
+                  <div className="mb-10 p-8 bg-indigo-50 rounded-3xl border-2 border-indigo-100 animate-fade-in shadow-inner text-center">
+                    <h3 className="text-lg font-black text-indigo-900 mb-4 flex items-center justify-center gap-2"><Key className="w-5 h-5"/> AI 공용 API 키 설정</h3>
+                    <div className="flex flex-col md:flex-row gap-4 justify-center">
+                      <input type="password" value={globalAiKey} onChange={(e) => setGlobalAiKey(e.target.value)} placeholder="Gemini API Key" className="flex-1 max-w-lg p-4 rounded-2xl border-2 border-indigo-200 outline-none focus:border-indigo-500 text-lg font-mono text-center" />
+                      <button onClick={saveGlobalAiKey} className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-extrabold text-lg shadow-lg">저장</button>
+                    </div>
+                  </div>
+                )}
+                
+                {studentList.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-center">
+                    {studentList.map((student) => (
+                      <div key={student.id} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 hover:border-indigo-500 transition-all flex flex-col justify-between h-48 group text-center">
+                        <div className="flex justify-between items-start">
+                          <div onClick={() => openStudentPlanner(student.id, 'teacher', student.studentName, false)} className="cursor-pointer text-center w-full">
+                            <span className="text-xl font-extrabold text-slate-800 block mb-1">{student.studentName || '이름 없음'}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">{student.id.substring(0, 13)}...</span>
+                          </div>
+                          <button onClick={(e) => handleDeleteStudent(e, student)} className="text-slate-300 hover:text-red-500 p-2"><Trash2 size={18} /></button>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => copyStudentLink(student.id)} className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${copyFeedback === student.id ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{copyFeedback === student.id ? <><Check size={14}/> 복사됨</> : <><LinkIcon size={14}/> 링크 복사</>}</button>
+                          <button onClick={() => openStudentPlanner(student.id, 'teacher', student.studentName, false)} className="px-4 py-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-600 hover:text-white transition-all"><ChevronRight size={18}/></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  !dbError && <div className="text-slate-400 font-bold p-10">등록된 학생이 없습니다.</div>
+                )}
+              </div>
+            </div>
+          )}
 
-          {view === 'PLANNER' && (
-            <div className="flex flex-col h-full w-full relative">
-              <header className="flex-none px-4 py-2 md:py-3 shadow-sm z-30 bg-white border-b border-slate-200 relative">
-                <div className="max-w-[98vw] mx-auto flex flex-col md:flex-row justify-between items-center gap-2 md:gap-4">
-                  <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
-                    <div className="flex items-center gap-3">
-                      {role === 'teacher' && <button onClick={() => handleSafeBack('TEACHER_DASHBOARD')} className="p-2 rounded-full hover:bg-slate-100 border border-slate-200"><ChevronLeft className="w-5 h-5" /></button>}
-                      <div className="p-2 md:p-2.5 rounded-xl shadow-inner bg-gradient-to-br from-indigo-500 to-indigo-700"><BookOpen className="text-white w-4 h-4 md:w-5 md:h-5" /></div>
-                      <div className="font-extrabold text-lg md:text-xl tracking-tight">{studentName} 플래너</div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-between md:justify-end">
-                    
-                    <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 shadow-inner">
-                      <button onClick={() => setFontSize(f => Math.max(8, f - 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Minus size={12} className="md:w-3.5 md:h-3.5"/></button>
-                      <span className="text-[10px] md:text-xs font-black w-5 md:w-6 text-center text-indigo-700 select-none cursor-default">{fontSize}</span>
-                      <button onClick={() => setFontSize(f => Math.min(24, f + 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Plus size={12} className="md:w-3.5 md:h-3.5"/></button>
-                    </div>
+          {view === 'PLANNER' && (
+            <div className="flex flex-col h-full w-full relative">
+              <header className="flex-none px-4 py-2 md:py-3 shadow-sm z-30 bg-white border-b border-slate-200 relative">
+                <div className="max-w-[98vw] mx-auto flex flex-col md:flex-row justify-between items-center gap-2 md:gap-4">
+                  <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+                    <div className="flex items-center gap-3">
+                      {role === 'teacher' && <button onClick={() => handleSafeBack('TEACHER_DASHBOARD')} className="p-2 rounded-full hover:bg-slate-100 border border-slate-200"><ChevronLeft className="w-5 h-5" /></button>}
+                      <div className="p-2 md:p-2.5 rounded-xl shadow-inner bg-gradient-to-br from-indigo-500 to-indigo-700"><BookOpen className="text-white w-4 h-4 md:w-5 md:h-5" /></div>
+                      <div className="font-extrabold text-lg md:text-xl tracking-tight">{studentName} 플래너</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-between md:justify-end">
+                    
+                    <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200 shadow-inner">
+                      <button onClick={() => setFontSize(f => Math.max(8, f - 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Minus size={12} className="md:w-3.5 md:h-3.5"/></button>
+                      <span className="text-[10px] md:text-xs font-black w-5 md:w-6 text-center text-indigo-700 select-none cursor-default">{fontSize}</span>
+                      <button onClick={() => setFontSize(f => Math.min(24, f + 1))} className="px-2 py-1 md:py-1.5 hover:bg-white hover:shadow-sm rounded text-slate-600 font-black transition-all flex items-center justify-center"><Plus size={12} className="md:w-3.5 md:h-3.5"/></button>
+                    </div>
 
-                    <div className="flex p-1 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
-                      {['WEEKLY', 'MONTHLY', 'YEARLY', 'INFO'].map((tab) => (
-                        <button key={tab} onClick={() => { 
-                          setActiveTab(tab); 
-                          setEditingCell(null); 
-                          setSelection({ startDay: null, endDay: null, startId: null, endId: null }); 
-                          setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); 
-                          setInfoSelection({ section: null, rIdx: null, cIdx: null }); 
-                        }} className={`flex-1 md:flex-none px-3 md:px-5 py-1 md:py-2 rounded-lg text-xs md:text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>
-                          {tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : tab === 'YEARLY' ? '연간' : '학생 정보'}
-                        </button>
-                      ))}
-                    </div>
-                    {role === 'teacher' && (
-                      <div className="hidden md:flex items-center gap-2 border-l pl-2 md:pl-3 ml-1 border-slate-200">
-                        <button onClick={() => setShowLogoutConfirm(true)} className="p-2 md:p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-4 h-4 md:w-5 md:h-5" /></button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </header>
+                    <div className="flex p-1 rounded-xl shadow-inner bg-slate-100 flex-1 md:flex-none justify-center">
+                      {['WEEKLY', 'MONTHLY', 'YEARLY', 'INFO'].map((tab) => (
+                        <button key={tab} onClick={() => { 
+                          setActiveTab(tab); 
+                          setEditingCell(null); 
+                          setSelection({ startDay: null, endDay: null, startId: null, endId: null }); 
+                          setMonthlySelection({ r1: null, c1: null, r2: null, c2: null }); 
+                          setInfoSelection({ section: null, rIdx: null, cIdx: null }); 
+                        }} className={`flex-1 md:flex-none px-3 md:px-5 py-1 md:py-2 rounded-lg text-xs md:text-sm font-extrabold transition-all duration-300 ${activeTab === tab ? "bg-white text-indigo-700 shadow-md scale-[1.02]" : "text-slate-400 hover:text-slate-600"}`}>
+                          {tab === 'WEEKLY' ? '주간' : tab === 'MONTHLY' ? '월간' : tab === 'YEARLY' ? '연간' : '학생 정보'}
+                        </button>
+                      ))}
+                    </div>
+                    {role === 'teacher' && (
+                      <div className="hidden md:flex items-center gap-2 border-l pl-2 md:pl-3 ml-1 border-slate-200">
+                        <button onClick={() => setShowLogoutConfirm(true)} className="p-2 md:p-2.5 rounded-xl hover:bg-red-50 text-red-500 transition-colors"><LogOut className="w-4 h-4 md:w-5 md:h-5" /></button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </header>
 
-              <main className={`flex-1 min-h-0 w-full mx-auto relative text-center flex flex-col ${(activeTab === 'WEEKLY' || (isMobile && activeTab === 'YEARLY')) ? 'p-1 md:p-2' : 'p-2 md:p-6 pb-24'} overflow-y-auto custom-scrollbar`}>
-                
-                {activeTab === 'WEEKLY' && (
-                  isMobile ? (
-                    <div className="w-full h-full flex flex-col bg-white overflow-hidden animate-fade-in pt-1 pb-1 px-1">
-                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1 px-1 flex-shrink-0">
-                         {dDay && (
-                           <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded shadow-sm text-[10px] font-bold">
-                             <Calendar className="w-3 h-3" />
-                             <span>{dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}</span>
-                           </div>
-                         )}
-                      </div>
-                      <div className="w-full flex-1 relative select-none rounded-lg border-y border-slate-200 bg-white shadow-inner text-center overflow-hidden z-10 flex flex-col">
-                        {renderMobileWeeklyTable()}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="animate-fade-in flex flex-col text-center h-full">
-                      <div className="flex-1 flex flex-col min-h-0">
-                        <div className="p-1 md:p-2 rounded-xl shadow-sm border border-slate-200 bg-white flex flex-col h-full relative z-30">
-                          
-                          <div className="flex flex-wrap items-center justify-between gap-1 mb-1 md:mb-2 flex-shrink-0 px-1 relative z-40">
-                            <div className="flex flex-wrap items-center gap-2">
-                              {dDay ? (
-                                <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
-                                  <Calendar className="w-3 h-3" />
-                                  <span className="font-bold">
-                                    {dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}
-                                  </span>
-                                  <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
-                                </div>
-                              ) : (
-                                <form onSubmit={(e) => {
-                                  e.preventDefault();
-                                  if (dDayInput.title) {
-                                    setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory();
-                                  }
-                                }} className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center">
-                                  <input type="text" placeholder="D-day 제목" className="w-20 md:w-28 p-1 text-xs rounded outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
-                                  <input type="date" className="w-24 p-1 text-[10px] md:text-xs rounded outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
-                                  <button type="submit" className="px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
-                                </form>
-                              )}
-                            </div>
-                            
-                            <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto relative">
-                              <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="hidden sm:flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
-                                <Printer className="w-3 h-3" /> <span>인쇄</span>
-                              </button>
-                              <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[60]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
-                                <Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span>
-                              </button>
-                              <div className="h-5 w-px mx-0.5 bg-slate-200 hidden md:block"></div>
-                              {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 bg-indigo-600 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold text-xs"><Merge className="w-3 h-3" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3" /> <span className="hidden sm:inline">드래그</span></div>}
-                              <button onClick={unmergeCells} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3" /> <span className="hidden sm:inline">분할</span></button>
-                              <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors ml-0 bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"><Trash2 className="w-3 h-3" /> <span className="hidden sm:inline">초기화</span></button>
-                            </div>
-                          </div>
-                          
-                          <div className="w-full flex-1 relative select-none rounded-lg border-y md:border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto overflow-x-hidden custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
-                            <table className="w-full h-full min-h-full text-center border-collapse table-fixed">
-                              <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
-                                <tr style={{ height: '30px' }}>
-                                  <th className={`border-r border-slate-200 uppercase font-black z-20 align-middle transition-colors duration-200 time-col ${wBounds ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`} style={{ width: '45px', fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>
-                                    <span className="hidden md:inline">Time</span>
-                                  </th>
-                                  {DAYS.map((d, i) => {
-                                    const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
-                                    const isColSelected = activeTab === 'WEEKLY' && wBounds && i >= wBounds.minDayIdx && i <= wBounds.maxDayIdx;
-                                    let defaultTextColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : 'text-slate-600';
-                                    let textColor = isColSelected ? 'text-indigo-700' : defaultTextColor;
-                                    let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-transparent';
-                                    return (
-                                      <th key={d} className={`font-black border-r border-slate-200 z-20 align-middle transition-colors duration-200 py-0 px-0 ${textColor} ${bgColor}`} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>
-                                        <span className="hidden md:inline">{labelsLong[i]}</span>
-                                      </th>
-                                    );
-                                  })}
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {timetable.map((row) => {
-                                  const isRowSelected = activeTab === 'WEEKLY' && wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId;
-                                  const timeBgClass = isRowSelected ? "bg-indigo-100/70 shadow-inner border-indigo-200" : "bg-slate-50/50";
-                                  const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-400 font-medium";
-                                  return (
-                                    <tr key={row.id} className="group text-center h-[1%]">
-                                      <td className={`p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none time-col ${timeBgClass}`}>
-                                        <div className={`flex flex-col items-center justify-center w-full h-full min-h-[16px] md:min-h-[28px] time-col-inner ${timeTextClass}`} style={{ fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>
-                                          <span>{row.time}</span>
-                                        </div>
-                                      </td>
-                                      {DAYS.map((day) => {
-                                        if (row[`${day}_hidden`]) return null;
-                                        const dayIdx = DAYS.indexOf(day);
-                                        
-                                        const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
-                                        const isSingleSelection = wBounds && wBounds.minId === wBounds.maxId && wBounds.minDayIdx === wBounds.maxDayIdx;
-                                        const isActiveThis = isSingleSelection && selection.startId === row.id && selection.startDay === day;
-                                        
-                                        const cellId = `WEEKLY-${day}-${row.id}`;
-                                        const isEditingThis = editingCell === cellId;
-                                        
-                                        const keywordColor = getCellColor(row[day]);
-                                        const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
-                                        
-                                        return (
-                                          <td 
-                                            key={day} 
-                                            className={`p-0 relative align-top border-b border-r border-slate-200 transition-colors duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
-                                            style={{ backgroundColor: bgColor }} 
-                                            rowSpan={row[`${day}_span`] || 1} 
-                                            onMouseDown={(e) => {
-                                              if (editingCell !== cellId) setEditingCell(null);
-                                              handleMouseDown(e, day, row.id);
-                                            }} 
-                                            onMouseEnter={() => handleMouseEnter(day, row.id)}
-                                            onClick={(e) => { 
-                                              if (!e.shiftKey) { 
-                                                const area = document.getElementById(`textarea-${row.id}-${day}`); 
-                                                if (area && document.activeElement !== area) {
-                                                  setTimeout(() => area.focus(), 0);
-                                                } 
-                                              } 
-                                            }}
-                                            onDoubleClick={() => setEditingCell(cellId)}
-                                          >
-                                            <div className="w-full h-full flex flex-col items-center justify-center p-0 md:p-1 text-center min-h-[16px] md:min-h-[28px]">
-                                              <textarea 
-                                                id={`textarea-${row.id}-${day}`}
-                                                value={row[day] || ''} 
-                                                onChange={(e) => {
-                                                  handleTimetableChange(row.id, day, e.target.value);
-                                                  autoResize(e);
-                                                }} 
-                                                onFocus={handleFocus} 
-                                                onBlur={(e) => handleBlur(e, row.id, day, false)}
-                                                style={{
-                                                  caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                                  cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                                  fontSize: `${displayFontSize}px`,
-                                                  lineHeight: '1.2'
-                                                }}
-                                                onCompositionStart={(e) => {
-                                                  if (!isEditingThis && isActiveThis) {
-                                                    e.currentTarget.value = '';
-                                                    handleTimetableChange(row.id, day, '');
-                                                    setEditingCell(cellId);
-                                                    setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
-                                                  }
-                                                }}
-                                                onKeyDown={(e) => {
-                                                  if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                  
-                                                  const moveFocus = (rId, dIdx, dir) => {
-                                                    let nextRId = rId; let nextDIdx = dIdx;
-                                                    if (dir === 'DOWN') {
-                                                       const span = timetable[nextRId - 1][`${DAYS[nextDIdx]}_span`] || 1;
-                                                       nextRId += span;
-                                                       while(nextRId <= 32 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId++;
-                                                       if (nextRId > 32) return;
-                                                    } else if (dir === 'UP') {
-                                                       nextRId -= 1;
-                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                       if (nextRId < 1) return;
-                                                    } else if (dir === 'RIGHT') {
-                                                       nextDIdx += 1;
-                                                       if (nextDIdx > 6) { nextDIdx = 0; nextRId += 1; }
-                                                       if (nextRId > 32) return;
-                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                       if (nextRId < 1) nextRId = 1;
-                                                    } else if (dir === 'LEFT') {
-                                                       nextDIdx -= 1;
-                                                       if (nextDIdx < 0) { nextDIdx = 6; nextRId -= 1; }
-                                                       if (nextRId < 1) return;
-                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
-                                                       if (nextRId < 1) nextRId = 1;
-                                                    }
-                                                    
-                                                    const nextDay = DAYS[nextDIdx];
-                                                    setSelection({ startDay: nextDay, endDay: nextDay, startId: nextRId, endId: nextRId });
-                                                    setEditingCell(null);
-                                                    setTimeout(() => {
-                                                      const el = document.getElementById(`textarea-${nextRId}-${nextDay}`);
-                                                      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
-                                                    }, 0);
-                                                  };
-                                                  
-                                                  if (!isEditingThis && isActiveThis) {
-                                                    if (e.key === 'Enter' || e.key === 'F2') {
-                                                      e.preventDefault();
-                                                      setEditingCell(cellId);
-                                                      e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                    } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(row.id, dayIdx, 'DOWN');
-                                                    } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus(row.id, dayIdx, 'UP');
-                                                    } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocus(row.id, dayIdx, 'RIGHT');
-                                                    } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocus(row.id, dayIdx, 'LEFT');
-                                                    } else if (e.key === 'Tab') { e.preventDefault(); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                    } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
-                                                    } else if (e.key === 'Delete' || e.key === 'Backspace') { 
-                                                      e.preventDefault(); saveToHistory(); handleTimetableChange(row.id, day, '');
-                                                    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                                                      e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
-                                                      setEditingCell(cellId);
-                                                      setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
-                                                    }
-                                                  } else if (isEditingThis) {
-                                                    if (e.key === 'Enter') {
-                                                      if (e.shiftKey || e.altKey) {
-                                                        if (e.altKey && !e.shiftKey) {
-                                                          e.preventDefault();
-                                                          const target = e.currentTarget;
-                                                          const start = target.selectionStart;
-                                                          const end = target.selectionEnd;
-                                                          const valStr = target.value;
-                                                          const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                          handleTimetableChange(row.id, day, newVal);
-                                                          setTimeout(() => {
-                                                            const targetEl = document.getElementById(`textarea-${row.id}-${day}`);
-                                                            if (targetEl) {
-                                                              targetEl.setSelectionRange(start + 1, start + 1);
-                                                              autoResize({ target: targetEl });
-                                                            }
-                                                          }, 0);
-                                                        }
-                                                      } else {
-                                                        e.preventDefault(); 
-                                                        setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
-                                                      }
-                                                    } else if (e.key === 'Tab') {
-                                                      e.preventDefault(); 
-                                                      setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
-                                                    } else if (e.key === 'Escape') {
-                                                      e.preventDefault(); setEditingCell(null);
-                                                      e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
-                                                    }
-                                                  }
-                                                }} 
-                                                className={`w-full p-0.5 md:p-1 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle auto-resize break-words whitespace-pre-wrap ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
-                                                rows={1}
-                                              />
-                                            </div>
-                                          </td>
-                                        );
-                                      })}
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                )}
+              <main className={`flex-1 min-h-0 w-full mx-auto relative text-center flex flex-col ${(activeTab === 'WEEKLY' || (isMobile && activeTab === 'YEARLY')) ? 'p-1 md:p-2' : 'p-2 md:p-6 pb-24'} overflow-y-auto custom-scrollbar`}>
+                
+                {activeTab === 'WEEKLY' && (
+                  isMobile ? (
+                    <div className="w-full h-full flex flex-col bg-white overflow-hidden animate-fade-in pt-1 pb-1 px-1">
+                      <div className="flex flex-wrap items-center justify-between gap-1 mb-1 px-1 flex-shrink-0">
+                         {dDay && (
+                           <div className="flex items-center gap-1 px-2 py-1 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded shadow-sm text-[10px] font-bold">
+                             <Calendar className="w-3 h-3" />
+                             <span>{dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}</span>
+                           </div>
+                         )}
+                      </div>
+                      <div className="w-full flex-1 relative select-none rounded-lg border-y border-slate-200 bg-white shadow-inner text-center overflow-hidden z-10 flex flex-col">
+                        {renderMobileWeeklyTable()}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="animate-fade-in flex flex-col text-center h-full">
+                      <div className="flex-1 flex flex-col min-h-0">
+                        <div className="p-1 md:p-2 rounded-xl shadow-sm border border-slate-200 bg-white flex flex-col h-full relative z-30">
+                          
+                          <div className="flex flex-wrap items-center justify-between gap-1 mb-1 md:mb-2 flex-shrink-0 px-1 relative z-40">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {dDay ? (
+                                <div className="flex items-center gap-1.5 md:gap-3 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-lg shadow-sm text-xs text-center">
+                                  <Calendar className="w-3 h-3" />
+                                  <span className="font-bold">
+                                    {dDay.title}{dDay.date && dDay.date.includes('-') ? `(${parseInt(dDay.date.split('-')[1], 10)}.${parseInt(dDay.date.split('-')[2], 10)}) ` : ' '}{calculateDDay(dDay.date)}
+                                  </span>
+                                  <button onClick={() => setDDay(null)} className="hover:text-red-200 p-0.5"><X className="w-3 h-3" /></button>
+                                </div>
+                              ) : (
+                                <form onSubmit={(e) => {
+                                  e.preventDefault();
+                                  if (dDayInput.title) {
+                                    setDDay(dDayInput); setDDayInput({ title: '', date: '' }); saveToHistory();
+                                  }
+                                }} className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-slate-50 shadow-inner justify-center">
+                                  <input type="text" placeholder="D-day 제목" className="w-20 md:w-28 p-1 text-xs rounded outline-none font-medium bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.title} onChange={(e) => setDDayInput({ ...dDayInput, title: e.target.value })}/>
+                                  <input type="date" className="w-24 p-1 text-[10px] md:text-xs rounded outline-none bg-white border border-slate-100 focus:border-indigo-500 text-center" value={dDayInput.date} onChange={(e) => setDDayInput({ ...dDayInput, date: e.target.value })}/>
+                                  <button type="submit" className="px-3 py-1 rounded text-xs font-bold transition-colors shadow-sm bg-slate-800 hover:bg-slate-900 text-white">설정</button>
+                                </form>
+                              )}
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2 ml-auto relative">
+                              <button onClick={() => { setPrintConfig(prev => ({ ...prev, scope: 'all' })); setShowPrintModal(true); }} className="hidden sm:flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm border border-slate-200 bg-white text-slate-700 hover:bg-slate-50">
+                                <Printer className="w-3 h-3" /> <span>인쇄</span>
+                              </button>
+                              <button onClick={() => setShowColorModal(!showColorModal)} className={`flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border ${showColorModal ? 'bg-indigo-50 border-indigo-200 text-indigo-700 relative z-[60]' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
+                                <Palette className="w-3 h-3" /> <span className="hidden sm:inline">색상</span>
+                              </button>
+                              <div className="h-5 w-px mx-0.5 bg-slate-200 hidden md:block"></div>
+                              {isWMulti ? <button onClick={mergeCells} className="flex items-center gap-1 bg-indigo-600 text-white px-2 md:px-3 py-1 md:py-1.5 rounded-lg shadow-md hover:bg-indigo-700 font-extrabold text-xs"><Merge className="w-3 h-3" /> <span className="hidden sm:inline">병합</span></button> : <div className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-medium border border-dashed border-slate-200 text-slate-400 bg-slate-50 select-none"><MousePointer2 className="w-3 h-3" /> <span className="hidden sm:inline">드래그</span></div>}
+                              <button onClick={unmergeCells} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold shadow-sm transition-colors border border-slate-200 text-slate-700 hover:bg-slate-50"><Split className="w-3 h-3" /> <span className="hidden sm:inline">분할</span></button>
+                              <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1 px-2 md:px-3 py-1 md:py-1.5 rounded-lg text-xs font-bold transition-colors ml-0 bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"><Trash2 className="w-3 h-3" /> <span className="hidden sm:inline">초기화</span></button>
+                            </div>
+                          </div>
+                          
+                          <div className="w-full flex-1 relative select-none rounded-lg border-y md:border-2 border-slate-200 bg-white shadow-inner text-center overflow-y-auto overflow-x-hidden custom-scrollbar z-10" onMouseLeave={handleMouseUp}>
+                            <table className="w-full h-full min-h-full text-center border-collapse table-fixed">
+                              <thead className="z-20 shadow-sm border-b-2 border-slate-200 text-slate-800 bg-slate-50 sticky top-0">
+                                <tr style={{ height: '30px' }}>
+                                  <th className={`border-r border-slate-200 uppercase font-black z-20 align-middle transition-colors duration-200 time-col ${wBounds ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400'}`} style={{ width: '45px', fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>
+                                    <span className="hidden md:inline">Time</span>
+                                  </th>
+                                  {DAYS.map((d, i) => {
+                                    const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+                                    const isColSelected = activeTab === 'WEEKLY' && wBounds && i >= wBounds.minDayIdx && i <= wBounds.maxDayIdx;
+                                    let defaultTextColor = (d === 'sat') ? 'text-blue-500' : (d === 'sun') ? 'text-red-500' : 'text-slate-600';
+                                    let textColor = isColSelected ? 'text-indigo-700' : defaultTextColor;
+                                    let bgColor = isColSelected ? 'bg-indigo-100' : 'bg-transparent';
+                                    return (
+                                      <th key={d} className={`font-black border-r border-slate-200 z-20 align-middle transition-colors duration-200 py-0 px-0 ${textColor} ${bgColor}`} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>
+                                        <span className="hidden md:inline">{labelsLong[i]}</span>
+                                      </th>
+                                    );
+                                  })}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {timetable.map((row) => {
+                                  const isRowSelected = activeTab === 'WEEKLY' && wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId;
+                                  const timeBgClass = isRowSelected ? "bg-indigo-100/70 shadow-inner border-indigo-200" : "bg-slate-50/50";
+                                  const timeTextClass = isRowSelected ? "text-indigo-800 font-extrabold" : "text-slate-400 font-medium";
+                                  return (
+                                    <tr key={row.id} className="group text-center h-[1%]">
+                                      <td className={`p-0 border-b border-r border-slate-200 align-middle transition-colors duration-200 select-none time-col ${timeBgClass}`}>
+                                        <div className={`flex flex-col items-center justify-center w-full h-full min-h-[16px] md:min-h-[28px] time-col-inner ${timeTextClass}`} style={{ fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>
+                                          <span>{row.time}</span>
+                                        </div>
+                                      </td>
+                                      {DAYS.map((day) => {
+                                        if (row[`${day}_hidden`]) return null;
+                                        const dayIdx = DAYS.indexOf(day);
+                                        
+                                        const isSelected = wBounds && row.id >= wBounds.minId && row.id <= wBounds.maxId && dayIdx >= wBounds.minDayIdx && dayIdx <= wBounds.maxDayIdx;
+                                        const isSingleSelection = wBounds && wBounds.minId === wBounds.maxId && wBounds.minDayIdx === wBounds.maxDayIdx;
+                                        const isActiveThis = isSingleSelection && selection.startId === row.id && selection.startDay === day;
+                                        
+                                        const cellId = `WEEKLY-${day}-${row.id}`;
+                                        const isEditingThis = editingCell === cellId;
+                                        
+                                        const keywordColor = getCellColor(row[day]);
+                                        const bgColor = isSelected ? 'rgba(224, 231, 255, 0.8)' : keywordColor ? keywordColor : 'transparent';
+                                        
+                                        return (
+                                          <td 
+                                            key={day} 
+                                            className={`p-0 relative align-top border-b border-r border-slate-200 transition-colors duration-200 ${isSelected ? 'ring-2 ring-indigo-500 ring-inset z-10' : ''} hover:bg-indigo-50/30 ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`} 
+                                            style={{ backgroundColor: bgColor }} 
+                                            rowSpan={row[`${day}_span`] || 1} 
+                                            onMouseDown={(e) => {
+                                              if (editingCell !== cellId) setEditingCell(null);
+                                              handleMouseDown(e, day, row.id);
+                                            }} 
+                                            onMouseEnter={() => handleMouseEnter(day, row.id)}
+                                            onClick={(e) => { 
+                                              if (!e.shiftKey) { 
+                                                const area = document.getElementById(`textarea-${row.id}-${day}`); 
+                                                if (area && document.activeElement !== area) {
+                                                  setTimeout(() => area.focus(), 0);
+                                                } 
+                                              } 
+                                            }}
+                                            onDoubleClick={() => setEditingCell(cellId)}
+                                          >
+                                            <div className="w-full h-full flex flex-col items-center justify-center p-0 md:p-1 text-center min-h-[16px] md:min-h-[28px]">
+                                              <textarea 
+                                                id={`textarea-${row.id}-${day}`}
+                                                value={row[day] || ''} 
+                                                onChange={(e) => {
+                                                  handleTimetableChange(row.id, day, e.target.value);
+                                                  autoResize(e);
+                                                }} 
+                                                onFocus={handleFocus} 
+                                                onBlur={(e) => handleBlur(e, row.id, day, false)}
+                                                style={{
+                                                  caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                  cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                  fontSize: `${displayFontSize}px`,
+                                                  lineHeight: '1.2'
+                                                }}
+                                                onCompositionStart={(e) => {
+                                                  if (!isEditingThis && isActiveThis) {
+                                                    e.currentTarget.value = '';
+                                                    handleTimetableChange(row.id, day, '');
+                                                    setEditingCell(cellId);
+                                                    setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
+                                                  }
+                                                }}
+                                                onKeyDown={(e) => {
+                                                  if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                  
+                                                  const moveFocus = (rId, dIdx, dir) => {
+                                                    let nextRId = rId; let nextDIdx = dIdx;
+                                                    if (dir === 'DOWN') {
+                                                       const span = timetable[nextRId - 1][`${DAYS[nextDIdx]}_span`] || 1;
+                                                       nextRId += span;
+                                                       while(nextRId <= 32 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId++;
+                                                       if (nextRId > 32) return;
+                                                    } else if (dir === 'UP') {
+                                                       nextRId -= 1;
+                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                       if (nextRId < 1) return;
+                                                    } else if (dir === 'RIGHT') {
+                                                       nextDIdx += 1;
+                                                       if (nextDIdx > 6) { nextDIdx = 0; nextRId += 1; }
+                                                       if (nextRId > 32) return;
+                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                       if (nextRId < 1) nextRId = 1;
+                                                    } else if (dir === 'LEFT') {
+                                                       nextDIdx -= 1;
+                                                       if (nextDIdx < 0) { nextDIdx = 6; nextRId -= 1; }
+                                                       if (nextRId < 1) return;
+                                                       while(nextRId >= 1 && timetable[nextRId - 1][`${DAYS[nextDIdx]}_hidden`]) nextRId--;
+                                                       if (nextRId < 1) nextRId = 1;
+                                                    }
+                                                    
+                                                    const nextDay = DAYS[nextDIdx];
+                                                    setSelection({ startDay: nextDay, endDay: nextDay, startId: nextRId, endId: nextRId });
+                                                    setEditingCell(null);
+                                                    setTimeout(() => {
+                                                      const el = document.getElementById(`textarea-${nextRId}-${nextDay}`);
+                                                      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+                                                    }, 0);
+                                                  };
+                                                  
+                                                  if (!isEditingThis && isActiveThis) {
+                                                    if (e.key === 'Enter' || e.key === 'F2') {
+                                                      e.preventDefault();
+                                                      setEditingCell(cellId);
+                                                      e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                                                    } else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocus(row.id, dayIdx, 'DOWN');
+                                                    } else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocus(row.id, dayIdx, 'UP');
+                                                    } else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocus(row.id, dayIdx, 'RIGHT');
+                                                    } else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocus(row.id, dayIdx, 'LEFT');
+                                                    } else if (e.key === 'Tab') { e.preventDefault(); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                    } else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0);
+                                                    } else if (e.key === 'Delete' || e.key === 'Backspace') { 
+                                                      e.preventDefault(); saveToHistory(); handleTimetableChange(row.id, day, '');
+                                                    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                                                      e.currentTarget.value = ''; handleTimetableChange(row.id, day, ''); 
+                                                      setEditingCell(cellId);
+                                                      setSelection({ startDay: day, endDay: day, startId: row.id, endId: row.id });
+                                                    }
+                                                  } else if (isEditingThis) {
+                                                    if (e.key === 'Enter') {
+                                                      if (e.shiftKey || e.altKey) {
+                                                        if (e.altKey && !e.shiftKey) {
+                                                          e.preventDefault();
+                                                          const target = e.currentTarget;
+                                                          const start = target.selectionStart;
+                                                          const end = target.selectionEnd;
+                                                          const valStr = target.value;
+                                                          const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                                          handleTimetableChange(row.id, day, newVal);
+                                                          setTimeout(() => {
+                                                            const targetEl = document.getElementById(`textarea-${row.id}-${day}`);
+                                                            if (targetEl) {
+                                                              targetEl.setSelectionRange(start + 1, start + 1);
+                                                              autoResize({ target: targetEl });
+                                                            }
+                                                          }, 0);
+                                                        }
+                                                      } else {
+                                                        e.preventDefault(); 
+                                                        setEditingCell(null); moveFocus(row.id, dayIdx, 'DOWN');
+                                                      }
+                                                    } else if (e.key === 'Tab') {
+                                                      e.preventDefault(); 
+                                                      setEditingCell(null); moveFocus(row.id, dayIdx, e.shiftKey ? 'LEFT' : 'RIGHT');
+                                                    } else if (e.key === 'Escape') {
+                                                      e.preventDefault(); setEditingCell(null);
+                                                      e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length);
+                                                    }
+                                                  }
+                                                }} 
+                                                className={`w-full p-0.5 md:p-1 m-0 text-center bg-transparent resize-none outline-none overflow-hidden font-bold align-middle auto-resize break-words whitespace-pre-wrap ${(isActiveThis && !isEditingThis) ? 'select-none' : ''}`} 
+                                                rows={1}
+                                              />
+                                            </div>
+                                          </td>
+                                        );
+                                      })}
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                )}
 
-                {activeTab === 'MONTHLY' && (
-                  <div className="animate-fade-in flex flex-col gap-6 text-center w-full overflow-x-hidden">
-                    <div className="p-2 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm w-full text-center flex flex-col items-center">
-                      <div className="flex w-full items-center justify-between mb-4 md:mb-6 px-2 text-center mt-2 md:mt-0">
-                        <div className="flex items-center gap-2 md:gap-4 text-center">
-                          <div className="flex gap-2 text-center">
-                            <button onClick={handlePrev4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronLeft size={16} className="md:w-5 md:h-5"/></button>
-                            <button onClick={handleNext4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronRight size={16} className="md:w-5 md:h-5"/></button>
-                          </div>
-                          <div className="font-extrabold text-slate-600 text-[10px] md:text-sm whitespace-nowrap">
-                            {currentDate.getFullYear()}.{String(currentDate.getMonth() + 1).padStart(2, '0')}.{String(currentDate.getDate()).padStart(2, '0')} 기준
-                          </div>
-                        </div>
-                        {!isMobile && (
-                          <div className="flex gap-2 text-center">
-                            <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">과목 추가</span></button>
-                            <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">일정 초기화</span></button>
-                          </div>
-                        )}
-                      </div>
+                {activeTab === 'MONTHLY' && (
+                  <div className="animate-fade-in flex flex-col gap-6 text-center w-full overflow-x-hidden">
+                    <div className="p-2 md:p-6 rounded-3xl border border-slate-200 bg-white shadow-sm w-full text-center flex flex-col items-center">
+                      <div className="flex w-full items-center justify-between mb-4 md:mb-6 px-2 text-center mt-2 md:mt-0">
+                        <div className="flex items-center gap-2 md:gap-4 text-center">
+                          <div className="flex gap-2 text-center">
+                            <button onClick={handlePrev4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronLeft size={16} className="md:w-5 md:h-5"/></button>
+                            <button onClick={handleNext4Weeks} className="p-1.5 md:p-2 rounded-xl bg-slate-100 hover:bg-slate-200 transition-colors text-center flex items-center justify-center"><ChevronRight size={16} className="md:w-5 md:h-5"/></button>
+                          </div>
+                          <div className="font-extrabold text-slate-600 text-[10px] md:text-sm whitespace-nowrap">
+                            {currentDate.getFullYear()}.{String(currentDate.getMonth() + 1).padStart(2, '0')}.{String(currentDate.getDate()).padStart(2, '0')} 기준
+                          </div>
+                        </div>
+                        {!isMobile && (
+                          <div className="flex gap-2 text-center">
+                            <button onClick={() => { const name = prompt("추가할 과목명을 입력하세요\n(예: 국어, 수학, 영어)"); if(name) name.split(',').forEach(n => { if (n.trim()) addSubjectRow(n.trim()); }); }} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-indigo-600 text-white rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-indigo-700 shadow-md transition-all text-center"><Plus size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">과목 추가</span></button>
+                            <button onClick={() => setShowResetConfirm(true)} className="flex items-center gap-1.5 px-3 md:px-5 py-2 md:py-2.5 bg-red-50 text-red-600 border border-red-100 rounded-xl font-extrabold text-[10px] md:text-sm hover:bg-red-100 transition-all text-center"><Trash2 size={14} className="md:w-4 md:h-4"/> <span className="hidden md:inline">일정 초기화</span></button>
+                          </div>
+                        )}
+                      </div>
 
-                      {isMobile ? (
-                        <div className="flex flex-col gap-3 w-full pb-4">
-                           {[0, 1, 2, 3].map(blockIdx => {
-                              const chunkStart = blockIdx * 7;
-                              const chunk = allDates.slice(chunkStart, chunkStart + 7);
-                              return (
-                                 <div key={blockIdx} className="w-full">
-                                    <div className="text-left font-black text-indigo-600 text-[10px] mb-1 pl-1">{blockIdx + 1}주차</div>
-                                    <table className="w-full border-collapse table-fixed text-center text-[8px] bg-white border border-slate-200">
-                                       <thead>
-                                          <tr className="bg-slate-50">
-                                             <th className="border border-slate-200 w-[12%] py-1">과목</th>
-                                             <th className="border border-slate-200 w-[14%] py-1">교재</th>
-                                             {chunk.map(d => <th key={d.full} className={`border border-slate-200 py-1 ${d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : ''}`}>{d.day}<br/>{d.label}</th>)}
-                                          </tr>
-                                       </thead>
-                                       <tbody>
-                                          <tr>
-                                             <td colSpan={2} className="border border-slate-200 bg-slate-50 font-black py-1 text-[8px]">비고</td>
-                                             {chunk.map(d => {
-                                                const noteText = termScheduler.topNotes[d.full] || '';
-                                                const noteLines = noteText.split('\n').filter(l => l !== '');
-                                                const noteStyle = getSmartMobileStyleMonthly(noteText, 'center');
-                                                return (
-                                                   <td key={d.full} className="border border-slate-200 p-[1px] align-middle overflow-hidden bg-slate-50/30">
-                                                     <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
-                                                       {noteLines.map((line, lIdx) => (
-                                                         <span key={lIdx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ ...noteStyle, lineHeight: '1.15', overflow: 'hidden', textOverflow: 'clip' }}>
-                                                           {line}
-                                                         </span>
-                                                       ))}
-                                                     </div>
-                                                   </td>
-                                                )
-                                             })}
-                                          </tr>
-                                          {flatRows.map(rowInfo => {
-                                             const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
-                                             const tbLines = (tbName||'').split('\n').filter(l => l !== '');
-                                             const tbStyle = getSmartMobileStyleMonthly(tbName, 'center');
-                                             const subLines = (sub||'').split('\n').filter(l => l !== '');
-                                             const subStyle = getSmartMobileStyleMonthly(sub, 'center');
-                                             
-                                             return (
-                                                <tr key={`${sub}-${tbIdx}`}>
-                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 align-middle overflow-hidden p-[1px]">
-                                                      <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
-                                                         {subLines.map((line, lIdx) => (
-                                                            <span key={lIdx} className="font-black text-slate-800 w-full text-center tracking-tighter" style={{ ...subStyle, lineHeight: '1.15', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
-                                                         ))}
-                                                      </div>
-                                                   </td>}
-                                                   <td className="border border-slate-200 align-middle overflow-hidden p-[1px]">
-                                                     <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
-                                                       {tbLines.map((line, idx) => (
-                                                         <span key={idx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ ...tbStyle, lineHeight: '1.15', overflow: 'hidden', textOverflow: 'clip' }}>
-                                                           {line}
-                                                         </span>
-                                                       ))}
-                                                     </div>
-                                                   </td>
-                                                   {chunk.map(d => {
-                                                      const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
-                                                      const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
-                                                      const lines = val.split('\n').filter(l => l.trim() !== '');
-                                                      const cellStyle = getSmartMobileStyleMonthly(val, 'left');
-                                                      return (
-                                                         <td key={d.full} className="border border-slate-200 align-top p-[1.5px] overflow-hidden">
-                                                            <div className="w-full h-full flex flex-col items-center justify-start overflow-hidden gap-[2px]">
-                                                            {lines.map((line, lIdx) => {
-                                                               const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
-                                                               const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
-                                                               
-                                                               return (
-                                                                  <div key={lIdx} className="flex justify-between items-center gap-[1px] text-left w-full overflow-hidden leading-[1.15] mb-[1.5px]">
-                                                                     <span className="font-bold text-slate-800 tracking-tighter text-left" style={{ flex: '1 1 auto', minWidth: 0, ...cellStyle, overflow: 'hidden', textOverflow: 'clip' }}>
-                                                                        {line}
-                                                                     </span>
-                                                                     {isChecked ? (
-                                                                        <span className="flex-shrink-0 leading-none" style={{ fontSize: '4.5px', flex: '0 0 auto' }}>✅</span>
-                                                                     ) : (
-                                                                        <div className="border border-slate-300 rounded-[1px] flex-shrink-0 bg-slate-50 shadow-[0_0_1px_rgba(0,0,0,0.1)]" style={{ width: '4.5px', height: '4.5px', flex: '0 0 auto' }}></div>
-                                                                     )}
-                                                                  </div>
-                                                               )
-                                                            })}
-                                                            </div>
-                                                         </td>
-                                                      )
-                                                   })}
-                                                </tr>
-                                             )
-                                          })}
-                                       </tbody>
-                                    </table>
-                                 </div>
-                              )
-                           })}
+                      {isMobile ? (
+                        <div className="flex flex-col gap-3 w-full pb-4">
+                           {[0, 1, 2, 3].map(blockIdx => {
+                              const chunkStart = blockIdx * 7;
+                              const chunk = allDates.slice(chunkStart, chunkStart + 7);
+                              return (
+                                 <div key={blockIdx} className="w-full">
+                                    <div className="text-left font-black text-indigo-600 text-[10px] mb-1 pl-1">{blockIdx + 1}주차</div>
+                                    <table className="w-full border-collapse table-fixed text-center text-[8px] bg-white border border-slate-200">
+                                       <thead>
+                                          <tr className="bg-slate-50">
+                                             <th className="border border-slate-200 w-[12%] py-1">과목</th>
+                                             <th className="border border-slate-200 w-[14%] py-1">교재</th>
+                                             {chunk.map(d => <th key={d.full} className={`border border-slate-200 py-1 ${d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : ''}`}>{d.day}<br/>{d.label}</th>)}
+                                          </tr>
+                                       </thead>
+                                       <tbody>
+                                          <tr>
+                                             <td colSpan={2} className="border border-slate-200 bg-slate-50 font-black py-1 text-[8px]">비고</td>
+                                             {chunk.map(d => {
+                                                const noteText = termScheduler.topNotes[d.full] || '';
+                                                const noteLines = noteText.split('\n').filter(l => l !== '');
+                                                const smartSize = getSmartMobileFontSizeMonthly(noteText);
+                                                return (
+                                                   <td key={d.full} className="border border-slate-200 p-[1px] align-middle overflow-hidden bg-slate-50/30">
+                                                     <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                       {noteLines.map((line, lIdx) => (
+                                                         <span key={lIdx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ fontSize: smartSize, lineHeight: '1.15', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+                                                           {line}
+                                                         </span>
+                                                       ))}
+                                                     </div>
+                                                   </td>
+                                                )
+                                             })}
+                                          </tr>
+                                          {flatRows.map(rowInfo => {
+                                             const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
+                                             const tbLines = (tbName||'').split('\n').filter(l => l !== '');
+                                             const tbSmartSize = getSmartMobileFontSizeMonthly(tbName);
+                                             const subLines = (sub||'').split('\n').filter(l => l !== '');
+                                             const subSmartSize = getSmartMobileFontSizeMonthly(sub);
+                                             
+                                             return (
+                                                <tr key={`${sub}-${tbIdx}`}>
+                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 align-middle overflow-hidden p-[1px]">
+                                                      <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {subLines.map((line, lIdx) => (
+                                                            <span key={lIdx} className="font-black text-slate-800 w-full text-center tracking-tighter" style={{ fontSize: subSmartSize, lineHeight: '1.15', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                      </div>
+                                                   </td>}
+                                                   <td className="border border-slate-200 align-middle overflow-hidden p-[1px]">
+                                                     <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                       {tbLines.map((line, lIdx) => (
+                                                         <span key={lIdx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ fontSize: tbSmartSize, lineHeight: '1.15', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+                                                           {line}
+                                                         </span>
+                                                       ))}
+                                                     </div>
+                                                   </td>
+                                                   {chunk.map(d => {
+                                                      const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
+                                                      const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
+                                                      const lines = val.split('\n').filter(l => l.trim() !== '');
+                                                      const cellSmartSize = getSmartMobileFontSizeMonthly(val);
+                                                      return (
+                                                         <td key={d.full} className="border border-slate-200 align-top p-[1.5px] overflow-hidden">
+                                                            <div className="w-full h-full flex flex-col items-center justify-start overflow-hidden gap-[2px]">
+                                                            {lines.map((line, lIdx) => {
+                                                               const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                                               const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                                               
+                                                               return (
+                                                                  <div key={lIdx} className="flex justify-between items-center gap-[1px] text-left w-full overflow-hidden leading-[1.15] mb-[1.5px]">
+                                                                     <span className="font-bold text-slate-800 tracking-tighter text-left" style={{ flex: '1 1 auto', minWidth: 0, fontSize: cellSmartSize, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>
+                                                                        {line}
+                                                                     </span>
+                                                                     {isChecked ? (
+                                                                        <span className="flex-shrink-0 leading-none" style={{ fontSize: '4.5px', flex: '0 0 auto' }}>✅</span>
+                                                                     ) : (
+                                                                        <div className="border border-slate-300 rounded-[1px] flex-shrink-0 bg-slate-50 shadow-[0_0_1px_rgba(0,0,0,0.1)]" style={{ width: '4.5px', height: '4.5px', flex: '0 0 auto' }}></div>
+                                                                     )}
+                                                                  </div>
+                                                               )
+                                                            })}
+                                                            </div>
+                                                         </td>
+                                                      )
+                                                   })}
+                                                </tr>
+                                             )
+                                          })}
+                                       </tbody>
+                                    </table>
+                                 </div>
+                              )
+                           })}
 
-                           {termScheduler.subjects.length > 0 && (
-                              <div className="w-full mt-2">
-                                  <table className="w-full border-collapse text-[8px] shadow-sm rounded-lg overflow-hidden border border-slate-200 text-center table-fixed align-middle">
-                                      <thead>
-                                          <tr className="bg-slate-100 font-black text-slate-800">
-                                             <th className="border border-slate-200 w-[14%] py-1.5 break-keep">과목</th>
-                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">교재</th>
-                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">시작</th>
-                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">목표</th>
-                                             <th className="border border-slate-200 w-[38%] py-1.5 break-keep">달성도</th>
-                                          </tr>
-                                      </thead>
-                                      <tbody>
-                                          {flatRows.map(rowInfo => {
-                                             const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
-                                             let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
-                                             allDates.forEach(d => {
-                                                const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
-                                                const fallbackVal = (tbIdx === 0 && exactVal === undefined) ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '';
-                                                const val = exactVal !== undefined ? exactVal : fallbackVal;
-                                                if (val.trim() !== "") {
-                                                   val.split('\n').forEach((lineText, lIdx) => {
-                                                      if (lineText.trim() !== "") {
-                                                         if (firstData === "-") firstData = lineText.trim();
-                                                         lastData = lineText.trim(); totalItems++;
-                                                         const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
-                                                         const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
-                                                         if (isChecked) checkedItems++;
-                                                      }
-                                                   });
-                                                }
-                                             });
-                                             const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
-                                             
-                                             const subLines = (sub||'').split('\n').filter(l => l !== '');
-                                             const tbLines = (tbName||'').split('\n').filter(l => l !== '');
-                                             const firstLines = firstData.split('\n').filter(l => l !== '');
-                                             const lastLines = lastData.split('\n').filter(l => l !== '');
+                           {termScheduler.subjects.length > 0 && (
+                              <div className="w-full mt-2">
+                                  <table className="w-full border-collapse text-[8px] shadow-sm rounded-lg overflow-hidden border border-slate-200 text-center table-fixed align-middle">
+                                      <thead>
+                                          <tr className="bg-slate-100 font-black text-slate-800">
+                                             <th className="border border-slate-200 w-[14%] py-1.5 break-keep">과목</th>
+                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">교재</th>
+                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">시작</th>
+                                             <th className="border border-slate-200 w-[16%] py-1.5 break-keep">목표</th>
+                                             <th className="border border-slate-200 w-[38%] py-1.5 break-keep">달성도</th>
+                                          </tr>
+                                      </thead>
+                                      <tbody>
+                                          {flatRows.map(rowInfo => {
+                                             const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
+                                             let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
+                                             allDates.forEach(d => {
+                                                const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
+                                                const fallbackVal = (tbIdx === 0 && exactVal === undefined) ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '';
+                                                const val = exactVal !== undefined ? exactVal : fallbackVal;
+                                                if (val.trim() !== "") {
+                                                   val.split('\n').forEach((lineText, lIdx) => {
+                                                      if (lineText.trim() !== "") {
+                                                         if (firstData === "-") firstData = lineText.trim();
+                                                         lastData = lineText.trim(); totalItems++;
+                                                         const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                                         const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                                         if (isChecked) checkedItems++;
+                                                      }
+                                                   });
+                                                }
+                                             });
+                                             const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
+                                             
+                                             const subLines = (sub||'').split('\n').filter(l => l !== '');
+                                             const tbLines = (tbName||'').split('\n').filter(l => l !== '');
+                                             const firstLines = firstData.split('\n').filter(l => l !== '');
+                                             const lastLines = lastData.split('\n').filter(l => l !== '');
 
-                                             const subStyleInfo = getSmartMobileStyleMonthly(sub, 'center');
-                                             const tbStyleInfo = getSmartMobileStyleMonthly(tbName, 'center');
-                                             const firstStyleInfo = getSmartMobileStyleMonthly(firstData, 'center');
-                                             const lastStyleInfo = getSmartMobileStyleMonthly(lastData, 'center');
+                                             const subFS = getSmartMobileFontSizeMonthly(sub);
+                                             const tbFS = getSmartMobileFontSizeMonthly(tbName);
+                                             const firstFS = getSmartMobileFontSizeMonthly(firstData);
+                                             const lastFS = getSmartMobileFontSizeMonthly(lastData);
 
-                                             return (
-                                                <tr key={`status-m-${sub}-${tbIdx}`} className="bg-white">
-                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 align-middle overflow-hidden p-[1px]">
-                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
-                                                         {subLines.map((line, lIdx) => (
-                                                           <span key={lIdx} className="font-black text-slate-800 w-full text-center tracking-tighter" style={{ ...subStyleInfo, overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
-                                                         ))}
-                                                       </div>
-                                                   </td>}
-                                                   <td className="border border-slate-200 align-middle overflow-hidden p-[1px]">
-                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
-                                                         {tbLines.map((line, idx) => (
-                                                           <span key={idx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ ...tbStyleInfo, overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
-                                                         ))}
-                                                       </div>
-                                                   </td>
-                                                   <td className="border border-slate-200 bg-slate-50/5 align-middle overflow-hidden p-[1px]">
-                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
-                                                         {firstLines.map((line, idx) => (
-                                                           <span key={idx} className="font-black text-indigo-700 w-full text-center tracking-tighter" style={{ ...firstStyleInfo, overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
-                                                         ))}
-                                                       </div>
-                                                   </td>
-                                                   <td className="border border-slate-200 bg-slate-50/5 align-middle overflow-hidden p-[1px]">
-                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
-                                                         {lastLines.map((line, idx) => (
-                                                           <span key={idx} className="font-black text-rose-700 w-full text-center tracking-tighter" style={{ ...lastStyleInfo, overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
-                                                         ))}
-                                                       </div>
-                                                   </td>
-                                                   <td className="border border-slate-200 p-1 align-middle">
-                                                      <div className="relative w-full h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
-                                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200" style={{ width: `${percent}%` }} />
-                                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[7px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
-                                                      </div>
-                                                   </td>
-                                                </tr>
-                                             )
-                                          })}
-                                      </tbody>
-                                  </table>
-                              </div>
-                           )}
-                        </div>
-                      ) : (
-                        <>
-                          {monthlyBlocks.map((blockIdx) => {
-                            const chunkStartIndex = blockIdx * chunkSize;
-                            const chunk = allDates.slice(chunkStartIndex, chunkStartIndex + chunkSize);
-                            
-                            return (
-                              <div key={blockIdx} className="w-full relative select-none overflow-x-auto custom-scrollbar pb-3" onMouseLeave={handleMouseUp}>
-                                <div className="min-w-[800px] md:min-w-full">
-                                  <table className="w-full border-collapse mb-4 md:mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
-                                    <thead>
-                                      <tr className="bg-slate-50 text-center">
-                                        <th className="border border-slate-300 w-[12%] md:w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>과목</th>
-                                        <th className="border border-slate-300 w-[12%] md:w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>교재</th>
-                                        {chunk.map((d, i) => {
-                                          let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                          return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>{d.day}</th>;
-                                        })}
-                                      </tr>
-                                      <tr className="bg-slate-50 text-center">
-                                        {chunk.map((d, i) => {
-                                            let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
-                                            return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle break-keep ${textColor}`} style={{ fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>{d.label}</th>;
-                                        })}
-                                      </tr>
-                                    </thead>
-                                    
-                                    <tbody>
-                                      <tr className="bg-white text-center">
-                                        <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-0.5 md:py-1" style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>비고</td>
-                                        {chunk.map((d, i) => {
-                                          const cIdx = blockIdx === 0 ? i + 1 : i + 16;
-                                          const rIdx = 0;
-                                          const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
-                                          const cellId = `note-${d.full}`;
-                                          const isEditingThis = editingCell === cellId;
-                                          const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
-                                          const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
-                                          const val = termScheduler.topNotes[d.full] || '';
+                                             return (
+                                                <tr key={`status-m-${sub}-${tbIdx}`} className="bg-white">
+                                                   {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 bg-slate-50/50 align-middle overflow-hidden p-[1px]">
+                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {subLines.map((line, lIdx) => (
+                                                           <span key={lIdx} className="font-black text-slate-800 w-full text-center tracking-tighter" style={{ fontSize: subFS, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                       </div>
+                                                   </td>}
+                                                   <td className="border border-slate-200 align-middle overflow-hidden p-[1px]">
+                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {tbLines.map((line, idx) => (
+                                                           <span key={idx} className="font-bold text-slate-700 w-full text-center tracking-tighter" style={{ fontSize: tbFS, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                       </div>
+                                                   </td>
+                                                   <td className="border border-slate-200 bg-slate-50/5 align-middle overflow-hidden p-[1px]">
+                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {firstLines.map((line, idx) => (
+                                                           <span key={idx} className="font-black text-indigo-700 w-full text-center tracking-tighter" style={{ fontSize: firstFS, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                       </div>
+                                                   </td>
+                                                   <td className="border border-slate-200 bg-slate-50/5 align-middle overflow-hidden p-[1px]">
+                                                       <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden gap-[1px]">
+                                                         {lastLines.map((line, idx) => (
+                                                           <span key={idx} className="font-black text-rose-700 w-full text-center tracking-tighter" style={{ fontSize: lastFS, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'clip' }}>{line}</span>
+                                                         ))}
+                                                       </div>
+                                                   </td>
+                                                   <td className="border border-slate-200 p-1 align-middle">
+                                                      <div className="relative w-full h-3 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
+                                                          <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200" style={{ width: `${percent}%` }} />
+                                                          <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[7px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
+                                                      </div>
+                                                   </td>
+                                                </tr>
+                                             )
+                                          })}
+                                      </tbody>
+                                  </table>
+                              </div>
+                           )}
+                        </div>
+                      ) : (
+                        <>
+                          {monthlyBlocks.map((blockIdx) => {
+                            const chunkStartIndex = blockIdx * chunkSize;
+                            const chunk = allDates.slice(chunkStartIndex, chunkStartIndex + chunkSize);
+                            
+                            return (
+                              <div key={blockIdx} className="w-full relative select-none overflow-x-auto custom-scrollbar pb-3" onMouseLeave={handleMouseUp}>
+                                <div className="min-w-[800px] md:min-w-full">
+                                  <table className="w-full border-collapse mb-4 md:mb-10 text-[9px] md:text-[11px] table-fixed text-center align-middle">
+                                    <thead>
+                                      <tr className="bg-slate-50 text-center">
+                                        <th className="border border-slate-300 w-[12%] md:w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>과목</th>
+                                        <th className="border border-slate-300 w-[12%] md:w-[6%] py-1 md:py-2 text-center font-black align-middle" rowSpan={2} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>교재</th>
+                                        {chunk.map((d, i) => {
+                                          let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
+                                          return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle ${textColor}`} style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>{d.day}</th>;
+                                        })}
+                                      </tr>
+                                      <tr className="bg-slate-50 text-center">
+                                        {chunk.map((d, i) => {
+                                            let textColor = d.isSat ? 'text-blue-500' : d.isWeekend ? 'text-red-500' : 'text-slate-600';
+                                            return <th key={i} className={`border border-slate-300 py-0.5 md:py-1 font-bold text-center align-middle break-keep ${textColor}`} style={{ fontSize: `${Math.max(6, displayFontSize - 2)}px` }}>{d.label}</th>;
+                                        })}
+                                      </tr>
+                                    </thead>
+                                    
+                                    <tbody>
+                                      <tr className="bg-white text-center">
+                                        <td colSpan={2} className="border border-slate-300 text-center font-black bg-slate-50 text-black align-middle py-0.5 md:py-1" style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>비고</td>
+                                        {chunk.map((d, i) => {
+                                          const cIdx = blockIdx === 0 ? i + 1 : i + 16;
+                                          const rIdx = 0;
+                                          const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
+                                          const cellId = `note-${d.full}`;
+                                          const isEditingThis = editingCell === cellId;
+                                          const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                          const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
+                                          const val = termScheduler.topNotes[d.full] || '';
 
-                                          return (
-                                            <td key={cellId} 
-                                              onMouseDown={(e) => {
-                                                if (e.target.type === 'checkbox') return;
-                                                if (editingCell !== cellId) setEditingCell(null);
-                                                handleMonthlyMouseDown(e, rIdx, cIdx);
-                                              }}
-                                              onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
-                                              onClick={(e) => { 
-                                                if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
-                                                  setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
-                                                }
-                                              }}
-                                              onDoubleClick={(e) => { if (e.target.type !== 'checkbox') setEditingCell(cellId); }}
-                                              className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
-                                            >
-                                              <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[26px] md:min-h-[30px] relative">
-                                                <textarea 
-                                                  id={`monthly-textarea-${rIdx}-${cIdx}`}
-                                                  value={val} 
-                                                  onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
-                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TOP_NOTE' }, d.full)} rows={1}
-                                                  onCompositionStart={(e) => {
-                                                    if (!isEditingThis && isActiveThis) {
-                                                      e.currentTarget.value = ''; handleTopNoteChange(d.full, '');
-                                                      setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
-                                                    }
-                                                  }}
-                                                  onKeyDown={(e) => { 
-                                                    if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                    if (!isEditingThis && isActiveThis) {
-                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                      else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
-                                                      else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
-                                                      else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
-                                                      else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
-                                                      else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                      else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, ''); }
-                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
-                                                    } else if (isEditingThis) {
-                                                      if (e.key === 'Enter') {
-                                                        if (e.shiftKey || e.altKey) {
-                                                          if (e.altKey && !e.shiftKey) {
-                                                            e.preventDefault();
-                                                            const target = e.currentTarget;
-                                                            const start = target.selectionStart;
-                                                            const end = target.selectionEnd;
-                                                            const valStr = target.value;
-                                                            const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                                            handleTopNoteChange(d.full, newVal);
-                                                            setTimeout(() => {
-                                                              const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
-                                                              if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
-                                                            }, 0);
-                                                          }
-                                                        } else {
-                                                          e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
-                                                        }
-                                                      }
-                                                      else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                      else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
-                                                    }
-                                                  }}
-                                                  style={{
-                                                    fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
-                                                    caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                                    cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                                    zIndex: isEditingThis ? 20 : 0
-                                                  }}
-                                                  className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
-                                                />
-                                                {!isEditingThis && (
-                                                  <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
-                                                    <div style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-bold text-slate-800">{val}</div>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </td>
-                                          )
-                                        })}
-                                      </tr>
-                                      
-                                      {flatRows.map((rowInfo) => {
-                                        const { sub, tbName, tbIdx, isFirst, rowSpan, actualRowIdx } = rowInfo;
-                                        const rIdx = actualRowIdx;
-                                        const tbCIdx = blockIdx === 0 ? 0 : 15;
+                                          return (
+                                            <td key={cellId} 
+                                              onMouseDown={(e) => {
+                                                if (e.target.type === 'checkbox') return;
+                                                if (editingCell !== cellId) setEditingCell(null);
+                                                handleMonthlyMouseDown(e, rIdx, cIdx);
+                                              }}
+                                              onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
+                                              onClick={(e) => { 
+                                                if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
+                                                  setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
+                                                }
+                                              }}
+                                              onDoubleClick={(e) => { if (e.target.type !== 'checkbox') setEditingCell(cellId); }}
+                                              className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
+                                            >
+                                              <div className="w-full h-full flex flex-col justify-center items-center p-1 text-center min-h-[26px] md:min-h-[30px] relative">
+                                                <textarea 
+                                                  id={`monthly-textarea-${rIdx}-${cIdx}`}
+                                                  value={val} 
+                                                  onChange={(e) => handleTopNoteChange(d.full, e.target.value)} 
+                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TOP_NOTE' }, d.full)} rows={1}
+                                                  onCompositionStart={(e) => {
+                                                    if (!isEditingThis && isActiveThis) {
+                                                      e.currentTarget.value = ''; handleTopNoteChange(d.full, '');
+                                                      setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => { 
+                                                    if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                    if (!isEditingThis && isActiveThis) {
+                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellId); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                      else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                      else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
+                                                      else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
+                                                      else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTopNoteChange(d.full, ''); }
+                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTopNoteChange(d.full, ''); setEditingCell(cellId); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+                                                    } else if (isEditingThis) {
+                                                      if (e.key === 'Enter') {
+                                                        if (e.shiftKey || e.altKey) {
+                                                          if (e.altKey && !e.shiftKey) {
+                                                            e.preventDefault();
+                                                            const target = e.currentTarget;
+                                                            const start = target.selectionStart;
+                                                            const end = target.selectionEnd;
+                                                            const valStr = target.value;
+                                                            const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                                            handleTopNoteChange(d.full, newVal);
+                                                            setTimeout(() => {
+                                                              const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
+                                                              if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
+                                                            }, 0);
+                                                          }
+                                                        } else {
+                                                          e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
+                                                        }
+                                                      }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                    }
+                                                  }}
+                                                  style={{
+                                                    fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
+                                                    caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                    cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                    zIndex: isEditingThis ? 20 : 0
+                                                  }}
+                                                  className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                                />
+                                                {!isEditingThis && (
+                                                  <div className="w-full h-full flex flex-col gap-1.5 px-1 py-1 justify-center min-h-[30px] relative z-10 pointer-events-none">
+                                                    <div style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="w-full h-full flex items-center justify-center whitespace-pre-wrap font-bold text-slate-800">{val}</div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
+                                          )
+                                        })}
+                                      </tr>
+                                      
+                                      {flatRows.map((rowInfo) => {
+                                        const { sub, tbName, tbIdx, isFirst, rowSpan, actualRowIdx } = rowInfo;
+                                        const rIdx = actualRowIdx;
+                                        const tbCIdx = blockIdx === 0 ? 0 : 15;
 
-                                        const isSelTb = mb && rIdx >= mb.minR && rIdx <= mb.maxR && tbCIdx >= mb.minC && tbCIdx <= mb.maxC;
-                                        const cellIdTb = `textbook-${sub}-${tbIdx}-${blockIdx}`;
-                                        const isEditingTb = editingCell === cellIdTb;
-                                        const isSingleSelTb = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
-                                        const isActiveTb = isSingleSelTb && monthlySelection.r1 === rIdx && monthlySelection.c1 === tbCIdx;
+                                        const isSelTb = mb && rIdx >= mb.minR && rIdx <= mb.maxR && tbCIdx >= mb.minC && tbCIdx <= mb.maxC;
+                                        const cellIdTb = `textbook-${sub}-${tbIdx}-${blockIdx}`;
+                                        const isEditingTb = editingCell === cellIdTb;
+                                        const isSingleSelTb = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                        const isActiveTb = isSingleSelTb && monthlySelection.r1 === rIdx && monthlySelection.c1 === tbCIdx;
 
-                                        return (
-                                          <tr key={`${sub}-tb${tbIdx}`} className="text-center align-middle group/row">
-                                            {isFirst && (
-                                              <td rowSpan={rowSpan} className="border border-slate-300 p-0.5 md:px-1 md:py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep group/sub">
-                                                <span style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>{sub}</span>
-                                                <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/sub:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
-                                              </td>
-                                            )}
-                                            
-                                            <td key={cellIdTb}
-                                              onMouseDown={(e) => {
-                                                if (editingCell !== cellIdTb) setEditingCell(null);
-                                                handleMonthlyMouseDown(e, rIdx, tbCIdx);
-                                              }}
-                                              onMouseEnter={() => handleMonthlyMouseEnter(rIdx, tbCIdx)}
-                                              onClick={(e) => { 
-                                                if (!e.shiftKey && !isEditingTb) {
-                                                  setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`); if (el) el.focus(); }, 0);
-                                                }
-                                              }}
-                                              onDoubleClick={() => setEditingCell(cellIdTb)}
-                                              className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
-                                            >
-                                              {rowSpan > 1 && (
-                                                  <button onClick={(e) => { e.stopPropagation(); deleteTextbookRow(sub, tbIdx); }} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/row:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
-                                              )}
-                                              <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
-                                                <textarea 
-                                                  id={`monthly-textarea-${rIdx}-${tbCIdx}`}
-                                                  value={tbName} 
-                                                  onChange={(e) => handleTermTextbookChange(sub, tbIdx, e.target.value)} 
-                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TEXTBOOK', sub, tbIdx }, null)} rows={1}
-                                                  placeholder={tbIdx === 0 && rowSpan === 1 ? "교재 입력\n(Shift+Enter 행 추가)" : ""}
-                                                  onCompositionStart={(e) => {
-                                                    if (!isEditingTb && isActiveTb) {
-                                                      e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, '');
-                                                      setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx });
-                                                    }
-                                                  }}
-                                                  onKeyDown={(e) => { 
-                                                    if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                    if (!isEditingTb && isActiveTb) {
-                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellIdTb); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                      else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'DOWN'); }
-                                                      else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'UP'); }
-                                                      else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'RIGHT'); }
-                                                      else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'LEFT'); }
-                                                      else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                      else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, tbIdx, ''); }
-                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
-                                                    } else if (isEditingTb) {
-                                                      if (e.key === 'Enter') {
-                                                        if (e.shiftKey || e.altKey) {
-                                                          e.preventDefault();
-                                                          const target = e.currentTarget;
-                                                          const start = target.selectionStart;
-                                                          const valStr = target.value;
-                                                          const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
-                                                          handleTermTextbookChange(sub, tbIdx, newVal);
-                                                          setTimeout(() => {
-                                                            const nextRIdx = rIdx + 1; 
-                                                            setEditingCell(`textbook-${sub}-${tbIdx + 1}-${blockIdx}`);
-                                                            setMonthlySelection({ r1: nextRIdx, c1: tbCIdx, r2: nextRIdx, c2: tbCIdx });
-                                                            const el = document.getElementById(`monthly-textarea-${nextRIdx}-${tbCIdx}`);
-                                                            if(el) { el.focus(); el.setSelectionRange(0, 0); }
-                                                          }, 50);
-                                                        } else {
-                                                          e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, 'DOWN');
-                                                        }
-                                                      }
-                                                      else if (e.key === 'Backspace' && e.currentTarget.value === '' && rowSpan > 1) {
-                                                        e.preventDefault();
-                                                        deleteTextbookRow(sub, tbIdx);
-                                                        setTimeout(() => {
-                                                           const prevRIdx = Math.max(1, rIdx - 1);
-                                                           setEditingCell(null);
-                                                           setMonthlySelection({ r1: prevRIdx, c1: tbCIdx, r2: prevRIdx, c2: tbCIdx });
-                                                           const el = document.getElementById(`monthly-textarea-${prevRIdx}-${tbCIdx}`);
-                                                           if(el) el.focus();
-                                                        }, 50);
-                                                      }
-                                                      else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                      else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
-                                                    }
-                                                  }}
-                                                  style={{
-                                                    fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingTb ? 1 : 0,
-                                                    caretColor: (!isEditingTb && isActiveTb) ? 'transparent' : 'auto',
-                                                    cursor: (!isEditingTb && isActiveTb) ? 'default' : 'text',
-                                                    zIndex: isEditingTb ? 20 : 0
-                                                  }}
-                                                  className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-700 placeholder:text-slate-300 align-middle auto-resize break-words whitespace-pre-wrap ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
-                                                />
-                                                {!isEditingTb && (
-                                                  <div className="w-full h-full flex flex-col justify-center px-0.5 md:px-1 min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-none">
-                                                    {tbName.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${displayFontSize}px` }}>.</span> ) : (
-                                                      <div style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none">{tbName}</div>
-                                                    )}
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </td>
+                                        return (
+                                          <tr key={`${sub}-tb${tbIdx}`} className="text-center align-middle group/row">
+                                            {isFirst && (
+                                              <td rowSpan={rowSpan} className="border border-slate-300 p-0.5 md:px-1 md:py-1 font-black text-center relative group bg-slate-50/50 align-middle break-keep group/sub">
+                                                <span style={{ fontSize: `${Math.max(7, displayFontSize - 1)}px` }}>{sub}</span>
+                                                <button onClick={() => removeSubjectRow(sub)} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/sub:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
+                                              </td>
+                                            )}
+                                            
+                                            <td key={cellIdTb}
+                                              onMouseDown={(e) => {
+                                                if (editingCell !== cellIdTb) setEditingCell(null);
+                                                handleMonthlyMouseDown(e, rIdx, tbCIdx);
+                                              }}
+                                              onMouseEnter={() => handleMonthlyMouseEnter(rIdx, tbCIdx)}
+                                              onClick={(e) => { 
+                                                if (!e.shiftKey && !isEditingTb) {
+                                                  setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${tbCIdx}`); if (el) el.focus(); }, 0);
+                                                }
+                                              }}
+                                              onDoubleClick={() => setEditingCell(cellIdTb)}
+                                              className={`border border-slate-300 p-0 align-middle text-center transition-colors relative ${isSelTb ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingTb ? 'cursor-text' : 'cursor-cell'}`}
+                                            >
+                                              {rowSpan > 1 && (
+                                                  <button onClick={(e) => { e.stopPropagation(); deleteTextbookRow(sub, tbIdx); }} className="absolute right-0 top-0 md:right-0.5 md:top-0.5 opacity-0 group-hover/row:opacity-100 text-red-400 hover:text-red-600 transition-opacity text-center z-30"><X size={10}/></button>
+                                              )}
+                                              <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
+                                                <textarea 
+                                                  id={`monthly-textarea-${rIdx}-${tbCIdx}`}
+                                                  value={tbName} 
+                                                  onChange={(e) => handleTermTextbookChange(sub, tbIdx, e.target.value)} 
+                                                  onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'TEXTBOOK', sub, tbIdx }, null)} rows={1}
+                                                  placeholder={tbIdx === 0 && rowSpan === 1 ? "교재 입력\n(Shift+Enter 행 추가)" : ""}
+                                                  onCompositionStart={(e) => {
+                                                    if (!isEditingTb && isActiveTb) {
+                                                      e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, '');
+                                                      setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx });
+                                                    }
+                                                  }}
+                                                  onKeyDown={(e) => { 
+                                                    if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                    if (!isEditingTb && isActiveTb) {
+                                                      if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellIdTb); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                      else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'DOWN'); }
+                                                      else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'UP'); }
+                                                      else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'RIGHT'); }
+                                                      else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, 'LEFT'); }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermTextbookChange(sub, tbIdx, ''); }
+                                                      else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermTextbookChange(sub, tbIdx, ''); setEditingCell(cellIdTb); setMonthlySelection({ r1: rIdx, c1: tbCIdx, r2: rIdx, c2: tbCIdx }); }
+                                                    } else if (isEditingTb) {
+                                                      if (e.key === 'Enter') {
+                                                        if (e.shiftKey || e.altKey) {
+                                                          e.preventDefault();
+                                                          const target = e.currentTarget;
+                                                          const start = target.selectionStart;
+                                                          const valStr = target.value;
+                                                          const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
+                                                          handleTermTextbookChange(sub, tbIdx, newVal);
+                                                          setTimeout(() => {
+                                                            const nextRIdx = rIdx + 1; 
+                                                            setEditingCell(`textbook-${sub}-${tbIdx + 1}-${blockIdx}`);
+                                                            setMonthlySelection({ r1: nextRIdx, c1: tbCIdx, r2: nextRIdx, c2: tbCIdx });
+                                                            const el = document.getElementById(`monthly-textarea-${nextRIdx}-${tbCIdx}`);
+                                                            if(el) { el.focus(); el.setSelectionRange(0, 0); }
+                                                          }, 50);
+                                                        } else {
+                                                          e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, 'DOWN');
+                                                        }
+                                                      }
+                                                      else if (e.key === 'Backspace' && e.currentTarget.value === '' && rowSpan > 1) {
+                                                        e.preventDefault();
+                                                        deleteTextbookRow(sub, tbIdx);
+                                                        setTimeout(() => {
+                                                           const prevRIdx = Math.max(1, rIdx - 1);
+                                                           setEditingCell(null);
+                                                           setMonthlySelection({ r1: prevRIdx, c1: tbCIdx, r2: prevRIdx, c2: tbCIdx });
+                                                           const el = document.getElementById(`monthly-textarea-${prevRIdx}-${tbCIdx}`);
+                                                           if(el) el.focus();
+                                                        }, 50);
+                                                      }
+                                                      else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, tbCIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                      else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                    }
+                                                  }}
+                                                  style={{
+                                                    fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingTb ? 1 : 0,
+                                                    caretColor: (!isEditingTb && isActiveTb) ? 'transparent' : 'auto',
+                                                    cursor: (!isEditingTb && isActiveTb) ? 'default' : 'text',
+                                                    zIndex: isEditingTb ? 20 : 0
+                                                  }}
+                                                  className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-700 placeholder:text-slate-300 align-middle auto-resize break-words whitespace-pre-wrap ${isActiveTb && !isEditingTb ? 'select-none' : ''}`} 
+                                                />
+                                                {!isEditingTb && (
+                                                  <div className="w-full h-full flex flex-col justify-center px-0.5 md:px-1 min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-none">
+                                                    {tbName.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block pointer-events-none" style={{ fontSize: `${displayFontSize}px` }}>.</span> ) : (
+                                                      <div style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-bold text-slate-700 text-center w-full break-all md:break-words whitespace-pre-wrap pointer-events-none">{tbName}</div>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </td>
 
-                                            {chunk.map((d, i) => {
-                                              const cIdx = blockIdx === 0 ? i + 1 : i + 16;
-                                              const cellKey = `${sub}-tb${tbIdx}-${d.full}`;
-                                              
-                                              const exactVal = termScheduler.cells[cellKey];
-                                              const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
-                                              
-                                              const lines = val.split('\n').filter(l => l.trim() !== '');
-                                              const isEditingThis = editingCell === cellKey;
-                                              const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
-                                              const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
-                                              const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
+                                            {chunk.map((d, i) => {
+                                              const cIdx = blockIdx === 0 ? i + 1 : i + 16;
+                                              const cellKey = `${sub}-tb${tbIdx}-${d.full}`;
+                                              
+                                              const exactVal = termScheduler.cells[cellKey];
+                                              const val = exactVal !== undefined ? exactVal : (tbIdx === 0 ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '');
+                                              
+                                              const lines = val.split('\n').filter(l => l.trim() !== '');
+                                              const isEditingThis = editingCell === cellKey;
+                                              const isSel = mb && rIdx >= mb.minR && rIdx <= mb.maxR && cIdx >= mb.minC && cIdx <= mb.maxC;
+                                              const isSingleSelection = mb && mb.minR === mb.maxR && mb.minC === mb.maxC;
+                                              const isActiveThis = isSingleSelection && monthlySelection.r1 === rIdx && monthlySelection.c1 === cIdx;
 
-                                              return (
-                                                <td key={cellKey}
-                                                  onMouseDown={(e) => {
-                                                    if (e.target.type === 'checkbox') return;
-                                                    if (editingCell !== cellKey) setEditingCell(null);
-                                                    handleMonthlyMouseDown(e, rIdx, cIdx);
-                                                  }}
-                                                  onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
-                                                  onClick={(e) => { 
-                                                    if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
-                                                      setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
-                                                    }
-                                                  }}
-                                                  onDoubleClick={(e) => {
-                                                    if (e.target.type !== 'checkbox') setEditingCell(cellKey);
-                                                  }}
-                                                  className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
-                                                >
-                                                  <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
-                                                    <textarea 
-                                                      id={`monthly-textarea-${rIdx}-${cIdx}`}
-                                                      value={val} 
-                                                      onChange={(e) => handleTermCellChange(sub, tbIdx, d.full, e.target.value)} 
-                                                      onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'CELL', sub, tbIdx }, d.full)} rows={1}
-                                                      onCompositionStart={(e) => {
-                                                        if (!isEditingThis && isActiveThis) {
-                                                          e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, '');
-                                                          setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
-                                                        }
-                                                      }}
-                                                      onKeyDown={(e) => { 
-                                                        if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
-                                                        if (!isEditingThis && isActiveThis) {
-                                                          if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellKey); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
-                                                          else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
-                                                          else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
-                                                          else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
-                                                          else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
-                                                          else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                          else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
-                                                          else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, tbIdx, d.full, ''); }
-                                                          else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, ''); setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
-                                                        } else if (isEditingThis) {
-                                                          if (e.key === 'Enter') {
-                                                            if (e.shiftKey || e.altKey) {
-                                                                e.preventDefault();
-                                                                const target = e.currentTarget;
-                                                                const start = target.selectionStart;
-                                                                const valStr = target.value;
-                                                                const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
-                                                                handleTermCellChange(sub, tbIdx, d.full, newVal);
-                                                                setTimeout(() => {
-                                                                  const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
-                                                                  if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
-                                                                }, 0);
-                                                            } else {
-                                                              e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
-                                                            }
-                                                          }
-                                                          else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
-                                                          else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
-                                                        }
-                                                      }}
-                                                      style={{
-                                                        fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
-                                                        caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
-                                                        cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
-                                                        zIndex: isEditingThis ? 20 : 0
-                                                      }}
-                                                      className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
-                                                    />
-                                                    {!isEditingThis && (
-                                                      <div className="w-full h-full flex flex-col gap-1 px-0.5 md:px-1 py-0.5 md:py-1 justify-center min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-auto cursor-default">
-                                                        {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${displayFontSize}px` }}>.</span> ) : (
-                                                          lines.map((line, lIdx) => {
-                                                            const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
-                                                            const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
-                                                            
-                                                            return (
-                                                              <div key={lIdx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
-                                                                <span style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
-                                                                <input type="checkbox" checked={isChecked} 
-                                                                  onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, tbIdx, d.full, lIdx); }} 
-                                                                  onClick={(e) => { 
-                                                                    e.stopPropagation(); 
-                                                                    setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
-                                                                    setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
-                                                                  }} 
-                                                                  className="w-[10px] h-[10px] md:w-3 md:h-3 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
-                                                                />
-                                                              </div>
-                                                            );
-                                                          })
-                                                        )}
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                </td>
-                                              );
-                                            })}
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            );
-                          })}
+                                              return (
+                                                <td key={cellKey}
+                                                  onMouseDown={(e) => {
+                                                    if (e.target.type === 'checkbox') return;
+                                                    if (editingCell !== cellKey) setEditingCell(null);
+                                                    handleMonthlyMouseDown(e, rIdx, cIdx);
+                                                  }}
+                                                  onMouseEnter={() => handleMonthlyMouseEnter(rIdx, cIdx)}
+                                                  onClick={(e) => { 
+                                                    if (!e.shiftKey && !isEditingThis && e.target.type !== 'checkbox') {
+                                                      setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0);
+                                                    }
+                                                  }}
+                                                  onDoubleClick={(e) => {
+                                                    if (e.target.type !== 'checkbox') setEditingCell(cellKey);
+                                                  }}
+                                                  className={`border border-slate-300 p-0 align-middle transition-colors relative text-center ${isSel ? 'ring-2 ring-indigo-500 ring-inset z-10 bg-indigo-50/80' : 'hover:bg-slate-50 bg-white'} ${isEditingThis ? 'cursor-text' : 'cursor-cell'}`}
+                                                >
+                                                  <div className="w-full h-full flex flex-col justify-center items-center p-0 text-center min-h-[36px] md:min-h-[50px] relative">
+                                                    <textarea 
+                                                      id={`monthly-textarea-${rIdx}-${cIdx}`}
+                                                      value={val} 
+                                                      onChange={(e) => handleTermCellChange(sub, tbIdx, d.full, e.target.value)} 
+                                                      onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, { type: 'CELL', sub, tbIdx }, d.full)} rows={1}
+                                                      onCompositionStart={(e) => {
+                                                        if (!isEditingThis && isActiveThis) {
+                                                          e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, '');
+                                                          setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx });
+                                                        }
+                                                      }}
+                                                      onKeyDown={(e) => { 
+                                                        if (e.nativeEvent.isComposing && e.key !== 'Escape') return;
+                                                        if (!isEditingThis && isActiveThis) {
+                                                          if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); setEditingCell(cellKey); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); }
+                                                          else if (e.key === 'ArrowDown') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'DOWN'); }
+                                                          else if (e.key === 'ArrowUp') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'UP'); }
+                                                          else if (e.key === 'ArrowRight') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'RIGHT'); }
+                                                          else if (e.key === 'ArrowLeft') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, 'LEFT'); }
+                                                          else if (e.key === 'Tab') { e.preventDefault(); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                          else if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.blur(); setTimeout(() => e.currentTarget.focus(), 0); }
+                                                          else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); saveToHistory(); handleTermCellChange(sub, tbIdx, d.full, ''); }
+                                                          else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.currentTarget.value = ''; handleTermCellChange(sub, tbIdx, d.full, ''); setEditingCell(cellKey); setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); }
+                                                        } else if (isEditingThis) {
+                                                          if (e.key === 'Enter') {
+                                                            if (e.shiftKey || e.altKey) {
+                                                                e.preventDefault();
+                                                                const target = e.currentTarget;
+                                                                const start = target.selectionStart;
+                                                                const valStr = target.value;
+                                                                const newVal = valStr.substring(0, start) + '\n' + valStr.substring(target.selectionEnd);
+                                                                handleTermCellChange(sub, tbIdx, d.full, newVal);
+                                                                setTimeout(() => {
+                                                                  const targetEl = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`);
+                                                                  if (targetEl) { targetEl.setSelectionRange(start + 1, start + 1); autoResize({ target: targetEl }); }
+                                                                }, 0);
+                                                            } else {
+                                                              e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, 'DOWN');
+                                                            }
+                                                          }
+                                                          else if (e.key === 'Tab') { e.preventDefault(); setEditingCell(null); moveFocusMonthly(rIdx, cIdx, e.shiftKey ? 'LEFT' : 'RIGHT'); }
+                                                          else if (e.key === 'Escape') { e.preventDefault(); setEditingCell(null); e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length); } 
+                                                        }
+                                                      }}
+                                                      style={{
+                                                        fontSize: `${displayFontSize}px`, lineHeight: '1.3', opacity: isEditingThis ? 1 : 0,
+                                                        caretColor: (!isEditingThis && isActiveThis) ? 'transparent' : 'auto',
+                                                        cursor: (!isEditingThis && isActiveThis) ? 'default' : 'text',
+                                                        zIndex: isEditingThis ? 20 : 0
+                                                      }}
+                                                      className={`absolute inset-0 w-full h-full bg-white resize-none outline-none p-0.5 md:p-1 text-center font-bold text-slate-800 rounded shadow-sm overflow-hidden align-middle auto-resize break-words whitespace-pre-wrap ${isActiveThis && !isEditingThis ? 'select-none' : ''}`} 
+                                                    />
+                                                    {!isEditingThis && (
+                                                      <div className="w-full h-full flex flex-col gap-1 px-0.5 md:px-1 py-0.5 md:py-1 justify-center min-h-[36px] md:min-h-[40px] relative z-10 pointer-events-auto cursor-default">
+                                                        {val.trim() === '' ? ( <span className="text-transparent select-none w-full h-full block cursor-default pointer-events-none" style={{ fontSize: `${displayFontSize}px` }}>.</span> ) : (
+                                                          lines.map((line, lIdx) => {
+                                                            const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                                            const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                                            
+                                                            return (
+                                                              <div key={lIdx} className="flex items-center justify-center gap-0.5 md:gap-1 bg-white/70 rounded p-0.5 md:px-1 md:py-1 shadow-sm border border-black/5 mx-auto w-[98%] cursor-default pointer-events-auto">
+                                                                <span style={{ fontSize: `${displayFontSize}px`, lineHeight: '1.3' }} className="font-black text-slate-800 text-center flex-1 break-all md:break-words whitespace-pre-wrap pointer-events-none">{line}</span>
+                                                                <input type="checkbox" checked={isChecked} 
+                                                                  onChange={(e) => { e.stopPropagation(); handleTermCheckToggle(sub, tbIdx, d.full, lIdx); }} 
+                                                                  onClick={(e) => { 
+                                                                    e.stopPropagation(); 
+                                                                    setMonthlySelection({ r1: rIdx, c1: cIdx, r2: rIdx, c2: cIdx }); 
+                                                                    setTimeout(() => { const el = document.getElementById(`monthly-textarea-${rIdx}-${cIdx}`); if (el) el.focus(); }, 0); 
+                                                                  }} 
+                                                                  className="w-[10px] h-[10px] md:w-3 md:h-3 cursor-pointer accent-indigo-600 flex-shrink-0 relative z-30" 
+                                                                />
+                                                              </div>
+                                                            );
+                                                          })
+                                                        )}
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </td>
+                                              );
+                                            })}
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            );
+                          })}
 
-                          {termScheduler.subjects.length > 0 && (
-                            <div className="text-left flex justify-center w-full text-center mt-2 md:mt-6 overflow-x-auto custom-scrollbar pb-2">
-                              <div className="w-full md:min-w-full">
-                                <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-xl md:rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle monthly-summary-table">
-                                  <thead>
-                                    <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(8, displayFontSize - 1)}px` }}>
-                                      <th className="border border-slate-200 w-[14%] md:w-[10%] py-2 md:py-4 align-middle text-center break-keep">과목</th>
-                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">교재</th>
-                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">시작</th>
-                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">목표</th>
-                                      <th className="border border-slate-200 w-[44%] md:w-[60%] align-middle text-center break-keep">달성도</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {flatRows.map((rowInfo) => {
-                                      const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
-                                      let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
-                                      
-                                      allDates.forEach(d => {
-                                        const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
-                                        const fallbackVal = (tbIdx === 0 && exactVal === undefined) ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '';
-                                        const val = exactVal !== undefined ? exactVal : fallbackVal;
-                                        
-                                        if (val.trim() !== "") {
-                                          val.split('\n').forEach((lineText, lIdx) => {
-                                            if (lineText.trim() !== "") {
-                                              if (firstData === "-") firstData = lineText.trim();
-                                              lastData = lineText.trim(); totalItems++;
-                                              
-                                              const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
-                                              const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
-                                              if (isChecked) checkedItems++;
-                                            }
-                                          });
-                                        }
-                                      });
-                                      
-                                      const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
+                          {termScheduler.subjects.length > 0 && (
+                            <div className="text-left flex justify-center w-full text-center mt-2 md:mt-6 overflow-x-auto custom-scrollbar pb-2">
+                              <div className="w-full md:min-w-full">
+                                <table className="w-full border-collapse text-[10px] md:text-[11px] shadow-md rounded-xl md:rounded-2xl overflow-hidden border border-slate-200 text-center table-fixed align-middle monthly-summary-table">
+                                  <thead>
+                                    <tr className="bg-slate-100 font-black text-slate-800 text-center" style={{ fontSize: `${Math.max(8, displayFontSize - 1)}px` }}>
+                                      <th className="border border-slate-200 w-[14%] md:w-[10%] py-2 md:py-4 align-middle text-center break-keep">과목</th>
+                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">교재</th>
+                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">시작</th>
+                                      <th className="border border-slate-200 w-[14%] md:w-[10%] align-middle text-center break-keep">목표</th>
+                                      <th className="border border-slate-200 w-[44%] md:w-[60%] align-middle text-center break-keep">달성도</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {flatRows.map((rowInfo) => {
+                                      const { sub, tbName, tbIdx, isFirst, rowSpan } = rowInfo;
+                                      let firstData = "-"; let lastData = "-"; let totalItems = 0; let checkedItems = 0;
+                                      
+                                      allDates.forEach(d => {
+                                        const exactVal = termScheduler.cells[`${sub}-tb${tbIdx}-${d.full}`];
+                                        const fallbackVal = (tbIdx === 0 && exactVal === undefined) ? (termScheduler.cells[`${sub}-${d.full}`] || '') : '';
+                                        const val = exactVal !== undefined ? exactVal : fallbackVal;
+                                        
+                                        if (val.trim() !== "") {
+                                          val.split('\n').forEach((lineText, lIdx) => {
+                                            if (lineText.trim() !== "") {
+                                              if (firstData === "-") firstData = lineText.trim();
+                                              lastData = lineText.trim(); totalItems++;
+                                              
+                                              const exactCheck = termScheduler.checks[`${sub}-tb${tbIdx}-${d.full}-${lIdx}`];
+                                              const isChecked = exactCheck !== undefined ? exactCheck : (tbIdx === 0 ? (termScheduler.checks[`${sub}-${d.full}-${lIdx}`] || false) : false);
+                                              if (isChecked) checkedItems++;
+                                            }
+                                          });
+                                        }
+                                      });
+                                      
+                                      const percent = totalItems > 0 ? Math.round((checkedItems / totalItems) * 100) : 0;
 
-                                      return (
-                                        <tr key={`status-${sub}-${tbIdx}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(8, displayFontSize - 1)}px` }}>
-                                          {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${displayFontSize}px` }}>{sub}</span></td>}
-                                          <td className="border border-slate-200 p-1 md:p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{tbName || '-'}</span></td>
-                                          <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{firstData}</span></td>
-                                          <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{lastData}</span></td>
-                                          <td className="border border-slate-200 p-1.5 md:p-3 text-center align-middle">
-                                            <div className="relative w-full h-4 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
-                                              <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${percent}%` }} />
-                                              <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[8px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
+                                      return (
+                                        <tr key={`status-${sub}-${tbIdx}`} className="bg-white hover:bg-slate-50 transition-colors text-center" style={{ fontSize: `${Math.max(8, displayFontSize - 1)}px` }}>
+                                          {isFirst && <td rowSpan={rowSpan} className="border border-slate-200 text-center font-black py-2 md:py-3 bg-slate-50/50 align-middle"><span style={{ fontSize: `${displayFontSize}px` }}>{sub}</span></td>}
+                                          <td className="border border-slate-200 p-1 md:p-2 text-center font-bold text-slate-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{tbName || '-'}</span></td>
+                                          <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-indigo-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{firstData}</span></td>
+                                          <td className="border border-slate-200 bg-slate-50/5 text-center font-black p-1 md:px-3 md:py-2 text-rose-700 align-middle break-words whitespace-pre-wrap"><span style={{ fontSize: `${displayFontSize}px` }}>{lastData}</span></td>
+                                          <td className="border border-slate-200 p-1.5 md:p-3 text-center align-middle">
+                                            <div className="relative w-full h-4 md:h-6 bg-slate-100 rounded-full overflow-hidden shadow-inner border border-slate-200 mx-auto">
+                                              <div className="absolute inset-y-0 left-0 bg-gradient-to-r from-green-300 to-green-200 transition-all duration-700 ease-out" style={{ width: `${percent}%` }} />
+                                              <span className="absolute inset-y-0 left-0 right-0 flex items-center justify-center text-[8px] md:text-[10px] font-black text-slate-800 drop-shadow-sm">{percent}%</span>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-                {activeTab === 'YEARLY' && (
-                  <div className={`animate-fade-in grid ${isMobile ? 'grid-cols-3 gap-1 h-full' : 'grid-cols-3 md:grid-cols-6 gap-2 md:gap-4'} text-center yearly-mobile-grid`}>
-                    {yearlyPlan.map((plan, idx) => (
-                      <div key={idx} className={`p-1 md:p-6 rounded-xl md:rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center flex flex-col ${isMobile ? 'h-full' : ''}`}>
-                        <h4 className={`font-black text-indigo-600 text-center ${isMobile ? 'text-[10px] mb-1' : 'mb-1 md:mb-3 text-[10px] md:text-base'}`}>{idx + 1}월 계획</h4>
-                        {isMobile ? (
-                           <div className="w-full flex-1 p-0.5 text-[8px] font-bold text-slate-800 break-words whitespace-pre-wrap overflow-hidden text-center flex items-center justify-center">
-                             {plan || ''}
-                           </div>
-                        ) : (
-                          <textarea 
-                            value={plan || ''} 
-                            onChange={(e) => handleYearlyChange(idx, e.target.value)} 
-                            onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, null, null)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && e.altKey) {
-                                e.preventDefault();
-                                const target = e.target;
-                                const start = target.selectionStart;
-                                const end = target.selectionEnd;
-                                const valStr = target.value;
-                                const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
-                                handleYearlyChange(idx, newVal);
-                                setTimeout(() => { 
-                                  target.selectionStart = target.selectionEnd = start + 1; 
-                                  autoResize({ target });
-                                }, 0);
-                              }
-                            }}
-                            placeholder={`${idx + 1}월 마일스톤`} 
-                            style={{ fontSize: `${Math.max(8, displayFontSize)}px`, lineHeight: '1.4' }}
-                            className="w-full flex-1 p-1.5 md:p-4 rounded-lg md:rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent auto-resize min-h-[60px] md:min-h-[80px] break-words whitespace-pre-wrap" 
-                          />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {activeTab === 'YEARLY' && (
+                  <div className={`animate-fade-in grid ${isMobile ? 'grid-cols-3 gap-1 h-full' : 'grid-cols-3 md:grid-cols-6 gap-2 md:gap-4'} text-center yearly-mobile-grid`}>
+                    {yearlyPlan.map((plan, idx) => (
+                      <div key={idx} className={`p-1 md:p-6 rounded-xl md:rounded-3xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md text-center flex flex-col ${isMobile ? 'h-full' : ''}`}>
+                        <h4 className={`font-black text-indigo-600 text-center ${isMobile ? 'text-[10px] mb-1' : 'mb-1 md:mb-3 text-[10px] md:text-base'}`}>{idx + 1}월 계획</h4>
+                        {isMobile ? (
+                           <div className="w-full flex-1 p-0.5 text-[8px] font-bold text-slate-800 break-words whitespace-pre-wrap overflow-hidden text-center flex items-center justify-center">
+                             {plan || ''}
+                           </div>
+                        ) : (
+                          <textarea 
+                            value={plan || ''} 
+                            onChange={(e) => handleYearlyChange(idx, e.target.value)} 
+                            onInput={autoResize} onFocus={handleFocus} onBlur={(e) => handleBlur(e, null, null, true, null, null)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && e.altKey) {
+                                e.preventDefault();
+                                const target = e.target;
+                                const start = target.selectionStart;
+                                const end = target.selectionEnd;
+                                const valStr = target.value;
+                                const newVal = valStr.substring(0, start) + '\n' + valStr.substring(end);
+                                handleYearlyChange(idx, newVal);
+                                setTimeout(() => { 
+                                  target.selectionStart = target.selectionEnd = start + 1; 
+                                  autoResize({ target });
+                                }, 0);
+                              }
+                            }}
+                            placeholder={`${idx + 1}월 마일스톤`} 
+                            style={{ fontSize: `${Math.max(8, displayFontSize)}px`, lineHeight: '1.4' }}
+                            className="w-full flex-1 p-1.5 md:p-4 rounded-lg md:rounded-xl border border-slate-100 outline-none focus:border-indigo-500 transition-all font-bold resize-none text-center overflow-hidden bg-transparent auto-resize min-h-[60px] md:min-h-[80px] break-words whitespace-pre-wrap" 
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-                {activeTab === 'INFO' && (
-                  <div className={`animate-fade-in flex flex-col w-full text-center overflow-hidden bg-white rounded-xl border border-slate-200 shadow-sm ${isMobile ? 'p-1 h-full gap-1' : 'p-2 md:p-4 gap-4 info-mobile-fit'}`}>
-                    <div className="w-full flex-shrink-0">
-                      <table className={`w-full border-collapse text-center table-fixed min-w-full ${!isMobile && 'md:min-w-[700px] info-mobile-table'}`}>
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-700">
-                            {[0, 1, 2].map(i => renderInfoCell('topHeaders', 0, i, studentInfo.topHeaders[i], { tag: 'th', extraClass: 'w-[10%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } }))}
-                            {renderInfoCell('topHeaders', 0, 3, studentInfo.topHeaders[3], { tag: 'th', extraClass: 'w-[30%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } })}
-                            {renderInfoCell('topHeaders', 0, 4, studentInfo.topHeaders[4], { tag: 'th', extraClass: 'w-[40%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } })}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {studentInfo.websites.map((row, rIdx) => (
-                            <tr key={rIdx} className="hover:bg-slate-50 transition-colors">
-                              {[0, 1, 2].map(cIdx => renderInfoCell('websites', rIdx, cIdx, row[cIdx], { extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 } }))}
-                              
-                              {rIdx === 0 && renderInfoCell('electives', 0, 0, studentInfo.electives[0], { rowSpan: studentInfo.websites.length, extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700, minHeight: isMobile ? 'auto' : '80px' } })}
-                              {rIdx === 0 && renderInfoCell('electives', 0, 1, studentInfo.electives[1], { rowSpan: studentInfo.websites.length, extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700, minHeight: isMobile ? 'auto' : '80px' } })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                {activeTab === 'INFO' && (
+                  <div className={`animate-fade-in flex flex-col w-full text-center overflow-hidden bg-white rounded-xl border border-slate-200 shadow-sm ${isMobile ? 'p-1 h-full gap-1' : 'p-2 md:p-4 gap-4 info-mobile-fit'}`}>
+                    <div className="w-full flex-shrink-0">
+                      <table className={`w-full border-collapse text-center table-fixed min-w-full ${!isMobile && 'md:min-w-[700px] info-mobile-table'}`}>
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-700">
+                            {[0, 1, 2].map(i => renderInfoCell('topHeaders', 0, i, studentInfo.topHeaders[i], { tag: 'th', extraClass: 'w-[10%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } }))}
+                            {renderInfoCell('topHeaders', 0, 3, studentInfo.topHeaders[3], { tag: 'th', extraClass: 'w-[30%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } })}
+                            {renderInfoCell('topHeaders', 0, 4, studentInfo.topHeaders[4], { tag: 'th', extraClass: 'w-[40%]', extraStyle: { fontSize: `${Math.max(8, displayFontSize)}px`, fontWeight: 900 } })}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {studentInfo.websites.map((row, rIdx) => (
+                            <tr key={rIdx} className="hover:bg-slate-50 transition-colors">
+                              {[0, 1, 2].map(cIdx => renderInfoCell('websites', rIdx, cIdx, row[cIdx], { extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 } }))}
+                              
+                              {rIdx === 0 && renderInfoCell('electives', 0, 0, studentInfo.electives[0], { rowSpan: studentInfo.websites.length, extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700, minHeight: isMobile ? 'auto' : '80px' } })}
+                              {rIdx === 0 && renderInfoCell('electives', 0, 1, studentInfo.electives[1], { rowSpan: studentInfo.websites.length, extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700, minHeight: isMobile ? 'auto' : '80px' } })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                    <div className={`flex ${isMobile ? 'flex-row gap-1' : 'flex-col xl:flex-row gap-4'} w-full mt-1 flex-1 min-h-0`}>
-                      <div className="flex-1 w-full overflow-x-hidden flex flex-col min-h-0">
-                        <div className="bg-slate-100 border border-slate-300 p-0 font-black text-center mb-0 border-b-0 rounded-t-lg shadow-sm">
-                          {renderInfoCell('midHeaders', 0, null, studentInfo.midHeaders[0], { tag: 'div', extraClass: 'w-full !border-none', extraStyle: { fontSize: isMobile ? '9px' : `${Math.max(10, displayFontSize + 2)}px`, fontWeight: 900 } })}
-                        </div>
-                        <table className={`w-full min-w-full border-collapse text-center table-fixed bg-white shadow-sm rounded-b-lg overflow-hidden h-full ${!isMobile && 'md:min-w-[600px] info-mobile-table'}`}>
-                          <tbody>
-                            {studentInfo.schoolGrades.map((row, rIdx) => (
-                              <tr key={`sg-${rIdx}`} className="hover:bg-indigo-50/30 transition-colors group/row relative">
-                                {row.map((cellVal, cIdx) => renderInfoCell('schoolGrades', rIdx, cIdx, cellVal, { 
-                                  extraClass: row.join('').trim() === '' ? 'bg-red-50/30' : '', 
-                                  extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 },
-                                  showDeleteBtn: cIdx === 0 && rIdx > 0 && studentInfo.schoolGrades.length > 1,
-                                  onDelete: () => {
-                                    saveToHistory();
-                                    const newInfo = { ...studentInfo, schoolGrades: [...studentInfo.schoolGrades] };
-                                    newInfo.schoolGrades.splice(rIdx, 1);
-                                    setStudentInfo(newInfo);
-                                    setInfoSelection({ section: null, rIdx: null, cIdx: null });
-                                    setEditingCell(null);
-                                  }
-                                }))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                    <div className={`flex ${isMobile ? 'flex-row gap-1' : 'flex-col xl:flex-row gap-4'} w-full mt-1 flex-1 min-h-0`}>
+                      <div className="flex-1 w-full overflow-x-hidden flex flex-col min-h-0">
+                        <div className="bg-slate-100 border border-slate-300 p-0 font-black text-center mb-0 border-b-0 rounded-t-lg shadow-sm">
+                          {renderInfoCell('midHeaders', 0, null, studentInfo.midHeaders[0], { tag: 'div', extraClass: 'w-full !border-none', extraStyle: { fontSize: isMobile ? '9px' : `${Math.max(10, displayFontSize + 2)}px`, fontWeight: 900 } })}
+                        </div>
+                        <table className={`w-full min-w-full border-collapse text-center table-fixed bg-white shadow-sm rounded-b-lg overflow-hidden h-full ${!isMobile && 'md:min-w-[600px] info-mobile-table'}`}>
+                          <tbody>
+                            {studentInfo.schoolGrades.map((row, rIdx) => (
+                              <tr key={`sg-${rIdx}`} className="hover:bg-indigo-50/30 transition-colors group/row relative">
+                                {row.map((cellVal, cIdx) => renderInfoCell('schoolGrades', rIdx, cIdx, cellVal, { 
+                                  extraClass: row.join('').trim() === '' ? 'bg-red-50/30' : '', 
+                                  extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 },
+                                  showDeleteBtn: cIdx === 0 && rIdx > 0 && studentInfo.schoolGrades.length > 1,
+                                  onDelete: () => {
+                                    saveToHistory();
+                                    const newInfo = { ...studentInfo, schoolGrades: [...studentInfo.schoolGrades] };
+                                    newInfo.schoolGrades.splice(rIdx, 1);
+                                    setStudentInfo(newInfo);
+                                    setInfoSelection({ section: null, rIdx: null, cIdx: null });
+                                    setEditingCell(null);
+                                  }
+                                }))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
 
-                      <div className="flex-1 w-full overflow-x-hidden flex flex-col min-h-0">
-                        <div className="bg-slate-100 border border-slate-300 p-0 font-black text-center mb-0 border-b-0 rounded-t-lg shadow-sm">
-                          {renderInfoCell('midHeaders', 1, null, studentInfo.midHeaders[1], { tag: 'div', extraClass: 'w-full !border-none', extraStyle: { fontSize: isMobile ? '9px' : `${Math.max(10, displayFontSize + 2)}px`, fontWeight: 900 } })}
-                        </div>
-                        <table className={`w-full min-w-full border-collapse text-center table-fixed bg-white shadow-sm rounded-b-lg overflow-hidden h-full ${!isMobile && 'md:min-w-[500px] info-mobile-table'}`}>
-                          <tbody>
-                            {studentInfo.mockGrades.map((row, rIdx) => (
-                              <tr key={`mg-${rIdx}`} className="hover:bg-indigo-50/30 transition-colors group/row relative">
-                                {row.map((cellVal, cIdx) => renderInfoCell('mockGrades', rIdx, cIdx, cellVal, { 
-                                  extraClass: row.join('').trim() === '' ? 'bg-red-50/30' : '', 
-                                  extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 },
-                                  showDeleteBtn: cIdx === 0 && rIdx > 0 && studentInfo.mockGrades.length > 1,
-                                  onDelete: () => {
-                                    saveToHistory();
-                                    const newInfo = { ...studentInfo, mockGrades: [...studentInfo.mockGrades] };
-                                    newInfo.mockGrades.splice(rIdx, 1);
-                                    setStudentInfo(newInfo);
-                                    setInfoSelection({ section: null, rIdx: null, cIdx: null });
-                                    setEditingCell(null);
-                                  }
-                                }))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <div className="flex-1 w-full overflow-x-hidden flex flex-col min-h-0">
+                        <div className="bg-slate-100 border border-slate-300 p-0 font-black text-center mb-0 border-b-0 rounded-t-lg shadow-sm">
+                          {renderInfoCell('midHeaders', 1, null, studentInfo.midHeaders[1], { tag: 'div', extraClass: 'w-full !border-none', extraStyle: { fontSize: isMobile ? '9px' : `${Math.max(10, displayFontSize + 2)}px`, fontWeight: 900 } })}
+                        </div>
+                        <table className={`w-full min-w-full border-collapse text-center table-fixed bg-white shadow-sm rounded-b-lg overflow-hidden h-full ${!isMobile && 'md:min-w-[500px] info-mobile-table'}`}>
+                          <tbody>
+                            {studentInfo.mockGrades.map((row, rIdx) => (
+                              <tr key={`mg-${rIdx}`} className="hover:bg-indigo-50/30 transition-colors group/row relative">
+                                {row.map((cellVal, cIdx) => renderInfoCell('mockGrades', rIdx, cIdx, cellVal, { 
+                                  extraClass: row.join('').trim() === '' ? 'bg-red-50/30' : '', 
+                                  extraStyle: { fontSize: `${displayFontSize}px`, fontWeight: 700 },
+                                  showDeleteBtn: cIdx === 0 && rIdx > 0 && studentInfo.mockGrades.length > 1,
+                                  onDelete: () => {
+                                    saveToHistory();
+                                    const newInfo = { ...studentInfo, mockGrades: [...studentInfo.mockGrades] };
+                                    newInfo.mockGrades.splice(rIdx, 1);
+                                    setStudentInfo(newInfo);
+                                    setInfoSelection({ section: null, rIdx: null, cIdx: null });
+                                    setEditingCell(null);
+                                  }
+                                }))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
 
-                    </div>
-                  </div>
-                )}
-              </main>
+                    </div>
+                  </div>
+                )}
+              </main>
 
-              {!isMobile && (
-                <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center print:hidden">
-                  {showAiModal ? (
-                    <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in text-center">
-                      <div className="bg-indigo-600 p-5 text-white flex justify-between items-center text-center">
-                        <h3 className="font-extrabold text-lg flex items-center justify-center gap-2 w-full text-center"><Sparkles size={20}/> AI 매직 플래너</h3>
-                        <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5 text-center" /></button>
-                      </div>
-                      <div className="p-6 text-center text-center text-center">
-                        {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs leading-relaxed text-center">{aiFeedback}</div>}
-                        <form onSubmit={handleAiSubmit} className="relative mt-2 text-center text-center text-center">
-                          <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-center text-center text-center" disabled={isAiProcessing} />
-                          <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors text-center"><Send size={20} /></button>
-                        </form>
-                      </div>
-                    </div>
-                  ) : (
-                    <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all text-center"><Sparkles className="w-7 h-7 text-center" /></button>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+              {!isMobile && (
+                <div className="fixed bottom-6 right-6 md:bottom-10 md:right-10 z-50 flex flex-col items-end text-center print:hidden">
+                  {showAiModal ? (
+                    <div className="w-[360px] md:w-[420px] rounded-3xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-fade-in text-center">
+                      <div className="bg-indigo-600 p-5 text-white flex justify-between items-center text-center">
+                        <h3 className="font-extrabold text-lg flex items-center justify-center gap-2 w-full text-center"><Sparkles size={20}/> AI 매직 플래너</h3>
+                        <button onClick={() => setShowAiModal(false)}><X className="w-5 h-5 text-center" /></button>
+                      </div>
+                      <div className="p-6 text-center text-center text-center">
+                        {aiFeedback && <div className="mb-6 p-4 rounded-2xl text-center font-bold animate-pulse bg-emerald-50 text-emerald-600 border border-emerald-100 text-xs leading-relaxed text-center">{aiFeedback}</div>}
+                        <form onSubmit={handleAiSubmit} className="relative mt-2 text-center text-center text-center">
+                          <input type="text" value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="학습 명령을 입력하세요..." className="w-full pl-5 pr-14 py-4 rounded-2xl border-2 border-slate-200 focus:outline-none focus:border-indigo-500 transition-all font-bold text-slate-800 text-center text-center text-center" disabled={isAiProcessing} />
+                          <button type="submit" disabled={isAiProcessing || !aiPrompt.trim()} className="absolute right-2 top-2 p-3.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-colors text-center"><Send size={20} /></button>
+                        </form>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setShowAiModal(true)} className="flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all text-center"><Sparkles className="w-7 h-7 text-center" /></button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
-          {showPrintModal && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowPrintModal(false)}>
-              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-6 bg-white text-left cursor-default" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="font-black text-xl flex items-center gap-2 text-slate-800"><Printer className="text-indigo-600 w-6 h-6" /> 인쇄 설정</h3>
-                  <button onClick={() => setShowPrintModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
-                </div>
+          {showPrintModal && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowPrintModal(false)}>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-6 bg-white text-left cursor-default" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="font-black text-xl flex items-center gap-2 text-slate-800"><Printer className="text-indigo-600 w-6 h-6" /> 인쇄 설정</h3>
+                  <button onClick={() => setShowPrintModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
+                </div>
 
-                <div className="space-y-6">
-                  <div>
-                    <label className="text-sm font-bold text-slate-600 mb-2 block">용지 방향</label>
-                    <div className="flex gap-2 text-center">
-                      <button onClick={() => setPrintConfig({...printConfig, orientation: 'portrait'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.orientation === 'portrait' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>세로</button>
-                      <button onClick={() => setPrintConfig({...printConfig, orientation: 'landscape'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.orientation === 'landscape' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>가로</button>
-                    </div>
-                  </div>
+                <div className="space-y-6">
+                  <div>
+                    <label className="text-sm font-bold text-slate-600 mb-2 block">용지 방향</label>
+                    <div className="flex gap-2 text-center">
+                      <button onClick={() => setPrintConfig({...printConfig, orientation: 'portrait'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.orientation === 'portrait' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>세로</button>
+                      <button onClick={() => setPrintConfig({...printConfig, orientation: 'landscape'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.orientation === 'landscape' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>가로</button>
+                    </div>
+                  </div>
 
-                  <div>
-                    <label className="text-sm font-bold text-slate-600 mb-2 block">인쇄 영역</label>
-                    <div className="flex gap-2 text-center">
-                      <button onClick={() => setPrintConfig({...printConfig, scope: 'all'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.scope === 'all' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>전체 시간표</button>
-                      <button onClick={() => setPrintConfig({...printConfig, scope: 'selection'})} disabled={!getSelectionBounds() || (getSelectionBounds().minId === getSelectionBounds().maxId && getSelectionBounds().minDayIdx === getSelectionBounds().maxDayIdx)} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.scope === 'selection' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'} disabled:opacity-50 disabled:cursor-not-allowed`}>선택 영역만</button>
-                    </div>
-                    {(!getSelectionBounds() || (getSelectionBounds().minId === getSelectionBounds().maxId && getSelectionBounds().minDayIdx === getSelectionBounds().maxDayIdx)) && <p className="text-[11px] text-slate-400 mt-2 font-medium break-keep text-center">* 표에서 여러 셀을 드래그하여 영역 지정 시 활성화됨.</p>}
-                  </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-600 mb-2 block">인쇄 영역</label>
+                    <div className="flex gap-2 text-center">
+                      <button onClick={() => setPrintConfig({...printConfig, scope: 'all'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.scope === 'all' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>전체 시간표</button>
+                      <button onClick={() => setPrintConfig({...printConfig, scope: 'selection'})} disabled={!getSelectionBounds() || (getSelectionBounds().minId === getSelectionBounds().maxId && getSelectionBounds().minDayIdx === getSelectionBounds().maxDayIdx)} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.scope === 'selection' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'} disabled:opacity-50 disabled:cursor-not-allowed`}>선택 영역만</button>
+                    </div>
+                    {(!getSelectionBounds() || (getSelectionBounds().minId === getSelectionBounds().maxId && getSelectionBounds().minDayIdx === getSelectionBounds().maxDayIdx)) && <p className="text-[11px] text-slate-400 mt-2 font-medium break-keep text-center">* 표에서 여러 셀을 드래그하여 영역 지정 시 활성화됨.</p>}
+                  </div>
 
-                  <div>
-                    <label className="text-sm font-bold text-slate-600 mb-2 block">색상 모드</label>
-                    <div className="flex gap-2 text-center">
-                      <button onClick={() => setPrintConfig({...printConfig, colorMode: 'color'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.colorMode === 'color' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>컬러</button>
-                      <button onClick={() => setPrintConfig({...printConfig, colorMode: 'grayscale'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.colorMode === 'grayscale' ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>흑백</button>
-                    </div>
-                  </div>
-                </div>
+                  <div>
+                    <label className="text-sm font-bold text-slate-600 mb-2 block">색상 모드</label>
+                    <div className="flex gap-2 text-center">
+                      <button onClick={() => setPrintConfig({...printConfig, colorMode: 'color'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.colorMode === 'color' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>컬러</button>
+                      <button onClick={() => setPrintConfig({...printConfig, colorMode: 'grayscale'})} className={`flex-1 py-3 rounded-xl font-bold text-sm border-2 transition-all ${printConfig.colorMode === 'grayscale' ? 'bg-slate-800 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>흑백</button>
+                    </div>
+                  </div>
+                </div>
 
-                <div className="flex gap-3 mt-8 text-center">
-                  <button onClick={() => setShowPrintModal(false)} className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
-                  <button onClick={() => { setShowPrintModal(false); setTimeout(() => window.print(), 100); }} className="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-colors">인쇄 시작</button>
-                </div>
-              </div>
-            </div>
-          )}
+                <div className="flex gap-3 mt-8 text-center">
+                  <button onClick={() => setShowPrintModal(false)} className="flex-1 py-4 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={() => { setShowPrintModal(false); setTimeout(() => window.print(), 100); }} className="flex-1 py-4 bg-indigo-600 text-white rounded-xl font-black shadow-lg hover:bg-indigo-700 transition-colors">인쇄 시작</button>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {showColorModal && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowColorModal(false)}>
-              <div className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-slate-200 bg-white animate-fade-in cursor-default" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-6">
-                  <h4 className="font-extrabold text-xl flex items-center justify-center gap-2 text-slate-800"><Palette className="text-indigo-600 w-6 h-6"/> 키워드 색상 지정</h4>
-                  <button onClick={() => setShowColorModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
-                </div>
-                
-                <div className="flex gap-2 mb-4">
-                  <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-3 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
-                  <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
-                  <button onClick={addColorRule} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md text-sm">추가</button>
-                </div>
-                
-                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
-                  {colorRules.length === 0 && <div className="text-slate-400 font-bold p-4 text-xs text-center">등록된 색상이 없습니다.</div>}
-                  {colorRules.map((rule) => (
-                    <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors">
-                      <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
-                      <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          {showColorModal && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowColorModal(false)}>
+              <div className="w-full max-w-sm p-6 rounded-3xl shadow-2xl border border-slate-200 bg-white animate-fade-in cursor-default" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-6">
+                  <h4 className="font-extrabold text-xl flex items-center justify-center gap-2 text-slate-800"><Palette className="text-indigo-600 w-6 h-6"/> 키워드 색상 지정</h4>
+                  <button onClick={() => setShowColorModal(false)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"><X size={20}/></button>
+                </div>
+                
+                <div className="flex gap-2 mb-4">
+                  <input type="text" placeholder="단어" value={newColorRule.keyword} onChange={(e) => setNewColorRule({ ...newColorRule, keyword: e.target.value })} className="flex-1 p-3 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 border border-slate-200 bg-slate-50 text-center" />
+                  <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-inner border border-slate-200 flex-shrink-0 cursor-pointer"><input type="color" value={newColorRule.color} onChange={(e) => setNewColorRule({ ...newColorRule, color: e.target.value })} className="absolute top-[-10px] left-[-10px] w-[200%] h-[200%] cursor-pointer border-0 p-0" /></div>
+                  <button onClick={addColorRule} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 shadow-md text-sm">추가</button>
+                </div>
+                
+                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
+                  {colorRules.length === 0 && <div className="text-slate-400 font-bold p-4 text-xs text-center">등록된 색상이 없습니다.</div>}
+                  {colorRules.map((rule) => (
+                    <div key={rule.id} className="flex items-center justify-between text-sm p-3 rounded-xl border border-slate-100 bg-slate-50 group hover:border-indigo-200 transition-colors">
+                      <div className="flex items-center gap-3 font-bold"><div className="w-5 h-5 rounded-full shadow-inner border border-black/10" style={{ backgroundColor: rule.color }}></div><span>{rule.keyword}</span></div>
+                      <button onClick={() => removeColorRule(rule.id)} className="p-1.5 rounded-lg transition-colors opacity-100 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 hover:bg-red-50"><X className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
 
-          {showResetConfirm && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowResetConfirm(false)}>
-              <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
-                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
-                <h3 className="font-black text-xl mb-2 text-slate-800">데이터 초기화</h3>
-                <p className="text-sm mb-8 text-slate-500 font-bold break-keep">현재 탭의 데이터를 모두 지울까요?</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
-                  <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">확인</button>
-                </div>
-              </div>
-            </div>
-          )}
+          {showResetConfirm && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowResetConfirm(false)}>
+              <div className="w-full max-w-xs rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><AlertCircle size={32} /></div>
+                <h3 className="font-black text-xl mb-2 text-slate-800">데이터 초기화</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep">현재 탭의 데이터를 모두 지울까요?</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeResetTimetable} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">확인</button>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {showLogoutConfirm && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowLogoutConfirm(false)}>
-              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
-                <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4"><LogOut size={32} /></div>
-                <h3 className="font-black text-xl mb-2 text-slate-800">로그아웃</h3>
-                <p className="text-sm mb-8 text-slate-500 font-bold break-keep">정말 로그아웃 하시겠습니까?</p>
-                <div className="flex gap-3">
-                  <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
-                  <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black shadow-lg shadow-indigo-100 transition-colors">로그아웃</button>
-                </div>
-              </div>
-            </div>
-          )}
+          {showLogoutConfirm && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setShowLogoutConfirm(false)}>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center mx-auto mb-4"><LogOut size={32} /></div>
+                <h3 className="font-black text-xl mb-2 text-slate-800">로그아웃</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep">정말 로그아웃 하시겠습니까?</p>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowLogoutConfirm(false)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeLogout} className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black shadow-lg shadow-indigo-100 transition-colors">로그아웃</button>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {studentToDelete && (
-            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setStudentToDelete(null)}>
-              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
-                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
-                <h3 className="font-black text-xl mb-3 text-slate-800">데이터 삭제</h3>
-                <p className="text-sm mb-8 text-slate-500 font-bold break-keep leading-relaxed">
-                  <span className="text-red-500 font-black text-base">[{studentToDelete.studentName || '이름 없음'}]</span><br/>학생의 플래너를 삭제하시겠습니까?
-                </p>
-                <div className="flex gap-3">
-                  <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
-                  <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">삭제</button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+          {studentToDelete && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in print:hidden" onClick={() => setStudentToDelete(null)}>
+              <div className="w-full max-w-sm rounded-3xl shadow-2xl p-8 bg-white text-center" onClick={(e) => e.stopPropagation()}>
+                <div className="w-16 h-16 rounded-full bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-4"><Trash2 size={32} /></div>
+                <h3 className="font-black text-xl mb-3 text-slate-800">데이터 삭제</h3>
+                <p className="text-sm mb-8 text-slate-500 font-bold break-keep leading-relaxed">
+                  <span className="text-red-500 font-black text-base">[{studentToDelete.studentName || '이름 없음'}]</span><br/>학생의 플래너를 삭제하시겠습니까?
+                </p>
+                <div className="flex gap-3">
+                  <button onClick={() => setStudentToDelete(null)} className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 transition-colors rounded-xl font-bold text-slate-600">취소</button>
+                  <button onClick={executeDeleteStudent} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-black shadow-lg shadow-red-200 transition-colors">삭제</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
-      <div className="hidden print:flex flex-col absolute inset-0 bg-white print-container box-border" style={{ filter: printConfig.colorMode === 'grayscale' ? 'grayscale(100%)' : 'none' }}>
-        {view === 'PLANNER' && activeTab === 'WEEKLY' && (() => {
-          const getPrintTimetable = () => {
-            const bounds = getSelectionBounds();
-            const isSelection = printConfig.scope === 'selection' && bounds;
-            const pMinDay = isSelection ? bounds.minDayIdx : 0;
-            const pMaxDay = isSelection ? bounds.maxDayIdx : 6;
-            const pMinId = isSelection ? bounds.minId : 1;
-            const pMaxId = isSelection ? bounds.maxId : 32;
+      <div className="hidden print:flex flex-col absolute inset-0 bg-white print-container box-border" style={{ filter: printConfig.colorMode === 'grayscale' ? 'grayscale(100%)' : 'none' }}>
+        {view === 'PLANNER' && activeTab === 'WEEKLY' && (() => {
+          const getPrintTimetable = () => {
+            const bounds = getSelectionBounds();
+            const isSelection = printConfig.scope === 'selection' && bounds;
+            const pMinDay = isSelection ? bounds.minDayIdx : 0;
+            const pMaxDay = isSelection ? bounds.maxDayIdx : 6;
+            const pMinId = isSelection ? bounds.minId : 1;
+            const pMaxId = isSelection ? bounds.maxId : 32;
 
-            const printDays = DAYS.slice(pMinDay, pMaxDay + 1);
-            const printRows = [];
+            const printDays = DAYS.slice(pMinDay, pMaxDay + 1);
+            const printRows = [];
 
-            for (let r = pMinId - 1; r <= pMaxId - 1; r++) {
-              const origRow = timetable[r];
-              if (!origRow) continue;
-              
-              const newRow = { id: origRow.id, time: origRow.time };
-              
-              printDays.forEach((day) => {
-                if (r === pMinId - 1 && origRow[`${day}_hidden`]) {
-                  let ptr = r - 1; let originText = ''; let originSpan = 1; let found = false;
-                  while (ptr >= 0) {
-                    if (timetable[ptr] && !timetable[ptr][`${day}_hidden`]) {
-                      originText = timetable[ptr][day] || ''; originSpan = timetable[ptr][`${day}_span`] || 1; found = true; break;
-                    }
-                    ptr--;
-                  }
-                  if (found) {
-                    const overlap = originSpan - (r - ptr); 
-                    if (overlap > 0) {
-                      newRow[day] = originText; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(overlap, pMaxId - 1 - r + 1);
-                    } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
-                  } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
-                } else if (!origRow[`${day}_hidden`]) {
-                  const span = origRow[`${day}_span`] || 1;
-                  newRow[day] = origRow[day]; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(span, pMaxId - 1 - r + 1);
-                } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
-              });
-              printRows.push(newRow);
-            }
-            return { printDays, printRows, pMinDayIdx: pMinDay };
-          };
+            for (let r = pMinId - 1; r <= pMaxId - 1; r++) {
+              const origRow = timetable[r];
+              if (!origRow) continue;
+              
+              const newRow = { id: origRow.id, time: origRow.time };
+              
+              printDays.forEach((day) => {
+                if (r === pMinId - 1 && origRow[`${day}_hidden`]) {
+                  let ptr = r - 1; let originText = ''; let originSpan = 1; let found = false;
+                  while (ptr >= 0) {
+                    if (timetable[ptr] && !timetable[ptr][`${day}_hidden`]) {
+                      originText = timetable[ptr][day] || ''; originSpan = timetable[ptr][`${day}_span`] || 1; found = true; break;
+                    }
+                    ptr--;
+                  }
+                  if (found) {
+                    const overlap = originSpan - (r - ptr); 
+                    if (overlap > 0) {
+                      newRow[day] = originText; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(overlap, pMaxId - 1 - r + 1);
+                    } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
+                  } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
+                } else if (!origRow[`${day}_hidden`]) {
+                  const span = origRow[`${day}_span`] || 1;
+                  newRow[day] = origRow[day]; newRow[`${day}_hidden`] = false; newRow[`${day}_span`] = Math.min(span, pMaxId - 1 - r + 1);
+                } else { newRow[day] = ''; newRow[`${day}_hidden`] = true; newRow[`${day}_span`] = 1; }
+              });
+              printRows.push(newRow);
+            }
+            return { printDays, printRows, pMinDayIdx: pMinDay };
+          };
 
-          const { printDays, printRows, pMinDayIdx } = getPrintTimetable();
-          const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
-          const bStyle = { border: '0.5pt solid #cbd5e1' }; 
-          
-          return (
-            <div className="w-full h-full flex flex-col bg-white overflow-hidden box-border">
-              <div className="flex items-center justify-center flex-shrink-0 h-20 sm:h-24 w-full">
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight m-0 p-0 leading-none">
-                  {studentName ? `${studentName} 주간 시간표` : '주간 시간표'}
-                </h1>
-              </div>
-              <table className="w-full h-full flex-1 border-collapse text-center" style={{ ...bStyle, tableLayout: 'fixed' }}>
-                <thead>
-                  <tr>
-                    <th className="py-0.5 bg-slate-100 font-black text-slate-700 text-[10px] sm:text-xs align-middle" style={{ ...bStyle, width: '45px' }}>시간</th>
-                    {printDays.map((day, idx) => (
-                      <th key={day} className={`py-0.5 bg-slate-100 font-black text-[10px] sm:text-xs align-middle break-keep ${printConfig.colorMode === 'grayscale' ? 'text-slate-800' : (day==='sat'?'text-blue-600':day==='sun'?'text-red-600':'text-slate-700')}`} style={bStyle}>
-                        {labelsLong[pMinDayIdx + idx]}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {printRows.map(row => (
-                    <tr key={row.id} style={{ height: '1%' }}>
-                      <td className="py-0 font-bold text-slate-500 text-[8px] sm:text-[9px] leading-none break-keep align-middle" style={bStyle}>
-                        {row.time}
-                      </td>
-                      {printDays.map(day => {
-                        if (row[`${day}_hidden`]) return null;
-                        const text = row[day] || '';
-                        const span = row[`${day}_span`] || 1;
-                        const bgColor = printConfig.colorMode === 'color' ? (getCellColor(text) || 'transparent') : 'transparent';
-                        return (
-                          <td key={day} rowSpan={span} className="p-0.5 font-bold text-[9px] sm:text-[11px] leading-[1.1] text-slate-800 align-middle overflow-hidden break-all whitespace-pre-wrap" style={{ ...bStyle, backgroundColor: bgColor }}>
-                            <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden text-center max-h-full">
-                              {text}
-                            </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          );
-        })()}
-      </div>
+          const { printDays, printRows, pMinDayIdx } = getPrintTimetable();
+          const labelsLong = ['월요일', '화요일', '수요일', '목요일', '금요일', '토요일', '일요일'];
+          const bStyle = { border: '0.5pt solid #cbd5e1' }; 
+          
+          return (
+            <div className="w-full h-full flex flex-col bg-white overflow-hidden box-border">
+              <div className="flex items-center justify-center flex-shrink-0 h-20 sm:h-24 w-full">
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight m-0 p-0 leading-none">
+                  {studentName ? `${studentName} 주간 시간표` : '주간 시간표'}
+                </h1>
+              </div>
+              <table className="w-full h-full flex-1 border-collapse text-center" style={{ ...bStyle, tableLayout: 'fixed' }}>
+                <thead>
+                  <tr>
+                    <th className="py-0.5 bg-slate-100 font-black text-slate-700 text-[10px] sm:text-xs align-middle" style={{ ...bStyle, width: '45px' }}>시간</th>
+                    {printDays.map((day, idx) => (
+                      <th key={day} className={`py-0.5 bg-slate-100 font-black text-[10px] sm:text-xs align-middle break-keep ${printConfig.colorMode === 'grayscale' ? 'text-slate-800' : (day==='sat'?'text-blue-600':day==='sun'?'text-red-600':'text-slate-700')}`} style={bStyle}>
+                        {labelsLong[pMinDayIdx + idx]}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {printRows.map(row => (
+                    <tr key={row.id} style={{ height: '1%' }}>
+                      <td className="py-0 font-bold text-slate-500 text-[8px] sm:text-[9px] leading-none break-keep align-middle" style={bStyle}>
+                        {row.time}
+                      </td>
+                      {printDays.map(day => {
+                        if (row[`${day}_hidden`]) return null;
+                        const text = row[day] || '';
+                        const span = row[`${day}_span`] || 1;
+                        const bgColor = printConfig.colorMode === 'color' ? (getCellColor(text) || 'transparent') : 'transparent';
+                        return (
+                          <td key={day} rowSpan={span} className="p-0.5 font-bold text-[9px] sm:text-[11px] leading-[1.1] text-slate-800 align-middle overflow-hidden break-all whitespace-pre-wrap" style={{ ...bStyle, backgroundColor: bgColor }}>
+                            <div className="w-full h-full flex flex-col items-center justify-center overflow-hidden text-center max-h-full">
+                              {text}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        })()}
+      </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; } 
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.4); border-radius: 10px; } 
-        .animate-fade-in { animation: fadeIn 0.3s forwards; } 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+      <style dangerouslySetInnerHTML={{ __html: `
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; } 
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(99, 102, 241, 0.4); border-radius: 10px; } 
+        .animate-fade-in { animation: fadeIn 0.3s forwards; } 
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* 📱 [모바일 한정] 가로 스크롤 방지 및 순수 열람용 최적화 */
-        @media (max-width: 767px) {
-          /* 연간 탭이 전체 높이를 꽉 채우도록 설정 (스크롤 없음) */
-          .yearly-mobile-grid { 
-             grid-template-columns: repeat(3, minmax(0, 1fr)) !important; 
-             grid-template-rows: repeat(4, minmax(0, 1fr)) !important;
-             gap: 4px !important; 
-             height: 100% !important;
-          }
-          .yearly-mobile-grid > div {
-             min-height: 0 !important;
-          }
-        }
+        /* 📱 [모바일 한정] 가로 스크롤 방지 및 순수 열람용 최적화 */
+        @media (max-width: 767px) {
+          /* 연간 탭이 전체 높이를 꽉 채우도록 설정 (스크롤 없음) */
+          .yearly-mobile-grid { 
+             grid-template-columns: repeat(3, minmax(0, 1fr)) !important; 
+             grid-template-rows: repeat(4, minmax(0, 1fr)) !important;
+             gap: 4px !important; 
+             height: 100% !important;
+          }
+          .yearly-mobile-grid > div {
+             min-height: 0 !important;
+          }
+        }
 
-        @media print {
-          @page {
-            size: A4 ${printConfig.orientation};
-            margin: 8mm;
-          }
-          html, body {
-            width: 100% !important;
-            height: 100% !important;
-            margin: 0 !important; 
-            padding: 0 !important;
-            overflow: hidden !important; 
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-            background-color: white !important;
-          }
-          ::-webkit-scrollbar { display: none; }
-          .print-container {
-            position: absolute !important;
-            top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
-            width: 100% !important; height: 100% !important;
-            max-height: 100% !important;
-            box-sizing: border-box !important;
-            page-break-after: avoid !important;
-            page-break-before: avoid !important;
-            page-break-inside: avoid !important;
-          }
-        }
-      ` }} />
-    </>
-  );
+        @media print {
+          @page {
+            size: A4 ${printConfig.orientation};
+            margin: 8mm;
+          }
+          html, body {
+            width: 100% !important;
+            height: 100% !important;
+            margin: 0 !important; 
+            padding: 0 !important;
+            overflow: hidden !important; 
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+            background-color: white !important;
+          }
+          ::-webkit-scrollbar { display: none; }
+          .print-container {
+            position: absolute !important;
+            top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+            width: 100% !important; height: 100% !important;
+            max-height: 100% !important;
+            box-sizing: border-box !important;
+            page-break-after: avoid !important;
+            page-break-before: avoid !important;
+            page-break-inside: avoid !important;
+          }
+        }
+      ` }} />
+    </>
+  );
 }
